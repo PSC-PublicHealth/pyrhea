@@ -6,13 +6,15 @@ import sys
 import types
 from greenlet import greenlet
 from random import randint
+import weaklist
 
 
 class Sequencer(object):
 
-    def __init__(self):
+    def __init__(self, name):
         self._timeQueues = {}
         self._timeNow = 0
+        self._name = name
 
     def __iter__(self):
         while self._timeQueues:
@@ -27,8 +29,8 @@ class Sequencer(object):
     def enqueue(self, agent, whenInfo=0):
         assert isinstance(whenInfo, types.IntType)
         if whenInfo < self._timeNow:
-            raise RuntimeError('Cannot go backwards in time from %d to %d' %
-                               (self.timeNow, whenInfo))
+            raise RuntimeError('%s: Cannot go backwards in time from %d to %d' %
+                               (self._name, self._timeNow, whenInfo))
         else:
             if whenInfo not in self._timeQueues:
                 self._timeQueues[whenInfo] = []
@@ -37,16 +39,40 @@ class Sequencer(object):
     def getTimeNow(self):
         return self._timeNow
 
+    def getNWaitingNow(self):
+        return len([a for a in self._timeQueues[self._timeNow] if not a.timeless])
+
     def getTimeRange(self):
-        return (self._timeNow, max(self._timeQueues.keys()))
+        t = self._timeNow
+        tMax = max(self._timeQueues.keys())
+        tMin = None
+        for iact in Interactant.getLiveList():
+            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
+                    and iact.getNWaiting()):
+                tMin = t
+                print '%s has %d waiting' % (iact, iact.getNWaiting())
+                break
+        while tMin is None:
+            if self._timeQueues[t]:
+                for a in self._timeQueues[t]:
+                    if not a.timeless:
+                        tMin = t
+                        break
+            assert t <= tMax, "Lost in time"
+            t += 1
+        return (tMin, tMax)
 
     def bumpIfAllTimeless(self):
         """
         If all the agents for 'today' are marked timeless, shift them to 'tomorrow' and move
         time forward by a day.
         """
+        for iact in Interactant.getLiveList():
+            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
+                    and iact.getNWaiting()):
+                return
         if all([a.timeless for a in self._timeQueues[self._timeNow]]):
-            print 'Bump!'
+            print '%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
             oldDay = self._timeQueues[self._timeNow]
             del self._timeQueues[self._timeNow]
             self._timeNow += 1
@@ -54,48 +80,71 @@ class Sequencer(object):
 
 
 class Agent(greenlet):
-    def __init__(self, name, ownerLoop):
+    def __init__(self, name, ownerLoop, debug=False):
         self.name = name
         self.ownerLoop = ownerLoop
         self.timeless = False
+        self.debug = debug
 
     def run(self, startTime):
         raise RuntimeError('Derived class must subclass this method!')
 
-    def serialize(self):
-        raise RuntimeError('agent cannot serialize')
+    def __getstate__(self):
+        return {'name': self.name, 'timeless': self.timeless,
+                'debug': self.debug}
 
-    @staticmethod
-    def deserialize(agentRep):
-        raise RuntimeError('agent cannot deserialize')
+    def __setstate__(self, stateDict):
+        for k, v in stateDict.items():
+            setattr(self, k, v)
+
+    def reHome(self, newOwnerLoop):
+        self.ownerLoop = newOwnerLoop
 
     def sleep(self, deltaTime):
-        self.ownerLoop.sleep(self, deltaTime)
+        return self.ownerLoop.sleep(self, deltaTime)
 
     def __str__(self):
         return '<%s>' % self.name
 
 
 class Interactant():
+    _liveInstances = weaklist.WeakList()
+
+    @classmethod
+    def getLiveList(cls):
+        return cls._liveInstances
+
     def __init__(self, name, ownerLoop, debug=False):
         self._name = name
         self._ownerLoop = ownerLoop
         self._lockingAgent = None
         self._lockQueue = []
         self._debug = debug
+        self._nEnqueued = 0  # counts only things which are not 'timeless'
+        self._liveInstances.append(self)
+
+    def getNWaiting(self):
+        """This returns the count of waiting agents for which timeless is false"""
+        return self._nEnqueued
+
+    def __str__(self):
+        return '<%s>' % self._name
 
     def lock(self, lockingAgent):
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if ((self._lockingAgent is None and not self._lockQueue)
                 or self._lockingAgent == lockingAgent):
             self._lockingAgent = lockingAgent
-            if self._debug:
+            if self._debug and lockingAgent.debug:
                 print '%s fast lock of %s' % (lockingAgent, self._name)
             return timeNow
         else:
             self._lockQueue.append(lockingAgent)
-            if self._debug:
-                print '%s slow lock of %s' % (lockingAgent, self._name)
+            if not lockingAgent.timeless:
+                self._nEnqueued += 1
+            if self._debug and lockingAgent.debug:
+                print '%s slow lock of %s (%d in queue)' % \
+                    (lockingAgent, self._name, self._nEnqueued)
             timeNow = self._ownerLoop.switch('%s is %d in %s queue' %
                                              (lockingAgent, len(self._lockQueue), self._name))
             return timeNow
@@ -106,8 +155,11 @@ class Interactant():
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if self._lockQueue:
             newAgent = self._lockQueue.pop(0)
+            if not newAgent.timeless:
+                self._nEnqueued -= 1
             if self._debug:
-                print '%s unlock of %s awakens %s' % (self._name, oldLockingAgent, newAgent)
+                print '%s unlock of %s awakens %s (%d still in queue)' % \
+                    (self._name, oldLockingAgent, newAgent, self._nEnqueued)
             self._lockingAgent = newAgent
             self._ownerLoop.sequencer.enqueue(newAgent, timeNow)
             self._ownerLoop.sequencer.enqueue(oldLockingAgent, timeNow)
@@ -127,27 +179,40 @@ class MainLoop(greenlet):
 
         def run(self, timeNow):
             while True:
-                self.ownerLoop.sequencer.bumpIfAllTimeless()
+                if not self.ownerLoop.timeFrozen:
+                    self.ownerLoop.sequencer.bumpIfAllTimeless()
                 newTimeNow = self.sleep(0)  # yield thread
-                if newTimeNow != timeNow:
-                    # print 'ClockAgent: time is now %s' % newTimeNow
-                    timeNow = newTimeNow
                 for cb in self.ownerLoop.perTickCallbacks:
-                    cb(self.ownerLoop)
+                    cb(self.ownerLoop, timeNow, newTimeNow)
+                if newTimeNow != timeNow:
+                    print '%s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
+                    timeNow = newTimeNow
 
-    def __init__(self, safety=None):
-        self.sequencer = Sequencer()
+    def __init__(self, name=None, safety=None):
         self.newAgents = [MainLoop.ClockAgent(self)]
         self.perTickCallbacks = []
         self.safety = safety  # After how many ticks to bail, if any
         assert safety is None or isinstance(safety, types.IntType)
+        if name is None:
+            self.name = 'MainLoop'
+        else:
+            self.name = name
+        self.sequencer = Sequencer(self.name + ".Sequencer")
+        self.timeFrozen = False
 
     def addAgents(self, agentList):
-        assert all([a.ownerLoop == self for a in agentList]), "Tried to add a foreign agent!"
+        assert all([a.ownerLoop == self for a in agentList]), \
+            "%s: Tried to add a foreign agent!" % self.name
         self.newAgents.extend(agentList)
 
     def addPerTickCallback(self, cb):
         self.perTickCallbacks.append(cb)
+
+    def freezeTime(self):
+        self.timeFrozen = True
+
+    def unfreezeTime(self):
+        self.timeFrozen = False
 
     def run(self):
         counter = 0
@@ -160,14 +225,20 @@ class MainLoop(greenlet):
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
             counter += 1
             if self.safety is not None and counter > self.safety:
-                print 'Safety exit!'
+                print '%s: Safety exit!' % self.name
                 break
 
     def sleep(self, agent, nDays):
         assert isinstance(nDays, types.IntType), 'nDays should be an integer'
         assert nDays >= 0, 'No sleeping for negative time'
         self.sequencer.enqueue(agent, self.sequencer.getTimeNow() + nDays)
-        return self.switch('%s sleep %d days' % (agent, nDays))
+        return self.switch('%s: %s sleep %d days' % (self.name, agent, nDays))
+
+    def printCensus(self):
+        print '%s: Census at time %s:' % (self.name, self.sequencer.getTimeNow())
+        for iact in Interactant.getLiveList():
+            print '    %s : %d' % (iact._name, iact.getNWaiting())
+        print '    main loop now : %d' % self.sequencer.getNWaitingNow()
 
 
 def describeSelf():

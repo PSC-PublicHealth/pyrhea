@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-_rhea_svn_id_="$Id$"
+_rhea_svn_id_ = "$Id$"
 
 import sys
 from mpi4py import MPI
@@ -34,9 +34,13 @@ class OmniClock(agent.Agent):
             self.win.Fence()
             self.win.Get(self.readMem, 0)
             self.win.Fence()
-            print 'rank %d: %s has time range %s at local time %s' % \
-                (self.comm.rank, self.name, self.getRange(), timeNow)
-            if self.getRange()[0] > 100:
+#             print 'rank %d: %s has time range %s at local time %s' % \
+#                 (self.comm.rank, self.name, self.getRange(), timeNow)
+            gblTMin, gblTMax = self.getRange()
+            if self.comm.rank == 0 and gblTMax - gblTMin > 1:
+                print '### Rank 0: global range diverged to (%d, %d) at time %d' % \
+                    (gblTMin, gblTMax, timeNow)
+            if gblTMax > 100:
                 print 'rank %d: run complete' % self.comm.rank
                 MPI.Finalize()
                 sys.exit(0)
@@ -44,7 +48,7 @@ class OmniClock(agent.Agent):
                 self.writeMem = np.asarray([self.maxInt, self.maxInt])
                 self.win.Put(self.writeMem, 0)
             self.win.Fence()
-            timeNow = self.ownerLoop.sleep(self, 0)
+            timeNow = self.sleep(0)
             self.win.Accumulate(self.writeMem, 0, op=MPI.MIN)
 
     def getRange(self):
@@ -62,20 +66,82 @@ class GateAgent(agent.Agent):
         self.comm = comm
         self.mem = np.zeros(self.comm.size, dtype=np.int64)
         self.win = MPI.Win.Create(self.mem, disp_unit=4, comm=self.comm)
+        self.timeless = True
+        self.gateList = []
+
+    def addGate(self, gate):
+        gate.lock(self)  # so everyone else is forced into the queue
+        self.gateList.append(gate)
 
     def run(self, startTime):
         timeNow = startTime
+        assert timeNow is not None, "Timenow is None"
         while True:
-            if self.cycleCounter:  # don't do this on pass 0
-                self.win.Fence()   # win is now closed
-                print '%s at time %s cycle %d says %s' % (self.comm.rank, timeNow,
-                                                          self.cycleCounter, self.mem)
-            self.win.Fence()  # re-open the window
-            v = np.ones(1, dtype=np.int64)
-            for i in xrange(self.comm.size):
-                self.win.Accumulate(v, i, target=self.comm.rank, op=MPI.SUM)
-            timeNow = self.ownerLoop.sleep(self, 0)  # yield thread
+            for gate in self.gateList:
+                gate.cycleStart(timeNow)
+            timeNow = self.sleep(0)
+            assert timeNow is not None, "Timenow is None"
+            for gate in self.gateList:
+                gate.cycleFinish(timeNow)
             self.cycleCounter += 1
+
+
+class GateIn(agent.Interactant):
+    def __init__(self, name, toRank, comm, ownerLoop, debug=False):
+        agent.Interactant.__init__(self, name, ownerLoop, debug=debug)
+        self.toRank = toRank
+        self.comm = comm
+        self.sendRequest = None
+
+    def cycleStart(self, timeNow):
+        if self._debug:
+            print '%s begins cycleStart' % self._name
+        self.sendRequest = self.comm.isend([timeNow, self._lockQueue],
+                                           self.toRank, self.comm.rank)
+        self._lockQueue = []
+        self._nEnqueued = 0
+        if self._debug:
+            print '%s ends cycleStart' % self._name
+
+    def cycleFinish(self, timeNow):
+        if self._debug:
+            print '%s begins cycleFinish' % self._name
+        self.sendRequest.wait()
+        self.sendRequest = None
+        if self._debug:
+            print '%s ends cycleFinish' % self._name
+
+
+class GateOut(agent.Interactant):
+    def __init__(self, name, fromRank, comm, ownerLoop, debug=False):
+        agent.Interactant.__init__(self, name, ownerLoop, debug=debug)
+        self.fromRank = fromRank
+        self.comm = comm
+        self.rcvRequest = None
+
+    def cycleStart(self, timeNow):
+        if self._debug:
+            print '%s begins cycleStart' % self._name
+        self.rcvRequest = self.comm.irecv(None, self.fromRank, tag=self.fromRank)
+        if self._debug:
+            print '%s ends cycleStart' % self._name
+
+    def cycleFinish(self, timeNow):
+        if self._debug:
+            print '%s begins cycleFinish' % self._name
+        incoming = self.rcvRequest.wait()
+        # Format of the received object matches that encoded by GateIn.cycleStart()
+        senderTime = incoming[0]
+        agentList = incoming[1]
+        if senderTime != timeNow:
+            print "%s has time mismatch, %s vs. %s" % (self._name, senderTime, timeNow)
+        for a in agentList:
+            a.reHome(self._ownerLoop)
+            self._ownerLoop.sequencer.enqueue(a, timeNow)
+            if a.debug:
+                print '%s materializes at %s' % (a.name, self._name)
+        if self._debug:
+            print '%s ends cycleFinish' % self._name
 
 
 def describeSelf():
@@ -83,34 +149,60 @@ def describeSelf():
 
 
 def createPerTickCB(comm, omniClock):
-    def tick(myLoop):
+    def tickFun(myLoop, timeLastTick, timeNow):
         tMin, tMax = myLoop.sequencer.getTimeRange()
-        print 'tick! from %d: %s %s' % (comm.rank, tMin, tMax)
         omniClock.setMyRange(tMin, tMax)
-    return tick
+        worldTMin, worldTMax = omniClock.getRange()  # @UnusedVariable
+        print 'rank %d: tick! time change %s -> %s in range (%s, %s), world range (%s, %s)' % \
+            (comm.rank, timeLastTick, timeNow, tMin, tMax, worldTMin, worldTMax)
+        # myLoop.printCensus()
+        if tMin > worldTMin:
+            myLoop.freezeTime()
+            print 'rank %d: time frozen since %s > %s' % (comm.rank, tMin, worldTMin)
+        else:
+            if myLoop.timeFrozen:
+                print 'rank %d: time unfrozen' % comm.rank
+            myLoop.unfreezeTime()
+    return tickFun
+
+gateIn = None
+
+gateOut = None
+
+interactants = None
+
+
+class TestAgent(agent.Agent):
+    def run(self, startTime):
+        global gateIn, gateOut, interactants
+        timeNow = startTime
+        while True:
+            fate = randint(0, len(interactants))
+            if fate == len(interactants):
+                if self.debug:
+                    print '%s is jumping at %s' % (self.name, timeNow)
+                gateIn.lock(self)
+                timeNow = self.sleep(0)  # yield thread
+                gateIn.unlock(self)  # but it's no longer going to be gateIn
+            else:
+                timeNow = interactants[fate].lock(self)
+                if self.debug:
+                    print 'progress for %s' % self.name
+                timeNow = self.sleep(1)
+                timeNow = interactants[fate].unlock(self)
+        if self.debug:
+            return '%s is exiting at %s' % (self, timeNow)
+
+    def __getstate__(self):
+        d = agent.Agent.__getstate__(self)
+        return d
+
+    def __setstate__(self, stateDict):
+        agent.Agent.__setstate__(self, stateDict)
 
 
 def main():
-    global verbose, debug
-
-    mainLoop = agent.MainLoop()
-
-    interactants = [agent.Interactant(nm, mainLoop) for nm in ['SubA', 'SubB', 'SubC']]
-
-    class TestAgent(agent.Agent):
-        def run(self, startTime):
-            timeNow = startTime
-            while True:
-                # print '%s new iter' % self
-                fate = randint(0, len(interactants))
-                if fate == len(interactants):
-                    # print 'no lock for %s at %s' % (self.name, timeNow)
-                    timeNow = self.ownerLoop.sleep(self, 0)  # yield thread
-                else:
-                    timeNow = interactants[fate].lock(self)
-                    timeNow = self.ownerLoop.sleep(self, 1)
-                    timeNow = interactants[fate].unlock(self)
-            return '%s is exiting at %s' % (self, timeNow)
+    global verbose, debug, gateIn, gateOut, interactants
 
     for a in sys.argv[1:]:
         if a == '-v':
@@ -124,13 +216,25 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.rank
     print 'Hello from %s' % rank
+
+    mainLoop = agent.MainLoop('Mainloop_%s' % rank)
+
+    interactants = [agent.Interactant(nm, mainLoop) for nm in ['SubA', 'SubB', 'SubC']]
+
     allAgents = []
     for i in xrange(100):
-        allAgents.append(TestAgent('Agent_%d' % i, mainLoop))
+        allAgents.append(TestAgent('Agent_%d_%d' % (rank, i), mainLoop))
 
     omniClock = OmniClock(comm, mainLoop)
+    gateAgent = GateAgent(comm, mainLoop)
+    toRank = (comm.rank + 1) % comm.size
+    gateIn = GateIn(("GateIn_%d_%d" % (comm.rank, toRank)), toRank, comm, mainLoop, debug=True)
+    gateAgent.addGate(gateIn)
+    fromRank = (comm.rank + comm.size - 1) % comm.size
+    gateOut = GateOut(("GateOut_%d_%d" % (fromRank, comm.rank)), fromRank, comm, mainLoop, debug=True)
+    gateAgent.addGate(gateOut)
     mainLoop.addPerTickCallback(createPerTickCB(comm, omniClock))
-    mainLoop.addAgents([omniClock])
+    mainLoop.addAgents([omniClock, gateAgent])
     mainLoop.addAgents(allAgents)
     mainLoop.switch()
     print '%d all done' % rank
