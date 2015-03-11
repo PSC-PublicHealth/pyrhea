@@ -22,8 +22,6 @@ class OmniClock(agent.Agent):
         else:
             self.mem = None
             self.win = MPI.Win.Create(None, comm=self.comm)
-#         self.mem = np.zeros(2, dtype=np.int64)
-#         self.win = MPI.Win.Create(self.mem, disp_unit=8, comm=self.comm)
         self.readMem = np.zeros(2, dtype=np.int64)
         self.maxInt = np.iinfo(np.int64).max
         self.writeMem = np.asarray([self.maxInt, self.maxInt], dtype=np.int64)
@@ -34,13 +32,11 @@ class OmniClock(agent.Agent):
             self.win.Fence()
             self.win.Get(self.readMem, 0)
             self.win.Fence()
-#             print 'rank %d: %s has time range %s at local time %s' % \
-#                 (self.comm.rank, self.name, self.getRange(), timeNow)
             gblTMin, gblTMax = self.getRange()
             if self.comm.rank == 0 and gblTMax - gblTMin > 1:
                 print '### Rank 0: global range diverged to (%d, %d) at time %d' % \
                     (gblTMin, gblTMax, timeNow)
-            if gblTMax > 100:
+            if gblTMax > 1000:
                 print 'rank %d: run complete' % self.comm.rank
                 MPI.Finalize()
                 sys.exit(0)
@@ -92,12 +88,14 @@ class GateIn(agent.Interactant):
         self.toRank = toRank
         self.comm = comm
         self.sendRequest = None
+        self.nInTransit = 0
 
     def cycleStart(self, timeNow):
         if self._debug:
             print '%s begins cycleStart' % self._name
         self.sendRequest = self.comm.isend([timeNow, self._lockQueue],
                                            self.toRank, self.comm.rank)
+        self.nInTransit = len(self._lockQueue)
         self._lockQueue = []
         self._nEnqueued = 0
         if self._debug:
@@ -108,8 +106,12 @@ class GateIn(agent.Interactant):
             print '%s begins cycleFinish' % self._name
         self.sendRequest.wait()
         self.sendRequest = None
+        self.nInTransit = 0
         if self._debug:
             print '%s ends cycleFinish' % self._name
+
+    def getNWaiting(self):
+        return self._nEnqueued + self.nInTransit
 
 
 class GateOut(agent.Interactant):
@@ -133,8 +135,10 @@ class GateOut(agent.Interactant):
         # Format of the received object matches that encoded by GateIn.cycleStart()
         senderTime = incoming[0]
         agentList = incoming[1]
-        if senderTime != timeNow:
+        if senderTime != timeNow and len(agentList) > 0:
             print "%s has time mismatch, %s vs. %s" % (self._name, senderTime, timeNow)
+        if senderTime > timeNow:
+            raise RuntimeError('Message from the past!')
         for a in agentList:
             a.reHome(self._ownerLoop)
             self._ownerLoop.sequencer.enqueue(a, timeNow)
@@ -228,10 +232,10 @@ def main():
     omniClock = OmniClock(comm, mainLoop)
     gateAgent = GateAgent(comm, mainLoop)
     toRank = (comm.rank + 1) % comm.size
-    gateIn = GateIn(("GateIn_%d_%d" % (comm.rank, toRank)), toRank, comm, mainLoop, debug=True)
+    gateIn = GateIn(("GateIn_%d_%d" % (comm.rank, toRank)), toRank, comm, mainLoop, debug=False)
     gateAgent.addGate(gateIn)
     fromRank = (comm.rank + comm.size - 1) % comm.size
-    gateOut = GateOut(("GateOut_%d_%d" % (fromRank, comm.rank)), fromRank, comm, mainLoop, debug=True)
+    gateOut = GateOut(("GateOut_%d_%d" % (fromRank, comm.rank)), fromRank, comm, mainLoop, debug=False)
     gateAgent.addGate(gateOut)
     mainLoop.addPerTickCallback(createPerTickCB(comm, omniClock))
     mainLoop.addAgents([omniClock, gateAgent])
