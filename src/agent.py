@@ -50,7 +50,7 @@ class Sequencer(object):
             if (iact._lockingAgent is not None and iact._lockingAgent.timeless
                     and iact.getNWaiting()):
                 tMin = t
-                print '%s has %d waiting' % (iact, iact.getNWaiting())
+                # print '%s has %d waiting' % (iact, iact.getNWaiting())
                 break
         while tMin is None:
             if self._timeQueues[t]:
