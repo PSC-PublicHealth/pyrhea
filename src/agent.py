@@ -8,7 +8,6 @@ from greenlet import greenlet
 from random import randint
 import weaklist
 
-
 class Sequencer(object):
 
     def __init__(self, name):
@@ -97,9 +96,6 @@ class Agent(greenlet):
         for k, v in stateDict.items():
             setattr(self, k, v)
 
-    def reHome(self, newOwnerLoop):
-        self.ownerLoop = newOwnerLoop
-
     def sleep(self, deltaTime):
         return self.ownerLoop.sleep(self, deltaTime)
 
@@ -130,19 +126,19 @@ class Interactant():
     def __str__(self):
         return '<%s>' % self._name
 
-    def lock(self, lockingAgent):
+    def lock(self, lockingAgent, debug=True):
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if ((self._lockingAgent is None and not self._lockQueue)
                 or self._lockingAgent == lockingAgent):
             self._lockingAgent = lockingAgent
-            if self._debug and lockingAgent.debug:
+            if debug and self._debug and lockingAgent.debug:
                 print '%s fast lock of %s' % (lockingAgent, self._name)
             return timeNow
         else:
             self._lockQueue.append(lockingAgent)
             if not lockingAgent.timeless:
                 self._nEnqueued += 1
-            if self._debug and lockingAgent.debug:
+            if debug and self._debug and lockingAgent.debug:
                 print '%s slow lock of %s (%d in queue)' % \
                     (lockingAgent, self._name, self._nEnqueued)
             timeNow = self._ownerLoop.switch('%s is %d in %s queue' %
@@ -214,19 +210,24 @@ class MainLoop(greenlet):
     def unfreezeTime(self):
         self.timeFrozen = False
 
-    def run(self):
+    def run(self, limit=None):
         counter = 0
+        if limit is None and self.safety is not None:
+            mylimit = self.safety
+        else:
+            mylimit = limit
         for a in self.newAgents:
             a.parent = self  # so dead agents return here
             self.sequencer.enqueue(a)
+        self.newAgents = []
         for agent, timeNow in self.sequencer:
             # print 'Stepping %s at %d' % (agent, timeNow)
-            reply = agent.switch(timeNow)
+            reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
             counter += 1
-            if self.safety is not None and counter > self.safety:
-                print '%s: Safety exit!' % self.name
-                break
+            if mylimit is not None and counter > mylimit:
+                self.parent.switch(counter)
+                counter = 0
 
     def sleep(self, agent, nDays):
         assert isinstance(nDays, types.IntType), 'nDays should be an integer'
@@ -239,6 +240,9 @@ class MainLoop(greenlet):
         for iact in Interactant.getLiveList():
             print '    %s : %d' % (iact._name, iact.getNWaiting())
         print '    main loop now : %d' % self.sequencer.getNWaitingNow()
+
+    def __str__(self):
+        return '<%s>' % self.name
 
 
 def describeSelf():

@@ -4,16 +4,36 @@ _rhea_svn_id_ = "$Id$"
 
 import sys
 from mpi4py import MPI
+from greenlet import greenlet
 import numpy as np
+import math
 import agent
 from random import randint
 
 
-class OmniClock(agent.Agent):
-    def __init__(self, comm, ownerLoop):
-        agent.Agent.__init__(self, 'OmniClock', ownerLoop)
+class Interactant(agent.Interactant):
+    def __init__(self, name, patch, debug=False):
+        agent.Interactant.__init__(self, name, patch.loop, debug)
+
+
+class Agent(agent.Agent):
+    def __init__(self, name, ownerPatch, debug=False):
+        agent.Agent.__init__(self, name, ownerPatch.loop, debug=False)
+        self.patch = ownerPatch
+
+    def reHome(self, newPatch):
+        self.ownerLoop = newPatch.loop
+        self.parent = newPatch.loop
+        self.patch = newPatch
+        print '%s home is now %s' % (self, newPatch)
+
+
+class OmniClock(Agent):
+    def __init__(self, ownerPatch):
+        agent.Agent.__init__(self, 'OmniClock', ownerPatch.loop)
         self.timeless = True
-        self.comm = comm
+        self.patch = ownerPatch
+        self.comm = ownerPatch.comm
         self.minVal = None
         self.maxVal = None
         if self.comm.rank == 0:
@@ -55,11 +75,12 @@ class OmniClock(agent.Agent):
         self.writeMem[1] = -myMax
 
 
-class GateAgent(agent.Agent):
-    def __init__(self, comm, ownerLoop):
-        agent.Agent.__init__(self, 'GateAgent', ownerLoop)
+class GateAgent(Agent):
+    def __init__(self, ownerPatch):
+        Agent.__init__(self, 'GateAgent', ownerPatch)
         self.cycleCounter = 0
-        self.comm = comm
+        self.patch = ownerPatch
+        self.comm = self.patch.comm
         self.mem = np.zeros(self.comm.size, dtype=np.int64)
         self.win = MPI.Win.Create(self.mem, disp_unit=4, comm=self.comm)
         self.timeless = True
@@ -82,19 +103,24 @@ class GateAgent(agent.Agent):
             self.cycleCounter += 1
 
 
-class GateIn(agent.Interactant):
-    def __init__(self, name, toRank, comm, ownerLoop, debug=False):
-        agent.Interactant.__init__(self, name, ownerLoop, debug=debug)
+class GateEntrance(Interactant):
+    def __init__(self, name, toRank, ownerPatch, debug=False, srcTag=None):
+        Interactant.__init__(self, name, ownerPatch, debug=debug)
+        if srcTag is None:
+            self.srcTag = self.comm.rank
+        else:
+            self.srcTag = srcTag
         self.toRank = toRank
-        self.comm = comm
+        self.comm = ownerPatch.comm
         self.sendRequest = None
         self.nInTransit = 0
 
     def cycleStart(self, timeNow):
         if self._debug:
-            print '%s begins cycleStart' % self._name
+            print '%s begins cycleStart; tag is %s' % (self._name, self.srcTag)
+        print '%s outgoing agentList: %s' % (self._name, [str(a) for a in self._lockQueue])
         self.sendRequest = self.comm.isend([timeNow, self._lockQueue],
-                                           self.toRank, self.comm.rank)
+                                           self.toRank, self.srcTag)
         self.nInTransit = len(self._lockQueue)
         self._lockQueue = []
         self._nEnqueued = 0
@@ -113,18 +139,29 @@ class GateIn(agent.Interactant):
     def getNWaiting(self):
         return self._nEnqueued + self.nInTransit
 
+    def lock(self, lockingAgent):
+        if self._lockingAgent is not None:
+            #  This will get enqueued for sending
+            if lockingAgent.debug:
+                print '%s bound  to gate %s' % (lockingAgent.name, self._name)
+        agent.Interactant.lock(self, lockingAgent, debug=False)
 
-class GateOut(agent.Interactant):
-    def __init__(self, name, fromRank, comm, ownerLoop, debug=False):
-        agent.Interactant.__init__(self, name, ownerLoop, debug=debug)
+
+class GateExit(Interactant):
+    def __init__(self, name, fromRank, ownerPatch, debug=False, srcTag=None):
+        Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.fromRank = fromRank
-        self.comm = comm
+        self.comm = ownerPatch.comm
+        if srcTag is None:
+            self.srcTag = self.fromRank
+        else:
+            self.srcTag = srcTag
         self.rcvRequest = None
 
     def cycleStart(self, timeNow):
         if self._debug:
-            print '%s begins cycleStart' % self._name
-        self.rcvRequest = self.comm.irecv(None, self.fromRank, tag=self.fromRank)
+            print '%s begins cycleStart; tag is %s' % (self._name, self.srcTag)
+        self.rcvRequest = self.comm.irecv(None, self.fromRank, tag=self.srcTag)
         if self._debug:
             print '%s ends cycleStart' % self._name
 
@@ -132,15 +169,16 @@ class GateOut(agent.Interactant):
         if self._debug:
             print '%s begins cycleFinish' % self._name
         incoming = self.rcvRequest.wait()
-        # Format of the received object matches that encoded by GateIn.cycleStart()
+        # Format of the received object matches that encoded by GateEntrance.cycleStart()
         senderTime = incoming[0]
         agentList = incoming[1]
+        print '%s: agentList: %s' % (self._name, [str(a) for a in agentList])
         if senderTime != timeNow and len(agentList) > 0:
             print "%s has time mismatch, %s vs. %s" % (self._name, senderTime, timeNow)
         if senderTime > timeNow:
             raise RuntimeError('Message from the past!')
         for a in agentList:
-            a.reHome(self._ownerLoop)
+            a.reHome(self.patch)
             self._ownerLoop.sequencer.enqueue(a, timeNow)
             if a.debug:
                 print '%s materializes at %s' % (a.name, self._name)
@@ -152,50 +190,113 @@ def describeSelf():
     print """This main provides diagnostics. -v and -d for verbose and debug respectively."""
 
 
-def createPerTickCB(comm, omniClock):
-    def tickFun(myLoop, timeLastTick, timeNow):
-        tMin, tMax = myLoop.sequencer.getTimeRange()
-        omniClock.setMyRange(tMin, tMax)
-        worldTMin, worldTMax = omniClock.getRange()  # @UnusedVariable
-        print 'rank %d: tick! time change %s -> %s in range (%s, %s), world range (%s, %s)' % \
-            (comm.rank, timeLastTick, timeNow, tMin, tMax, worldTMin, worldTMax)
-        # myLoop.printCensus()
-        if tMin > worldTMin:
-            myLoop.freezeTime()
-            print 'rank %d: time frozen since %s > %s' % (comm.rank, tMin, worldTMin)
-        else:
-            if myLoop.timeFrozen:
-                print 'rank %d: time unfrozen' % comm.rank
-            myLoop.unfreezeTime()
-    return tickFun
+class Patch(object):
+    counter = 0
 
-gateIn = None
+    def _createPerTickCB(self):
+        def tickFun(thisLoop, timeLastTick, timeNow):
+            tMin, tMax = thisLoop.sequencer.getTimeRange()
+            self.clock.setMyRange(tMin, tMax)
+            worldTMin, worldTMax = self.clock.getRange()  # @UnusedVariable
+            print '%s: tick! time change %s -> %s in range (%s, %s), world range (%s, %s)' % \
+                (self.name, timeLastTick, timeNow, tMin, tMax, worldTMin, worldTMax)
+            # thisLoop.printCensus()
+            if tMin > worldTMin:
+                self.loop.freezeTime()
+                print '%s: time frozen since %s > %s' % (self.name, tMin, worldTMin)
+            else:
+                if thisLoop.timeFrozen:
+                    print '%s: time unfrozen' % self.name
+                thisLoop.unfreezeTime()
+        return tickFun
 
-gateOut = None
+    def _patchTag(self, patchRank, patchId):
+        return (100000*patchId) + patchRank
 
-interactants = None
+    def __init__(self, comm, name=None):
+        self.comm = comm
+        assert math.log10(comm.size) < 5.0, "Gate tags were built assuming rank < 100000"
+        self.patchId = Patch.counter
+        Patch.counter += 1
+        self.creationRank = comm.rank
+        if name is None:
+            self.name = "Patch_%d_%d" % (self.creationRank, self.patchId)
+        self.loop = agent.MainLoop(self.name + '.loop')
+        self.clock = OmniClock(self)
+        self.gateAgent = GateAgent(self)
+        self.loop.addPerTickCallback(self._createPerTickCB())
+        self.loop.addAgents([self.clock, self.gateAgent])
+
+    def addGateFrom(self, otherPatchRank, otherPatchId):
+        gateExit = GateExit(("%s.GateExit_%d_%d" % (self.name, otherPatchRank, otherPatchId)),
+                            otherPatchRank, self, debug=True,
+                            srcTag=self._patchTag(self.comm.rank, self.patchId))
+        self.gateAgent.addGate(gateExit)
+        return gateExit
+
+    def addGateTo(self, otherPatchRank, otherPatchId):
+        gateEntrance = GateEntrance(("%s.GateEntrance_%d_%d" % (self.name, otherPatchRank,
+                                                                otherPatchId)),
+                                    otherPatchRank, self, debug=True,
+                                    srcTag=self._patchTag(otherPatchRank, otherPatchId))
+        self.gateAgent.addGate(gateEntrance)
+        return gateEntrance
+
+    def addAgents(self, agentList):
+        self.loop.addAgents(agentList)
+
+    def __str__(self):
+        return '<%s>' % self.name
 
 
-class TestAgent(agent.Agent):
+class PatchGroup(greenlet):
+    def __init__(self, name, stepsPerPatch=10):
+        self.patches = []
+        self.stepsPerPatch = stepsPerPatch
+        self.name = name
+
+    def addPatch(self, patch):
+        patch.loop.parent = self
+        self.patches.append(patch)
+
+    def run(self):
+        while True:
+            for p in self.patches:
+                reply = p.loop.switch(limit=self.stepsPerPatch)
+
+    def __str__(self):
+        return '<%s>' % self.name
+
+
+class TestAgent(Agent):
+    def __init__(self, name, ownerPatch, debug=False):
+        Agent.__init__(self, name, ownerPatch, debug)
+        self.interactants = ownerPatch.interactants
+        self.gateEntrance = ownerPatch.gateEntrance
+
     def run(self, startTime):
-        global gateIn, gateOut, interactants
         timeNow = startTime
         while True:
-            fate = randint(0, len(interactants))
-            if fate == len(interactants):
+            fate = randint(0, len(self.interactants))
+            if fate == len(self.interactants):
                 if self.debug:
                     print '%s is jumping at %s' % (self.name, timeNow)
-                gateIn.lock(self)
+                self.gateEntrance.lock(self)
                 timeNow = self.sleep(0)  # yield thread
-                gateIn.unlock(self)  # but it's no longer going to be gateIn
+                self.gateEntrance.unlock(self)  # but it's no longer going to be gateEntrance
             else:
-                timeNow = interactants[fate].lock(self)
+                timeNow = self.interactants[fate].lock(self)
                 if self.debug:
                     print 'progress for %s' % self.name
                 timeNow = self.sleep(1)
-                timeNow = interactants[fate].unlock(self)
+                timeNow = self.interactants[fate].unlock(self)
         if self.debug:
             return '%s is exiting at %s' % (self, timeNow)
+
+    def reHome(self, newOwnerPatch):
+        agent.Agent.reHome(self, newOwnerPatch)
+        self.interactants = newOwnerPatch.interactants
+        self.gateEntrance = newOwnerPatch.gateEntrance
 
     def __getstate__(self):
         d = agent.Agent.__getstate__(self)
@@ -205,8 +306,40 @@ class TestAgent(agent.Agent):
         agent.Agent.__setstate__(self, stateDict)
 
 
+class TestPatch(Patch):
+    def __init__(self, comm, name=None):
+        Patch.__init__(self, comm, name)
+        self.interactants = []
+        self.gateEntrance = None
+
+    def setInteractants(self, interactantList):
+        self.interactants = interactantList
+
+    def setGateEntrance(self, gateEntrance):
+        self.gateEntrance = gateEntrance
+
+
+def greenletTrace(event, args):
+    if event == 'switch':
+        origin, target = args
+        # Handle a switch from origin to target.
+        # Note that callback is running in the context of target
+        # greenlet and any exceptions will be passed as if
+        # target.throw() was used instead of a switch.
+        print 'TRACE switch %s -> %s (parent %s)' % (origin, target, target.parent)
+        return
+    if event == 'throw':
+        origin, target = args
+        # Handle a throw from origin to target.
+        # Note that callback is running in the context of target
+        # greenlet and any exceptions will replace the original, as
+        # if target.throw() was used with the replacing exception.
+        print 'TRACE throw %s -> %s' % (origin, target)
+        return
+
+
 def main():
-    global verbose, debug, gateIn, gateOut, interactants
+    global verbose, debug
 
     for a in sys.argv[1:]:
         if a == '-v':
@@ -220,36 +353,33 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.rank
     print 'Hello from %s' % rank
-
-    mainLoop = agent.MainLoop('Mainloop_%s' % rank)
-
-    interactants = [agent.Interactant(nm, mainLoop) for nm in ['SubA', 'SubB', 'SubC']]
-
-    allAgents = []
-    for i in xrange(100):
-        allAgents.append(TestAgent('Agent_%d_%d' % (rank, i), mainLoop))
-
-    omniClock = OmniClock(comm, mainLoop)
-    gateAgent = GateAgent(comm, mainLoop)
-    toRank = (comm.rank + 1) % comm.size
-    gateIn = GateIn(("GateIn_%d_%d" % (comm.rank, toRank)), toRank, comm, mainLoop, debug=False)
-    gateAgent.addGate(gateIn)
-    fromRank = (comm.rank + comm.size - 1) % comm.size
-    gateOut = GateOut(("GateOut_%d_%d" % (fromRank, comm.rank)), fromRank, comm, mainLoop, debug=False)
-    gateAgent.addGate(gateOut)
-    mainLoop.addPerTickCallback(createPerTickCB(comm, omniClock))
-    mainLoop.addAgents([omniClock, gateAgent])
-    mainLoop.addAgents(allAgents)
-    mainLoop.switch()
-    print '%d all done' % rank
-
-#
 #     if rank == 0:
-#         data = {'a': 7, 'b': 3.14}
-#         comm.send(data, dest=1, tag=11)
-#     else:
-#         data = comm.recv(source=0, tag=11)
-#         print '%s says %s' % (rank, data)
+#         greenlet.settrace(greenletTrace)
+
+    patchGroup = PatchGroup('PatchGroup_%d' % rank)
+    for j in xrange(3):
+
+        patch = TestPatch(comm)
+
+        patch.setInteractants([Interactant('%s_%d_%d' % (nm, rank, j), patch)
+                               for nm in ['SubA', 'SubB', 'SubC']])
+
+        toRank = (comm.rank + 1) % comm.size
+        patch.setGateEntrance(patch.addGateTo(toRank, (j+1) % 3))
+
+        fromRank = (comm.rank + comm.size - 1) % comm.size
+        gateExit = patch.addGateFrom(fromRank, (j-1) % 3)  # @UnusedVariable
+
+        allAgents = []
+        for i in xrange(100):
+            allAgents.append(TestAgent('Agent_%d_%d_%d' % (rank, j, i),
+                                       patch, debug=False))
+
+        patch.addAgents(allAgents)
+        patchGroup.addPatch(patch)
+    patchGroup.switch()
+    print '%d all done (from main)' % rank
+
 
 ############
 # Main hook
