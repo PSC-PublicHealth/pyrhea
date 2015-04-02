@@ -8,6 +8,17 @@ from greenlet import greenlet
 from random import randint
 import weaklist
 
+try:
+    import faulthandler
+    faulthandler.enable()
+    if sys.excepthook != sys.__excepthook__:
+        print("Warning: 3rd party exception hook is active")
+        if sys.excepthook.__name__ == 'apport_excepthook':
+            print("         killing Ubuntu's Apport hook")
+            sys.excepthook = sys.__excepthook__
+except:
+    pass
+
 class Sequencer(object):
 
     def __init__(self, name):
@@ -179,7 +190,7 @@ class MainLoop(greenlet):
                     self.ownerLoop.sequencer.bumpIfAllTimeless()
                 newTimeNow = self.sleep(0)  # yield thread
                 for cb in self.ownerLoop.perTickCallbacks:
-                    cb(self.ownerLoop, timeNow, newTimeNow)
+                    cb(self, timeNow, newTimeNow)
                 if newTimeNow != timeNow:
                     print '%s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
                     timeNow = newTimeNow
@@ -210,22 +221,19 @@ class MainLoop(greenlet):
     def unfreezeTime(self):
         self.timeFrozen = False
 
-    def run(self, limit=None):
+    def run(self):
         counter = 0
-        if limit is None and self.safety is not None:
-            mylimit = self.safety
-        else:
-            mylimit = limit
         for a in self.newAgents:
             a.parent = self  # so dead agents return here
             self.sequencer.enqueue(a)
         self.newAgents = []
         for agent, timeNow in self.sequencer:
-            # print 'Stepping %s at %d' % (agent, timeNow)
+            print '%s Stepping %s at %d' % (self.name, agent, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
             counter += 1
-            if mylimit is not None and counter > mylimit:
+            if self.safety is not None and counter > self.safety:
+                print '%s: finished my block' % self.name
                 self.parent.switch(counter)
                 counter = 0
 
