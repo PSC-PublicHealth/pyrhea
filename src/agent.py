@@ -77,16 +77,24 @@ class Sequencer(object):
         If all the agents for 'today' are marked timeless, shift them to 'tomorrow' and move
         time forward by a day.
         """
-        for iact in Interactant.getLiveList():
-            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
-                    and iact.getNWaiting()):
-                return
-        if all([a.timeless for a in self._timeQueues[self._timeNow]]):
+        if self.doneWithToday():
             print '%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
             oldDay = self._timeQueues[self._timeNow]
             del self._timeQueues[self._timeNow]
             self._timeNow += 1
             self._timeQueues[self._timeNow].extend(oldDay)
+
+    def doneWithToday(self):
+        """
+        If the only agents still in today's sequencer loop are marked 'timeless', this
+        will return True; otherwise False.  Note that this condition can be reversed if
+        a new agent is inserted into today's loop.
+        """
+        for iact in Interactant.getLiveList():
+            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
+                    and iact.getNWaiting()):
+                return False
+        return all([a.timeless for a in self._timeQueues[self._timeNow]])
 
 
 class Agent(greenlet):
@@ -228,12 +236,12 @@ class MainLoop(greenlet):
             self.sequencer.enqueue(a)
         self.newAgents = []
         for agent, timeNow in self.sequencer:
-            print '%s Stepping %s at %d' % (self.name, agent, timeNow)
+            # print '%s Stepping %s at %d' % (self.name, agent, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
             counter += 1
             if self.safety is not None and counter > self.safety:
-                print '%s: finished my block' % self.name
+                print '%s: safety exit' % self.name
                 self.parent.switch(counter)
                 counter = 0
 
