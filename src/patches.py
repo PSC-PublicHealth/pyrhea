@@ -15,6 +15,14 @@ To Do:
 """
 
 
+class MsgTypes():
+    GATE = 0
+    ENDOFDAY = 1
+    ANTI_ENDOFDAY = 2
+    SINGLE_ENDOFDAY = 3
+    SINGLE_ANTI_ENDOFDAY = 4
+
+
 def getCommWorld():
     """Provide easy access to the world to packages that don't want to know about the network"""
     return netinterface.getCommWorld()
@@ -123,7 +131,7 @@ class GateEntrance(Interactant):
     def cycleStart(self, timeNow):
         if self._debug:
             print '%s begins cycleStart; destTag is %s' % (self._name, self.destTag)
-        self.patch.group.enqueue((timeNow, self._lockQueue), self.destTag)
+        self.patch.group.enqueue(MsgTypes.GATE, (timeNow, self._lockQueue), self.patch.tag, self.destTag)
         self.nInTransit = len(self._lockQueue)
         self._lockQueue = []
         self._nEnqueued = 0
@@ -152,6 +160,8 @@ class GateExit(Interactant):
     def __init__(self, name, ownerPatch, srcTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.srcTag = srcTag
+        self.partnerEndOfDay = False
+        self.partnerMaxDay = 0
 
     def cycleStart(self, timeNow):
         if self._debug:
@@ -167,19 +177,34 @@ class GateExit(Interactant):
         if self._debug:
             print '%s ends cycleFinish' % self._name
 
-    def handleIncoming(self, senderTime, agentList):
+    def handleIncoming(self, msgType, incomingTuple):
         """ This is called by the messaging system to deliver incoming agents """
-        print '%s: got time=%s' % (self._name, senderTime)
-        print '%s: agentList: %s' % (self._name, [str(a) for a in agentList])
-        timeNow = self._ownerLoop.sequencer.getTimeNow()
-        if timeNow > senderTime:
-            print '%s: MESSAGE FROM THE PAST' % self._name
+        if msgType == MsgTypes.GATE:
+            senderTime, agentList = incomingTuple
+            # print '%s: got time=%s' % (self._name, senderTime)
+            # print '%s: agentList: %s' % (self._name, [str(a) for a in agentList])
+            timeNow = self._ownerLoop.sequencer.getTimeNow()
+            if timeNow > senderTime and agentList:
+                print '%s: MESSAGE FROM THE PAST' % self._name
             senderTime = timeNow
-        for a in agentList:
-            a.reHome(self.patch)
-            self._ownerLoop.sequencer.enqueue(a, senderTime)
-            if a.debug:
-                print '%s materializes at %s' % (a.name, self._name)
+            for a in agentList:
+                a.reHome(self.patch)
+                self._ownerLoop.sequencer.enqueue(a, senderTime)
+                if a.debug:
+                    print '%s materializes at %s' % (a.name, self._name)
+        elif msgType == MsgTypes.SINGLE_ENDOFDAY:
+            srcAddr, partnerDay = incomingTuple  # @UnusedVariable
+            print '%s got EOD %s from %s %s when partnerEOD = %s' % (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay)
+            self.partnerMaxDay = partnerDay
+            self.partnerEndOfDay = True
+        elif msgType == MsgTypes.SINGLE_ANTI_ENDOFDAY:
+            srcAddr, partnerDay = incomingTuple  # @UnusedVariable
+            print '%s got Anti-EOD %d from %s when partnerEOD = %s' % (self._name, partnerDay, self.srcTag, self.partnerEndOfDay)
+            self.partnerMaxDay = partnerDay
+            self.partnerEndOfDay = False
+        else:
+            raise RuntimeError('Unknown message type %s arrived at Gate %s' %
+                               (msgType, self._name))
 
 
 class Patch(object):
@@ -187,19 +212,51 @@ class Patch(object):
 
     def _createPerTickCB(self):
         def tickFun(thisAgent, timeLastTick, timeNow):
-            tMin, tMax = thisAgent.ownerLoop.sequencer.getTimeRange()
-            worldTMax = self.group.nI.vclock.max()
-            worldTMin = self.group.nI.vclock.min()
-            print '%s: tick! time change %s -> %s in range (%s, %s), world range (%s, %s)' % \
-                (self.name, timeLastTick, timeNow, tMin, tMax, worldTMin, worldTMax)
-            # thisAgent.ownerLoop.printCensus()
-            if tMin > worldTMin:
-                self.loop.freezeTime()
-                print '%s: time frozen since %s > %s' % (self.name, tMin, worldTMin)
+#             tMin, tMax = thisAgent.ownerLoop.sequencer.getTimeRange()
+#             worldTMax = self.group.nI.vclock.max()
+#             worldTMin = self.group.nI.vclock.min()
+
+            if self.endOfDay:
+                if self.loop.sequencer.doneWithToday():
+                    # Still waiting for partners
+                    pass
+                else:
+                    # Some incoming event has knocked us out of end-of-day
+                    self.endOfDay = False
+                    for g in self.outgoingGates:
+                        self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
             else:
-                if thisAgent.ownerLoop.timeFrozen:
-                    print '%s: time unfrozen' % self.name
-                thisAgent.ownerLoop.unfreezeTime()
+                if self.loop.sequencer.doneWithToday():
+                    # Newly end-of-day
+                    self.endOfDay = True
+                    print '%s sending out endOfDay with timeNow %s at %s' % (self.name, timeNow, self.group.nI.vclock.vec)
+                    for g in self.outgoingGates:
+                        self.group.sendGateEOD(self.tag, g.destTag, timeNow)
+                else:
+                    # still not done with the day
+                    pass
+            allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
+            minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
+            l = [g.partnerMaxDay for g in self.incomingGates]
+            print ('%s: allPartnersEOD = %s, minPartnerDay = %d %s, endOfDay = %s, stillEndOfDay = %s, doneWithDay = %s, timeNow = %s, vtime = %s' %
+                   (self.name, allPartnersEOD, minPartnerDay, l, self.endOfDay, self.stillEndOfDay, self.loop.sequencer.doneWithToday(),timeNow,self.group.nI.vclock.vec))
+            if (self.loop.sequencer.doneWithToday() and self.endOfDay
+                    and allPartnersEOD and minPartnerDay >= timeNow):
+                if self.stillEndOfDay:
+                    print '%s: bumping day!' % self.name
+                    self.loop.sequencer.bumpIfAllTimeless()
+                    timeNow += 1
+                    self.endOfDay = False
+                    print '%s: stillEndOfDay -> False' % self.name
+                    self.stillEndOfDay = False
+                    for g in self.outgoingGates:
+                        self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
+                else:
+                    print '%s: stillEndOfDay -> True' % self.name
+                    self.stillEndOfDay = True
+            else:
+                print '%s: stillEndOfDay -> False' % self.name
+                self.stillEndOfDay = False
             # And now we force the current patch to exit so that the next patch gets
             # a time slice.
             thisAgent.ownerLoop.sequencer.enqueue(thisAgent, timeNow)
@@ -214,19 +271,25 @@ class Patch(object):
             self.name = "Patch_%s" % self.tag
         self.loop = agent.MainLoop(self.name + '.loop')
         self.gateAgent = GateAgent(self)
+        self.outgoingGates = []
+        self.incomingGates = []
         self.loop.addPerTickCallback(self._createPerTickCB())
         self.loop.addAgents([self.gateAgent])
+        self.endOfDay = False
+        self.stillEndOfDay = False
 
     def addGateFrom(self, otherPatchTag):
         gateExit = GateExit(("%s.GateExit_%s" % (self.name, otherPatchTag)),
                             self, otherPatchTag, debug=False)
         self.gateAgent.addGate(gateExit)
+        self.incomingGates.append(gateExit)
         return gateExit
 
     def addGateTo(self, otherPatchTag):
         gateEntrance = GateEntrance(("%s.GateEntrance_%s" % (self.name, otherPatchTag)),
                                     self, otherPatchTag, debug=False)
         self.gateAgent.addGate(gateEntrance)
+        self.outgoingGates.append(gateEntrance)
         return gateEntrance
 
     def addAgents(self, agentList):
@@ -248,6 +311,7 @@ class PatchGroup(greenlet):
         self.expectFrom = set()
         self.clientGateExits = {}
         self.sync = sync
+        self.endOfDay = False
 
     @property
     def vclock(self):
@@ -269,6 +333,7 @@ class PatchGroup(greenlet):
         patch.group = self
         patch.loop.parent = self
         self.patches.append(patch)
+        patch.loop.freezeDate()  # No new days until I say so
 
     def run(self):
         while True:
@@ -280,9 +345,6 @@ class PatchGroup(greenlet):
             # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
             # print '######### %s: start recv' % self.name
-            if self.doneWithToday():
-                print ('!!!!!!!!!!!!!!!!!!!! %s done with today at %s!' %
-                       (self.name, self.nI.vclock.vec))
             self.nI.startRecv()
             # print '######### %s: start send' % self.name
             self.nI.startSend()
@@ -291,14 +353,14 @@ class PatchGroup(greenlet):
     def __str__(self):
         return '<%s>' % self.name
 
-    def enqueue(self, thing, destTag):
-        self.nI.enqueue(thing, destTag)
+    def enqueue(self, msgType, thing, srcTag, destTag):
+        self.nI.enqueue(msgType, thing, srcTag, destTag)
 
     def expect(self, srcAddr, destAddr, handleIncoming):
         """
         the handleIncoming is a callback with the signature
 
-            handleIncoming(time, agentList)
+            handleIncoming(incomingTuple)
 
         There is no way to drop a rank from the expected source set because one can
         never be sure there is no straggler message from that rank
@@ -307,3 +369,9 @@ class PatchGroup(greenlet):
 
     def doneWithToday(self):
         return all([p.loop.sequencer.doneWithToday() for p in self.patches])
+
+    def sendGateEOD(self, srcAddr, destAddr, currentDay):
+        self.enqueue(MsgTypes.SINGLE_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
+
+    def sendGateAntiEOD(self, srcAddr, destAddr, currentDay):
+        self.enqueue(MsgTypes.SINGLE_ANTI_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)

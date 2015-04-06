@@ -27,7 +27,7 @@ class TestAgent(patches.Agent):
                 if self.debug:
                     print '%s is jumping to %s at %s' % (self.name, whichGate, timeNow)
                 timeNow = gate.lock(self)
-                timeNow = gate.unlock(self)  # but it's no longer going to be there
+                #timeNow = gate.unlock(self)  # can't be this, because gate is now a foreign interactant
             else:
                 timeNow = self.patch.interactants[fate].lock(self)
                 if self.debug:
@@ -108,24 +108,29 @@ def main():
 
     patchGroup = patches.PatchGroup('PatchGroup_%d' % rank, comm)
     nPatches = 2
-#     if rank == 0:
-#         nPatches = 2
     for j in xrange(nPatches):
-        print 'rank %d point 0' % rank
 
         patch = TestPatch(patchGroup)
-        print 'rank %d point 0b' % rank
 
         patch.setInteractants([patches.Interactant('%s_%d_%d' % (nm, rank, j), patch)
                                for nm in ['SubA', 'SubB', 'SubC']])
 
-        leftFriend = patches.GblAddr((rank-1) % comm.size, (j+1) % nPatches)
-        leftGateEntrance = patch.addGateTo(leftFriend)  # @UnusedVariable
-        leftGateExit = patch.addGateFrom(leftFriend)  # @UnusedVariable
 
-        rightFriend = patches.GblAddr((rank+1) % comm.size, (j-1) % nPatches)
-        rightGateEntrance = patch.addGateTo(rightFriend)  # @UnusedVariable
-        rightGateExit = patch.addGateFrom(rightFriend)  # @UnusedVariable
+#         leftFriend = patches.GblAddr((rank-1) % comm.size, (j+1) % nPatches)
+#         leftGateEntrance = patch.addGateTo(leftFriend)  # @UnusedVariable
+#         leftGateExit = patch.addGateFrom(leftFriend)  # @UnusedVariable
+# 
+#         rightFriend = patches.GblAddr((rank+1) % comm.size, (j-1) % nPatches)
+#         rightGateEntrance = patch.addGateTo(rightFriend)  # @UnusedVariable
+#         rightGateExit = patch.addGateFrom(rightFriend)  # @UnusedVariable
+
+        # Fully connect everything
+        for r in xrange(comm.size):
+            for jj in xrange(nPatches):
+                if not (r == comm.rank and j == jj):
+                    friend = patches.GblAddr(r, jj)
+                    patch.addGateTo(friend)
+                    patch.addGateFrom(friend)
 
         allAgents = []
         for i in xrange(100):

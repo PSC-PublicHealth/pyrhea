@@ -82,6 +82,8 @@ class Sequencer(object):
             oldDay = self._timeQueues[self._timeNow]
             del self._timeQueues[self._timeNow]
             self._timeNow += 1
+            if self._timeNow not in self._timeQueues:
+                self._timeQueues[self._timeNow] = []
             self._timeQueues[self._timeNow].extend(oldDay)
 
     def doneWithToday(self):
@@ -194,7 +196,7 @@ class MainLoop(greenlet):
 
         def run(self, timeNow):
             while True:
-                if not self.ownerLoop.timeFrozen:
+                if not self.ownerLoop.dateFrozen:
                     self.ownerLoop.sequencer.bumpIfAllTimeless()
                 newTimeNow = self.sleep(0)  # yield thread
                 for cb in self.ownerLoop.perTickCallbacks:
@@ -213,7 +215,7 @@ class MainLoop(greenlet):
         else:
             self.name = name
         self.sequencer = Sequencer(self.name + ".Sequencer")
-        self.timeFrozen = False
+        self.dateFrozen = False
 
     def addAgents(self, agentList):
         assert all([a.ownerLoop == self for a in agentList]), \
@@ -223,11 +225,11 @@ class MainLoop(greenlet):
     def addPerTickCallback(self, cb):
         self.perTickCallbacks.append(cb)
 
-    def freezeTime(self):
-        self.timeFrozen = True
+    def freezeDate(self):
+        self.dateFrozen = True
 
-    def unfreezeTime(self):
-        self.timeFrozen = False
+    def unfreezeDate(self):
+        self.dateFrozen = False
 
     def run(self):
         counter = 0
