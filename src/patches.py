@@ -299,12 +299,43 @@ class Patch(object):
         return '<%s>' % self.name
 
 
+def greenletTrace(event, args):
+    if event == 'switch':
+        origin, target = args
+        # Handle a switch from origin to target.
+        # Note that callback is running in the context of target
+        # greenlet and any exceptions will be passed as if
+        # target.throw() was used instead of a switch.
+        print 'TRACE switch %s -> %s (parent %s)' % (origin, target, target.parent)
+        return
+    if event == 'throw':
+        origin, target = args
+        # Handle a throw from origin to target.
+        # Note that callback is running in the context of target
+        # greenlet and any exceptions will replace the original, as
+        # if target.throw() was used with the replacing exception.
+        print 'TRACE throw %s -> %s' % (origin, target)
+        return
+
+
 class PatchGroup(greenlet):
-    def __init__(self, name, comm, sync=True):
+
+    def createPerEventCallback(self):
+        def evtFun(mainLoop, scalarTimeNow):
+            self.nI.vclock.incr()
+        return evtFun
+
+    def __init__(self, comm, name=None, sync=True, trace=False):
+        if trace:
+            greenlet.settrace(greenletTrace)
+
         self.patches = []
         self.comm = comm
         self.nI = netinterface.NetworkInterface(self.comm, sync=sync)
-        self.name = name
+        if name is None:
+            self.name = 'PatchGroup_%d' % self.comm.rank
+        else:
+            self.name = name
         self.outgoingDict = {}
         self.outstandingSendReqs = []
         self.outstandingRecvReqs = []
@@ -334,6 +365,7 @@ class PatchGroup(greenlet):
         patch.loop.parent = self
         self.patches.append(patch)
         patch.loop.freezeDate()  # No new days until I say so
+        patch.loop.addPerEventCallback(self.createPerEventCallback())
 
     def run(self):
         while True:
@@ -349,6 +381,9 @@ class PatchGroup(greenlet):
             # print '######### %s: start send' % self.name
             self.nI.startSend()
             # print '######### %s: finished networking' % self.name
+
+    def start(self):
+        self.switch()
 
     def __str__(self):
         return '<%s>' % self.name

@@ -3,59 +3,35 @@
 _rhea_svn_id_ = "$Id$"
 
 import sys
-from mpi4py import MPI
-from agentworld import *
 from random import randint
 
-
-def createPerTickCB(comm, omniClock):
-    def tickFun(myLoop, timeLastTick, timeNow):
-        tMin, tMax = myLoop.sequencer.getTimeRange()
-        omniClock.setMyRange(tMin, tMax)
-        worldTMin, worldTMax = omniClock.getRange()  # @UnusedVariable
-        print 'rank %d: tick! time change %s -> %s in range (%s, %s), world range (%s, %s)' % \
-            (comm.rank, timeLastTick, timeNow, tMin, tMax, worldTMin, worldTMax)
-        # myLoop.printCensus()
-        if tMin > worldTMin:
-            myLoop.freezeTime()
-            print 'rank %d: time frozen since %s > %s' % (comm.rank, tMin, worldTMin)
-        else:
-            if myLoop.timeFrozen:
-                print 'rank %d: time unfrozen' % comm.rank
-            myLoop.unfreezeTime()
-    return tickFun
-
-gateIn = None
-
-gateOut = None
-
-interactants = None
+import patches
 
 
-class FacilityManager(Agent):
-    def __init__(self, name, mainLoop):
-        Agent.__init__(self, name, mainLoop)
+class FacilityManager(patches.Agent):
+    def __init__(self, name, patch):
+        patches.Agent.__init__(self, name, patch)
         self.wardList = []
 
     def addWard(self, ward):
         self.wardList.append(ward)
 
 
-class Ward(Interactant):
-    def __init__(self, name, mainLoop, nBeds):
-        Interactant.__init__(self, name, mainLoop)
+class Ward(patches.Interactant):
+    def __init__(self, name, patch, nBeds):
+        patches.Interactant.__init__(self, name, patch)
         self._nBeds = nBeds
 
 
-class PatientAgent(Agent):
+class PatientAgent(patches.Agent):
     pass
 
 
-class BedRequest(Agent):
+class BedRequest(patches.Agent):
     pass
 
 
-class TestAgent(Agent):
+class TestAgent(patches.Agent):
     def run(self, startTime):
         global gateIn, gateOut, interactants
         timeNow = startTime
@@ -77,71 +53,66 @@ class TestAgent(Agent):
             return '%s is exiting at %s' % (self, timeNow)
 
     def __getstate__(self):
-        d = Agent.__getstate__(self)
+        d = patches.Agent.__getstate__(self)
         return d
 
     def __setstate__(self, stateDict):
-        Agent.__setstate__(self, stateDict)
+        patches.Agent.__setstate__(self, stateDict)
+
 
 def describeSelf():
     print """This should write some documentation"""
 
+
 def main():
-    global verbose, debug, gateIn, gateOut, interactants
+    trace = False
+    verbose = False
+    debug = False
 
     for a in sys.argv[1:]:
         if a == '-v':
             verbose = True
         elif a == '-d':
             debug = True
+        elif a == '-t':
+            trace = True
         else:
             describeSelf()
             sys.exit('unrecognized argument %s' % a)
 
-    comm = MPI.COMM_WORLD
+    comm = patches.getCommWorld()
     rank = comm.rank
-    assert comm.size == 3, "This program runs only with np=3"
 
-    mainLoop = MainLoop('Mainloop_%s' % rank)
-    omniClock = OmniClock(comm, mainLoop)
+    patchGroup = patches.PatchGroup(comm, trace=trace)
+    nPatches = 2
+    for j in xrange(nPatches):
 
-    gateAgent = GateAgent(comm, mainLoop)
-    for i in xrange(comm.size):
-        if i != rank:
-            gateIn = GateIn(("GateIn_%d_%d" % (rank, i)), i, comm, mainLoop, debug=False)
-            gateAgent.addGate(gateIn)
-            gateOut = GateOut(("GateOut_%d_%d" % (i, rank)), i, comm, mainLoop, debug=True)
-            gateAgent.addGate(gateOut)
+        patch = patches.Patch(patchGroup)
 
-    allAgents = [omniClock, gateAgent]
+        patch.setInteractants([patches.Interactant('%s_%d_%d' % (nm, rank, j), patch)
+                               for nm in ['SubA', 'SubB', 'SubC']])
 
-    for tier, nWards, nBedsPerWard in [(1, 3, 20),
-                                       (2, 2, 100),
-                                       (3, 1, 1000)]:
-        tierManager = FacilityManager('Rank%d_Tier%d_Manager' % (rank, tier), mainLoop)
-        allAgents.append(tierManager)
-        for i in xrange(nWards):
-            tierManager.addWard(Ward('Rank%d_Tier%d_Ward%d' % (rank, tier, i),
-                                     mainLoop,
-                                     nBedsPerWard))
+        # Fully connect everything
+        for r in xrange(comm.size):
+            for jj in xrange(nPatches):
+                if not (r == comm.rank and j == jj):
+                    friend = patches.GblAddr(r, jj)
+                    patch.addGateTo(friend)
+                    patch.addGateFrom(friend)
 
-#     interactants = [Interactant(nm, mainLoop) for nm in ['SubA', 'SubB', 'SubC']]
-#
-#     for i in xrange(100):
-#         allAgents.append(TestAgent('Agent_%d_%d' % (rank, i), mainLoop, debug=True))
+        allAgents = []
+        for i in xrange(100):
+            allAgents.append(TestAgent('Agent_%d_%d_%d' % (rank, j, i),
+                                       patch, debug=debug))
 
-    mainLoop.addPerTickCallback(createPerTickCB(comm, omniClock))
-    mainLoop.addAgents(allAgents)
-    mainLoop.switch()
-    print '%d all done' % rank
+        patch.addAgents(allAgents)
+        patchGroup.addPatch(patch)
+    print 'Rank %s reaches barrier' % rank
+    patchGroup.barrier()
+    print 'Rank %s leaves barrier' % rank
+    patchGroup.start()
+    print '%d all done (from main)' % rank
 
-#
-#     if rank == 0:
-#         data = {'a': 7, 'b': 3.14}
-#         comm.send(data, dest=1, tag=11)
-#     else:
-#         data = comm.recv(source=0, tag=11)
-#         print '%s says %s' % (rank, data)
 
 ############
 # Main hook
@@ -149,3 +120,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

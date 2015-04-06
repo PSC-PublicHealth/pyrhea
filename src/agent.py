@@ -205,9 +205,18 @@ class MainLoop(greenlet):
                     print '%s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
                     timeNow = newTimeNow
 
+    @staticmethod
+    def everyEventCB(loop, timeNow):
+        loop.counter += 1
+        if loop.counter > loop.safety:
+            print '%s: safety exit' % loop.name
+            loop.parent.switch(loop.counter)
+            loop.counter = 0
+
     def __init__(self, name=None, safety=None):
         self.newAgents = [MainLoop.ClockAgent(self)]
         self.perTickCallbacks = []
+        self.perEventCallbacks = []
         self.safety = safety  # After how many ticks to bail, if any
         assert safety is None or isinstance(safety, types.IntType)
         if name is None:
@@ -216,6 +225,9 @@ class MainLoop(greenlet):
             self.name = name
         self.sequencer = Sequencer(self.name + ".Sequencer")
         self.dateFrozen = False
+        self.counter = 0
+        if self.safety is not None:
+            self.addPerEventCallback(MainLoop.everyEventCB)
 
     def addAgents(self, agentList):
         assert all([a.ownerLoop == self for a in agentList]), \
@@ -225,6 +237,9 @@ class MainLoop(greenlet):
     def addPerTickCallback(self, cb):
         self.perTickCallbacks.append(cb)
 
+    def addPerEventCallback(self, cb):
+        self.perEventCallbacks.append(cb)
+
     def freezeDate(self):
         self.dateFrozen = True
 
@@ -232,20 +247,16 @@ class MainLoop(greenlet):
         self.dateFrozen = False
 
     def run(self):
-        counter = 0
         for a in self.newAgents:
             a.parent = self  # so dead agents return here
             self.sequencer.enqueue(a)
         self.newAgents = []
         for agent, timeNow in self.sequencer:
             # print '%s Stepping %s at %d' % (self.name, agent, timeNow)
+            for cb in self.perEventCallbacks:
+                cb(self, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
-            counter += 1
-            if self.safety is not None and counter > self.safety:
-                print '%s: safety exit' % self.name
-                self.parent.switch(counter)
-                counter = 0
 
     def sleep(self, agent, nDays):
         assert isinstance(nDays, types.IntType), 'nDays should be an integer'

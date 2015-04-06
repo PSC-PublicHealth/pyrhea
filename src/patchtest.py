@@ -7,7 +7,6 @@ This provides a simple test routine for patches.
 """
 
 import sys
-from greenlet import greenlet
 from random import randint
 
 import patches
@@ -59,25 +58,6 @@ class TestPatch(patches.Patch):
         self.gates.append(g)
 
 
-def greenletTrace(event, args):
-    if event == 'switch':
-        origin, target = args
-        # Handle a switch from origin to target.
-        # Note that callback is running in the context of target
-        # greenlet and any exceptions will be passed as if
-        # target.throw() was used instead of a switch.
-        print 'TRACE switch %s -> %s (parent %s)' % (origin, target, target.parent)
-        return
-    if event == 'throw':
-        origin, target = args
-        # Handle a throw from origin to target.
-        # Note that callback is running in the context of target
-        # greenlet and any exceptions will replace the original, as
-        # if target.throw() was used with the replacing exception.
-        print 'TRACE throw %s -> %s' % (origin, target)
-        return
-
-
 def describeSelf():
     print """
     This main provides diagnostics. -t, -v and -d for trace, verbose and debug respectively.
@@ -103,10 +83,7 @@ def main():
     comm = patches.getCommWorld()
     rank = comm.rank
 
-    if trace:
-        greenlet.settrace(greenletTrace)
-
-    patchGroup = patches.PatchGroup('PatchGroup_%d' % rank, comm)
+    patchGroup = patches.PatchGroup(comm, trace=trace)
     nPatches = 2
     for j in xrange(nPatches):
 
@@ -119,7 +96,7 @@ def main():
 #         leftFriend = patches.GblAddr((rank-1) % comm.size, (j+1) % nPatches)
 #         leftGateEntrance = patch.addGateTo(leftFriend)  # @UnusedVariable
 #         leftGateExit = patch.addGateFrom(leftFriend)  # @UnusedVariable
-# 
+#
 #         rightFriend = patches.GblAddr((rank+1) % comm.size, (j-1) % nPatches)
 #         rightGateEntrance = patch.addGateTo(rightFriend)  # @UnusedVariable
 #         rightGateExit = patch.addGateFrom(rightFriend)  # @UnusedVariable
@@ -142,7 +119,7 @@ def main():
     print 'Rank %s reaches barrier' % rank
     patchGroup.barrier()
     print 'Rank %s leaves barrier' % rank
-    patchGroup.switch()
+    patchGroup.start()
     print '%d all done (from main)' % rank
 
 
