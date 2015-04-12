@@ -4,6 +4,7 @@ _rhea_svn_id_ = "$Id$"
 
 from mpi4py import MPI
 import numpy as np
+import types
 
 
 class MsgTypes():
@@ -44,7 +45,39 @@ class GblAddr(object):
         self.lclId = lclId
 
     def __str__(self):
-        return '%d_%d' % (self.rank, self.lclId)
+        if isinstance(self.lclId, types.TupleType):
+            return '%d_%d_%d' % (self.rank, self.lclId[0], self.lclId[1])
+        else:
+            return '%d_%d' % (self.rank, self.lclId)
+
+    def getLclAddr(self):
+        return self.lclId
+
+    def getPatchAddr(self):
+        if isinstance(self.lclId, types.TupleType):
+            return GblAddr(self.rank, self.lclId[0])
+        else:
+            return GblAddr(self.rank, self.lclId)
+
+    def __lt__(self, other):
+        return (self.rank < other.rank
+                or (self.rank == other.rank and self.lclId < other.lclId))
+
+    def __le__(self, other):
+        return self < other or self == other
+
+    def __eq__(self, other):
+        return self.rank == other.rank and self.lclId == other.lclId
+
+    def __ne__(self, other):
+        return self.rank != other.rank or self.lclId != other.lclId
+
+    def __gt__(self, other):
+        return (self.rank > other.rank
+                or (self.rank == other.rank and self.lclId > other.lclId))
+
+    def __ge__(self, other):
+        return self > other or self == other
 
 
 class NetworkInterface(object):
@@ -64,9 +97,8 @@ class NetworkInterface(object):
     def getGblAddr(self, lclId):
         return GblAddr(self.comm.rank, lclId)
 
-    def getLclAddr(self, gblAddr):
-        assert gblAddr.rank == self.comm.rank, 'Network object %s is not local!' % gblAddr
-        return gblAddr.lclId
+    def isLocal(self, gblAddr):
+        return gblAddr.rank == self.comm.rank
 
     def barrier(self):
         self.comm.Barrier()
@@ -116,10 +148,7 @@ class NetworkInterface(object):
         self.incomingLclMessages = []
         while True:
             if not self.outstandingRecvReqs:
-                # print '######## %s nothing to recv' % self.name
                 break
-            # print ('######## %s entering recv testany on %d outstanding reqs' %
-            #        (self.name, len(self.outstandingRecvReqs)))
             idx, flag, msg = MPI.Request.testany(self.outstandingRecvReqs)
             if idx >= 0:
                 self.outstandingRecvReqs.pop(idx)

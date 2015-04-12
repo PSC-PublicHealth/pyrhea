@@ -125,6 +125,7 @@ class Agent(greenlet):
 
 
 class Interactant():
+    counter = 0
     _liveInstances = weaklist.WeakList()
 
     @classmethod
@@ -139,6 +140,8 @@ class Interactant():
         self._debug = debug
         self._nEnqueued = 0  # counts only things which are not 'timeless'
         self._liveInstances.append(self)
+        self.id = Interactant.counter
+        Interactant.counter += 1
 
     def getNWaiting(self):
         """This returns the count of waiting agents for which timeless is false"""
@@ -187,6 +190,82 @@ class Interactant():
             self._lockingAgent = None
         return timeNow
 
+    def awaken(self, agent):
+        """
+        The agent is expected to be sleeping in this interactant's _lockQueue.  Calling
+        awaken(agent) removes the agent from _lockQueue and re-inserts it into the
+        main loop, so that it will resume running in its turn.
+        """
+        timeNow = self._ownerLoop.sequencer.getTimeNow()
+        if agent not in self._lockQueue:
+            raise RuntimeError("%s does not hold %s in its lock queue; cannot awaken" %
+                               (self._name, agent.name))
+        self._lockQueue.remove(agent)
+        if not agent.timeless:
+            self._nEnqueued -= 1
+        if self._debug:
+            print ('%s removes %s from lock queue and awakens it (%d still in queue)' %
+                   (self._name, agent.name, self._nEnqueued))
+        self._ownerLoop.sequencer.enqueue(agent, timeNow)
+        return agent
+
+
+class MultiInteractant(Interactant):
+    def __init__(self, name, count, ownerLoop, debug=False):
+        Interactant.__init__(self, name, ownerLoop, debug)
+        self._nLocks = count
+        self._lockingAgentList = []
+        self._debug = True
+
+    def lock(self, lockingAgent, debug=True):
+        timeNow = self._ownerLoop.sequencer.getTimeNow()
+        if lockingAgent in self._lockingAgentList:
+            if debug and self._debug and lockingAgent.debug:
+                print '%s already locked by %s' % (self._name, lockingAgent)
+            return timeNow
+        elif len(self._lockingAgentList) < self._nLocks:
+            self._lockingAgentList.append(lockingAgent)
+            if debug and self._debug and lockingAgent.debug:
+                print '%s fast locked by %s' % (self._name, lockingAgent)
+            return timeNow
+        else:
+            self._lockQueue.append(lockingAgent)
+            if not lockingAgent.timeless:
+                self._nEnqueued += 1
+            if debug and self._debug and lockingAgent.debug:
+                print '%s slow lock by %s (%d in queue)' % \
+                    (self._name, lockingAgent, self._nEnqueued)
+            timeNow = self._ownerLoop.switch('%s is %d in %s queue' %
+                                             (lockingAgent, len(self._lockQueue), self._name))
+            return timeNow
+
+    def unlock(self, oldLockingAgent):
+        if oldLockingAgent not in self._lockingAgentList:
+            raise RuntimeError('%s is not a lock of %s' % (oldLockingAgent, self._name))
+        timeNow = self._ownerLoop.sequencer.getTimeNow()
+        self._lockingAgentList.remove(oldLockingAgent)
+        if self._lockQueue:
+            newAgent = self._lockQueue.pop(0)
+            if not newAgent.timeless:
+                self._nEnqueued -= 1
+            if self._debug:
+                print '%s unlock of %s awakens %s (%d still in queue)' % \
+                    (self._name, oldLockingAgent, newAgent, self._nEnqueued)
+            self._lockingAgentList.append(newAgent)
+            self._ownerLoop.sequencer.enqueue(newAgent, timeNow)
+            self._ownerLoop.sequencer.enqueue(oldLockingAgent, timeNow)
+            timeNow = self._ownerLoop.switch("%s and %s enqueued" % (newAgent, oldLockingAgent))
+        else:
+            if self._debug:
+                print '%s fast unlock of %s' % (self._name, oldLockingAgent)
+        return timeNow
+
+    def __str__(self):
+        return '<%s (%d of %d)>' % (self._name, len(self._lockingAgentList), self._nLocks)
+
+    @property
+    def nFree(self):
+        return self._nLocks - len(self._lockingAgentList)
 
 class MainLoop(greenlet):
     class ClockAgent(Agent):
@@ -257,6 +336,7 @@ class MainLoop(greenlet):
                 cb(self, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
+        print 'sequencer ran dry'
 
     def sleep(self, agent, nDays):
         assert isinstance(nDays, types.IntType), 'nDays should be an integer'

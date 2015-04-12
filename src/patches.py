@@ -3,7 +3,6 @@
 _rhea_svn_id_ = "$Id$"
 
 from greenlet import greenlet
-import math
 import agent
 import netinterface
 
@@ -28,14 +27,22 @@ def getCommWorld():
     return netinterface.getCommWorld()
 
 
-class GblAddr(netinterface.GblAddr):
-    pass
-
-
 class Interactant(agent.Interactant):
     def __init__(self, name, patch, debug=False):
         agent.Interactant.__init__(self, name, patch.loop, debug)
         self.patch = patch
+
+    def getGblAddr(self):
+        return self.patch.group.getGblAddr((self.patch.patchId, self.id))
+
+
+class MultiInteractant(agent.MultiInteractant):
+    def __init__(self, name, count, patch, debug=False):
+        agent.MultiInteractant.__init__(self, name, count, patch.loop, debug)
+        self.patch = patch
+
+    def getGblAddr(self):
+        return self.patch.group.getGblAddr((self.patch.patchId, self.id))
 
 
 class Agent(agent.Agent):
@@ -131,7 +138,8 @@ class GateEntrance(Interactant):
     def cycleStart(self, timeNow):
         if self._debug:
             print '%s begins cycleStart; destTag is %s' % (self._name, self.destTag)
-        self.patch.group.enqueue(MsgTypes.GATE, (timeNow, self._lockQueue), self.patch.tag, self.destTag)
+        self.patch.group.enqueue(MsgTypes.GATE, (timeNow, self._lockQueue),
+                                 self.patch.tag, self.destTag)
         self.nInTransit = len(self._lockQueue)
         self._lockQueue = []
         self._nEnqueued = 0
@@ -194,12 +202,14 @@ class GateExit(Interactant):
                     print '%s materializes at %s' % (a.name, self._name)
         elif msgType == MsgTypes.SINGLE_ENDOFDAY:
             srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-            print '%s got EOD %s from %s %s when partnerEOD = %s' % (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay)
+#             print ('%s got EOD %s from %s %s when partnerEOD = %s' %
+#                    (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay))
             self.partnerMaxDay = partnerDay
             self.partnerEndOfDay = True
         elif msgType == MsgTypes.SINGLE_ANTI_ENDOFDAY:
             srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-            print '%s got Anti-EOD %d from %s when partnerEOD = %s' % (self._name, partnerDay, self.srcTag, self.partnerEndOfDay)
+#             print ('%s got Anti-EOD %d from %s when partnerEOD = %s' %
+#                    (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
             self.partnerMaxDay = partnerDay
             self.partnerEndOfDay = False
         else:
@@ -212,10 +222,6 @@ class Patch(object):
 
     def _createPerTickCB(self):
         def tickFun(thisAgent, timeLastTick, timeNow):
-#             tMin, tMax = thisAgent.ownerLoop.sequencer.getTimeRange()
-#             worldTMax = self.group.nI.vclock.max()
-#             worldTMin = self.group.nI.vclock.min()
-
             if self.endOfDay:
                 if self.loop.sequencer.doneWithToday():
                     # Still waiting for partners
@@ -229,7 +235,8 @@ class Patch(object):
                 if self.loop.sequencer.doneWithToday():
                     # Newly end-of-day
                     self.endOfDay = True
-                    print '%s sending out endOfDay with timeNow %s at %s' % (self.name, timeNow, self.group.nI.vclock.vec)
+                    # print ('%s sending out endOfDay with timeNow %s at %s' %
+                    #        (self.name, timeNow, self.group.nI.vclock.vec))
                     for g in self.outgoingGates:
                         self.group.sendGateEOD(self.tag, g.destTag, timeNow)
                 else:
@@ -237,25 +244,25 @@ class Patch(object):
                     pass
             allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
             minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
-            l = [g.partnerMaxDay for g in self.incomingGates]
-            print ('%s: allPartnersEOD = %s, minPartnerDay = %d %s, endOfDay = %s, stillEndOfDay = %s, doneWithDay = %s, timeNow = %s, vtime = %s' %
-                   (self.name, allPartnersEOD, minPartnerDay, l, self.endOfDay, self.stillEndOfDay, self.loop.sequencer.doneWithToday(),timeNow,self.group.nI.vclock.vec))
+#             l = [g.partnerMaxDay for g in self.incomingGates]
+#             print ('%s: allPartnersEOD = %s, minPartnerDay = %d %s, endOfDay = %s, stillEndOfDay = %s, doneWithDay = %s, timeNow = %s, vtime = %s' %
+#                    (self.name, allPartnersEOD, minPartnerDay, l, self.endOfDay, self.stillEndOfDay, self.loop.sequencer.doneWithToday(),timeNow,self.group.nI.vclock.vec))
             if (self.loop.sequencer.doneWithToday() and self.endOfDay
                     and allPartnersEOD and minPartnerDay >= timeNow):
                 if self.stillEndOfDay:
-                    print '%s: bumping day!' % self.name
+                    # print '%s: bumping day!' % self.name
                     self.loop.sequencer.bumpIfAllTimeless()
                     timeNow += 1
                     self.endOfDay = False
-                    print '%s: stillEndOfDay -> False' % self.name
+                    # print '%s: stillEndOfDay -> False' % self.name
                     self.stillEndOfDay = False
                     for g in self.outgoingGates:
                         self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
                 else:
-                    print '%s: stillEndOfDay -> True' % self.name
+                    # print '%s: stillEndOfDay -> True' % self.name
                     self.stillEndOfDay = True
             else:
-                print '%s: stillEndOfDay -> False' % self.name
+                # print '%s: stillEndOfDay -> False' % self.name
                 self.stillEndOfDay = False
             # And now we force the current patch to exit so that the next patch gets
             # a time slice.
@@ -266,6 +273,7 @@ class Patch(object):
     def __init__(self, group, name=None):
         self.patchId = Patch.counter
         Patch.counter += 1
+        self.group = group
         self.tag = group.getGblAddr(self.patchId)
         if name is None:
             self.name = "Patch_%s" % self.tag
@@ -273,6 +281,7 @@ class Patch(object):
         self.gateAgent = GateAgent(self)
         self.outgoingGates = []
         self.incomingGates = []
+        self.interactants = []  # Does not include gates
         self.loop.addPerTickCallback(self._createPerTickCB())
         self.loop.addAgents([self.gateAgent])
         self.endOfDay = False
@@ -294,6 +303,17 @@ class Patch(object):
 
     def addAgents(self, agentList):
         self.loop.addAgents(agentList)
+
+    def addInteractants(self, interactantList):
+        for iact in interactantList:
+            if isinstance(iact, GateEntrance):
+                if iact not in self.outgoingGates:
+                    self.outgoingGates.append(iact)
+            elif isinstance(iact, GateExit):
+                if iact not in self.incomingGates:
+                    self.incomingGates.append(iact)
+            else:
+                self.interactants.append(iact)
 
     def __str__(self):
         return '<%s>' % self.name
@@ -330,10 +350,9 @@ class PatchGroup(greenlet):
             greenlet.settrace(greenletTrace)
 
         self.patches = []
-        self.comm = comm
-        self.nI = netinterface.NetworkInterface(self.comm, sync=sync)
+        self.nI = netinterface.NetworkInterface(comm, sync=sync)
         if name is None:
-            self.name = 'PatchGroup_%d' % self.comm.rank
+            self.name = 'PatchGroup_%d' % comm.rank
         else:
             self.name = name
         self.outgoingDict = {}
@@ -361,11 +380,11 @@ class PatchGroup(greenlet):
         return self.nI.getGblAddr(lclId)
 
     def addPatch(self, patch):
-        patch.group = self
         patch.loop.parent = self
         self.patches.append(patch)
         patch.loop.freezeDate()  # No new days until I say so
         patch.loop.addPerEventCallback(self.createPerEventCallback())
+        return patch
 
     def run(self):
         while True:
