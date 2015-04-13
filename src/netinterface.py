@@ -133,7 +133,8 @@ class NetworkInterface(object):
 
     def startRecv(self):
         for srcRank in self.expectFrom:
-            self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
+            if srcRank != self.comm.rank:
+                self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
@@ -149,10 +150,9 @@ class NetworkInterface(object):
         while True:
             if not self.outstandingRecvReqs:
                 break
-            idx, flag, msg = MPI.Request.testany(self.outstandingRecvReqs)
-            if idx >= 0:
+            if self.sync:
+                idx, msg = MPI.Request.waitany(self.outstandingRecvReqs)
                 self.outstandingRecvReqs.pop(idx)
-            if flag:
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -161,11 +161,23 @@ class NetworkInterface(object):
                 for tpl in msg[1:]:
                     self._innerRecv(tpl)
             else:
-                # print '######## %s empty recv queue' % self.name
-                break
+                idx, flag, msg = MPI.Request.testany(self.outstandingRecvReqs)
+                if idx >= 0:
+                    self.outstandingRecvReqs.pop(idx)
+                if flag:
+                    vtm = msg[0]
+                    #
+                    # Handle vtime order issues here
+                    #
+                    self.vclock.merge(vtm)
+                    for tpl in msg[1:]:
+                        self._innerRecv(tpl)
+                else:
+                    # print '######## %s empty recv queue' % self.name
+                    break
         self.outstandingRecvReqs = []
-        if self.sync:
-            self.comm.Barrier()
+        # if self.sync:
+        #     self.comm.Barrier()
 
     def startSend(self):
         vTimeNow = self.vclock.vec
