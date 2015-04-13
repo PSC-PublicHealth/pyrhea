@@ -58,7 +58,7 @@ class FacilityManager(patches.Agent):
     def run(self, startTime):
         timeNow = startTime
         while True:
-            if self.fac.reqQueue._lockQueue:
+            while self.fac.reqQueue._lockQueue:
                 req = self.fac.reqQueue._lockQueue[0]
                 tier = req.tier
                 if tier not in self.fac.wardDict:
@@ -270,11 +270,10 @@ class PatientAgent(patches.Agent):
                     facAddrList = [tpl[1] for tpl in self.patch.serviceLookup('BedRequestQueue')]
                     shuffle(facAddrList)
                     key = self.ward.fac.holdQueue.getUniqueKey()
-                    bR = BedRequest(self.name + '_bedReq', self.patch,
-                                    self.careTier, self.ward.getGblAddr(), key,
-                                    facAddrList)
-                    bR.parent = self.patch.loop
-                    self.patch.loop.sequencer.enqueue(bR, timeNow)
+                    self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
+                                                 self.careTier, self.ward.getGblAddr(), key,
+                                                 facAddrList),
+                                      timeNow)
                     timeNow = self.ward.fac.holdQueue.lock(self, key=key)
                     # print '%s is awake with new addr %s!' % (self.name, self.newWardAddr)
                     if self.newWardAddr is None:
@@ -283,11 +282,12 @@ class PatientAgent(patches.Agent):
                         timeNow = self.sleep(1)
                         self.fsmstate = PatientAgent.STATE_HEALED
                     else:
-                        dM = DepartureMsg(self.name + '_depMsg', self.patch, self.ward.tier,
-                                          self.ward.getGblAddr(),
-                                          self.ward.fac.reqQueue.getGblAddr())
-                        dM.parent = self.patch.loop
-                        self.patch.loop.sequencer.enqueue(dM, timeNow)
+                        self.patch.launch(DepartureMsg(self.name + '_depMsg', self.patch,
+                                                       self.ward.tier,
+                                                       self.ward.getGblAddr(),
+                                                       self.ward.fac.reqQueue.getGblAddr()),
+                                          timeNow)
+                        timeNow = self.ward.unlock(self)
                         self.fsmstate = PatientAgent.STATE_MOVING
                 else:
                     self.fsmstate = PatientAgent.STATE_ATWARD
@@ -392,7 +392,7 @@ def main():
         ward0 = facility.addWard(Ward('Ward_%s_Tier0' % patch.tag, patch, 0, 1000))
         ward1 = facility.addWard(Ward('Ward_%s_Tier1' % patch.tag, patch, 1, 100))
         ward2 = facility.addWard(Ward('Ward_%s_Tier2' % patch.tag, patch, 2, 20))
-        iList = [facility.reqQueue, ward0, ward1, ward2]
+        iList = [facility.reqQueue, facility.holdQueue, ward0, ward1, ward2]
         allAgents = [facility.manager]
 
         # Fully connect everything

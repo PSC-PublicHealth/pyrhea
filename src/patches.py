@@ -318,6 +318,10 @@ class Patch(object):
     def __str__(self):
         return '<%s>' % self.name
 
+    def launch(self, agent, startTime):
+        agent.parent = self.loop
+        self.loop.sequencer.enqueue(agent, startTime)
+
 
 def greenletTrace(event, args):
     if event == 'switch':
