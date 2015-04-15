@@ -19,6 +19,7 @@ try:
 except:
     pass
 
+
 class Sequencer(object):
 
     def __init__(self, name):
@@ -78,7 +79,7 @@ class Sequencer(object):
         time forward by a day.
         """
         if self.doneWithToday():
-            print '%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
+            # print '%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
             oldDay = self._timeQueues[self._timeNow]
             del self._timeQueues[self._timeNow]
             self._timeNow += 1
@@ -266,6 +267,7 @@ class MultiInteractant(Interactant):
     @property
     def nFree(self):
         return self._nLocks - len(self._lockingAgentList)
+
 
 class MainLoop(greenlet):
     class ClockAgent(Agent):

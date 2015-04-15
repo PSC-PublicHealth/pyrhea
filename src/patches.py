@@ -2,6 +2,7 @@
 
 _rhea_svn_id_ = "$Id$"
 
+from collections import defaultdict
 from greenlet import greenlet
 import agent
 import netinterface
@@ -28,6 +29,20 @@ def getCommWorld():
 
 
 class Interactant(agent.Interactant):
+    """
+    An interactant stays in the same place, and is located by agents via its global
+    address.  Agents may only modify interactants if they have locked them.  If more than
+    one agent locks the same interactant, all but the first are suspended until the first
+    agent unlocks the interactant.  At that point the next agent to lock the interactant
+    becomes active.  This process continues until the queue of suspended agents have all
+    had their turn.  (However, see MultiInteractant).
+
+    Interactants are sometimes used as queues by agents which lock them at the start of a
+    simulation and never lock them.  Other agents which subsequently lock the interactant
+    are suspended and enqueued.  The first agent can manipulate the suspended agents and
+    then subsequently awaken them, removing them from the lock queue and returning them to
+    the list of active agents.
+    """
     def __init__(self, name, patch, debug=False):
         agent.Interactant.__init__(self, name, patch.loop, debug)
         self.patch = patch
@@ -37,6 +52,12 @@ class Interactant(agent.Interactant):
 
 
 class MultiInteractant(agent.MultiInteractant):
+    """
+    A MultiInteractant is a type of Interactant for which multiple agents can hold locks
+    and still remain active.  As long as the count of available locks is not exceeded,
+    agents can lock the multiinteractant and continue to remain active.  If more than
+    count agents lock the multiinteractant, the surplus agents are suspended and enqueued.
+    """
     def __init__(self, name, count, patch, debug=False):
         agent.MultiInteractant.__init__(self, name, count, patch.loop, debug)
         self.patch = patch
@@ -46,6 +67,22 @@ class MultiInteractant(agent.MultiInteractant):
 
 
 class Agent(agent.Agent):
+    """
+    Agents have run methods, and are repeatedly given time slices in which those run
+    methods execute.  Agents can be mobile or fixed-location.  A fixed-location agent
+    will typically lock one or more Interactants at the beginning of a simulation and
+    hold those locks forever, performing some maintenance task on any agent which
+    subsequently locks the interactant.  For example, each patch has a GateAgent which
+    controls the operation of Gates to and from the patch.
+
+    A mobile agent must support being shipped from processor to processor, and thus
+    must be serializable.  The mobile agent thus must implement __getstate__() and
+    __setstate__(), as described by the Pickle module.  Typically the run method of a
+    mobile agent is a simple finite state machine, with the state explicitly preserved
+    by __getstate__() and __setstate__().  Agents which rely on their greenlet nature
+    to preserve their state between time slices cannot be mobile, because the
+    underlying greenlet is not serializable.
+    """
     def __init__(self, name, patch, debug=False):
         agent.Agent.__init__(self, name, patch.loop, debug=False)
         self.patch = patch
@@ -244,9 +281,6 @@ class Patch(object):
                     pass
             allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
             minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
-#             l = [g.partnerMaxDay for g in self.incomingGates]
-#             print ('%s: allPartnersEOD = %s, minPartnerDay = %d %s, endOfDay = %s, stillEndOfDay = %s, doneWithDay = %s, timeNow = %s, vtime = %s' %
-#                    (self.name, allPartnersEOD, minPartnerDay, l, self.endOfDay, self.stillEndOfDay, self.loop.sequencer.doneWithToday(),timeNow,self.group.nI.vclock.vec))
             if (self.loop.sequencer.doneWithToday() and self.endOfDay
                     and allPartnersEOD and minPartnerDay >= timeNow):
                 if self.stillEndOfDay:
@@ -322,6 +356,26 @@ class Patch(object):
         agent.parent = self.loop
         self.loop.sequencer.enqueue(agent, startTime)
 
+    def serviceLookup(self, typeNameStr):
+        return self.group.worldInteractants[typeNameStr][:]
+
+    def isLocal(self, gblAddr):
+        """Is the address local to this patch?"""
+        return (gblAddr.getPatchAddr() == self.tag)
+
+    def getPathTo(self, gblAddr):
+        if self.isLocal(gblAddr):
+            for itr in self.interactants:
+                if itr.getGblAddr() == gblAddr:
+                    return (itr, True)
+            raise RuntimeError("%s: Unknown supposedly-local address %s" % (self.name, gblAddr))
+        else:
+            patchAddr = gblAddr.getPatchAddr()
+            for g in self.outgoingGates:
+                if g.destTag == patchAddr:
+                    return (g, False)
+            raise RuntimeError("%s: No path to right patch for address %s" % (self.name, gblAddr))
+
 
 def greenletTrace(event, args):
     if event == 'switch':
@@ -378,6 +432,9 @@ class PatchGroup(greenlet):
         return self.nI.vclock.vec
 
     def barrier(self):
+        """
+        It is probably never necessary for a user-level program to call barrier() explicitly.
+        """
         self.nI.barrier()
 
     def getGblAddr(self, lclId):
@@ -405,9 +462,6 @@ class PatchGroup(greenlet):
             self.nI.startSend()
             # print '######### %s: finished networking' % self.name
 
-    def start(self):
-        self.switch()
-
     def __str__(self):
         return '<%s>' % self.name
 
@@ -416,7 +470,7 @@ class PatchGroup(greenlet):
 
     def expect(self, srcAddr, destAddr, handleIncoming):
         """
-        the handleIncoming is a callback with the signature
+        The handleIncoming is a callback with the signature
 
             handleIncoming(incomingTuple)
 
@@ -424,6 +478,41 @@ class PatchGroup(greenlet):
         never be sure there is no straggler message from that rank
         """
         self.nI.expect(srcAddr, destAddr, handleIncoming)
+
+    def shareInteractantDirectories(self):
+        myInteractants = defaultdict(list)
+        for p in self.patches:
+            pId = p.patchId
+            myInteractants['_'].append(self.getGblAddr(pId))
+            for iact in p.interactants:
+                nm = iact._name
+                classNm = iact.__class__.__name__
+                myInteractants[classNm].append((nm, self.getGblAddr((pId, iact.id))))
+        gblAllInteractants = defaultdict(list)
+        gblAllPatches = []
+        for d in self.nI.comm.allgather(myInteractants):
+            for k, v in d.items():
+                if k == '_':
+                    gblAllPatches.extend(v)
+                else:
+                    gblAllInteractants[k].extend(v)
+        return gblAllInteractants, gblAllPatches
+
+    def isLocal(self, gblAddr):
+        return self.nI.isLocal(gblAddr)
+
+    def start(self):
+        # Collect remote geometry information.  This includes an implicit barrier
+        self.worldInteractants, self.allPatches = self.shareInteractantDirectories()
+
+        # Build the global gate network
+        for localP in self.patches:
+            for friend in self.allPatches:
+                if localP.tag != friend:
+                    localP.addGateTo(friend)
+                    localP.addGateFrom(friend)
+
+        self.switch()
 
     def doneWithToday(self):
         return all([p.loop.sequencer.doneWithToday() for p in self.patches])

@@ -4,11 +4,7 @@ _rhea_svn_id_ = "$Id$"
 
 import sys
 from random import randint, shuffle
-import types
-from collections import defaultdict
-
 import patches
-from netinterface import GblAddr
 
 
 class Ward(patches.MultiInteractant):
@@ -33,7 +29,7 @@ class HoldQueue(patches.Interactant):
         self.keyCounter += 1
         return key
 
-    def lock(self, lockingAgent, key=None, debug=True):
+    def lock(self, lockingAgent, key=None, debug=False):
         if key is not None:
             self.heldDict[key] = lockingAgent
         return patches.Interactant.lock(self, lockingAgent)
@@ -56,7 +52,7 @@ class FacilityManager(patches.Agent):
         self.timeless = True
 
     def run(self, startTime):
-        timeNow = startTime
+        timeNow = startTime  # @UnusedVariable
         while True:
             while self.fac.reqQueue._lockQueue:
                 req = self.fac.reqQueue._lockQueue[0]
@@ -95,7 +91,7 @@ class FacilityManager(patches.Agent):
                 else:
                     raise RuntimeError("%s unexpectedly got the message %s" %
                                        (self.name, req.name))
-            timeNow = self.sleep(0)
+            timeNow = self.sleep(0)  # @UnusedVariable
 
 
 class Facility(object):
@@ -151,7 +147,7 @@ class BedRequest(patches.Agent):
                         self.fsmstate = BedRequest.STATE_ASKWARD
                     timeNow = addr.lock(self)
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
-                print '%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow)
+                raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
                 addr, final = self.patch.getPathTo(self.homeWardAddr)
                 if final:
@@ -205,13 +201,13 @@ class DepartureMsg(patches.Agent):
         self.fsmstate = DepartureMsg.STATE_MOVING
 
     def run(self, startTime):
-        timeNow = startTime
+        timeNow = startTime  # @UnusedVariable
         while True:
             if self.fsmstate == DepartureMsg.STATE_MOVING:
                     addr, final = self.patch.getPathTo(self.destAddr)
                     if final:
                         self.fsmstate = DepartureMsg.STATE_ARRIVED
-                    timeNow = addr.lock(self)
+                    timeNow = addr.lock(self)  # @UnusedVariable
             elif self.fsmstate == DepartureMsg.STATE_ARRIVED:
                 break  # we are done
 
@@ -317,49 +313,11 @@ class PatientAgent(patches.Agent):
 
 
 class TestPatch(patches.Patch):
-    def serviceLookup(self, typeNameStr):
-        return self.group.worldInteractants[typeNameStr][:]
-
-    def isLocal(self, gblAddr):
-        """Is the address local to this patch?"""
-        return (gblAddr.getPatchAddr() == self.tag)
-
-    def getPathTo(self, gblAddr):
-        if self.isLocal(gblAddr):
-            for itr in self.interactants:
-                if itr.getGblAddr() == gblAddr:
-                    return (itr, True)
-            raise RuntimeError("%s: Unknown supposedly-local address %s" % (self.name, gblAddr))
-        else:
-            patchAddr = gblAddr.getPatchAddr()
-            for g in self.outgoingGates:
-                if g.destTag == patchAddr:
-                    return (g, False)
-            raise RuntimeError("%s: No path to right patch for address %s" % (self.name, gblAddr))
+    pass
 
 
 class TestPatchGroup(patches.PatchGroup):
-
-    def shareInteractantDirectories(self):
-        myInteractants = defaultdict(list)
-        for p in self.patches:
-            pId = p.patchId
-            for iact in p.interactants:
-                nm = iact._name
-                classNm = iact.__class__.__name__
-                myInteractants[classNm].append((nm, self.getGblAddr((pId, iact.id))))
-        gblAllInteractants = defaultdict(list)
-        for d in self.nI.comm.allgather(myInteractants):
-            for k, v in d.items():
-                gblAllInteractants[k].extend(v)
-        return gblAllInteractants
-
-    def isLocal(self, gblAddr):
-        return self.nI.isLocal(gblAddr)
-
-    def start(self):
-        self.worldInteractants = self.shareInteractantDirectories()
-        patches.PatchGroup.start(self)
+    pass
 
 
 def describeSelf():
@@ -368,12 +326,12 @@ def describeSelf():
 
 def main():
     trace = False
-    verbose = False
+    verbose = False  # @UnusedVariable
     debug = False
 
     for a in sys.argv[1:]:
         if a == '-v':
-            verbose = True
+            verbose = True  # @UnusedVariable
         elif a == '-d':
             debug = True
         elif a == '-t':
@@ -386,22 +344,13 @@ def main():
     patchGroup = TestPatchGroup(comm, trace=trace)
     nPatches = 2
     for j in xrange(nPatches):  # @UnusedVariable
-        patch = TestPatch(patchGroup)
-        patchGroup.addPatch(patch)
+        patch = patchGroup.addPatch(TestPatch(patchGroup))
         facility = Facility('Facility_%s' % patch.tag, patch)
         ward0 = facility.addWard(Ward('Ward_%s_Tier0' % patch.tag, patch, 0, 1000))
         ward1 = facility.addWard(Ward('Ward_%s_Tier1' % patch.tag, patch, 1, 100))
         ward2 = facility.addWard(Ward('Ward_%s_Tier2' % patch.tag, patch, 2, 20))
-        iList = [facility.reqQueue, facility.holdQueue, ward0, ward1, ward2]
+        allItr = [facility.reqQueue, facility.holdQueue, ward0, ward1, ward2]
         allAgents = [facility.manager]
-
-        # Fully connect everything
-        for r in xrange(comm.size):
-            for jj in xrange(nPatches):
-                friend = GblAddr(r, jj)
-                if patch.tag != friend:  # whoops, that's me!
-                    patch.addGateTo(friend)
-                    patch.addGateFrom(friend)
 
         for i in xrange(10):
             a = PatientAgent('PatientAgent_%s_%d' % (patch.tag, i),
@@ -410,9 +359,8 @@ def main():
             a.ward = ward0
             allAgents.append(a)
 
-        patch.addInteractants(iList)
+        patch.addInteractants(allItr)
         patch.addAgents(allAgents)
-    patchGroup.barrier()
     patchGroup.start()
     print '%s all done (from main)' % patchGroup.name
 
@@ -423,4 +371,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
