@@ -152,6 +152,14 @@ class Interactant():
         return '<%s>' % self._name
 
     def lock(self, lockingAgent, debug=True):
+        """
+        Agents always lock interactants before modifying their state.  This can be thought of as
+        'docking with' the interactant.  Only one agent can hold a lock for a normal interactant
+        and be active; any agent that subsequently tries to lock the same interactant will be
+        suspended until the firs agent unlocks the interactant.  (However, see MultiInteractant).
+        Thus interactants can serve as queues; agents can enqueue themselves by locking the
+        interactant and some other agent can modify them while they are in the locked state.
+        """
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if ((self._lockingAgent is None and not self._lockQueue)
                 or self._lockingAgent == lockingAgent):
@@ -171,6 +179,11 @@ class Interactant():
             return timeNow
 
     def unlock(self, oldLockingAgent):
+        """
+        This method will typically be called by an active agent which holds a lock on the
+        interactant.  The lock is broken, causing the first agent which is suspended waiting
+        for a lock to become active.
+        """
         if self._lockingAgent != oldLockingAgent:
             raise RuntimeError('%s is not the lock of %s' % (oldLockingAgent, self._name))
         timeNow = self._ownerLoop.sequencer.getTimeNow()
@@ -195,7 +208,12 @@ class Interactant():
         """
         The agent is expected to be sleeping in this interactant's _lockQueue.  Calling
         awaken(agent) removes the agent from _lockQueue and re-inserts it into the
-        main loop, so that it will resume running in its turn.
+        main loop, so that it will resume running in its turn.  Essentially, the agent
+        has been unlocked from the interactant in such a way that it will never become
+        active in a locked state.  The agent which calls awaken on a locked agent does
+        not yield its thread; the awakened agent simply joins the queue to become active
+        in its turn.  It is an error to awaken an agent which is not suspended in the
+        interactant's wait queue.
         """
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if agent not in self._lockQueue:
@@ -210,15 +228,37 @@ class Interactant():
         self._ownerLoop.sequencer.enqueue(agent, timeNow)
         return agent
 
+    def isLocked(self, agent):
+        """
+        Returns True if this interactant is currently locked by the given agent, whether the
+        agent is active or has been suspended in the interactant's lock wait queue.  It is
+        unlikely that a scenario will arise in which an agent will ever have to test whether
+        it holds a lock, but the method exists for completeness of the API.
+        """
+        return (self._lockingAgent == agent or agent in self._lockQueue)
+
 
 class MultiInteractant(Interactant):
+    """
+    A MultiInteractant functions like a generic Interactant, except that more than one
+    agent can lock it simultaneously and yet remain active.
+    """
+
     def __init__(self, name, count, ownerLoop, debug=False):
+        """
+        Create an interactant that can simulaneously hold locks for 'count' active
+        agents.
+        """
         Interactant.__init__(self, name, ownerLoop, debug)
         self._nLocks = count
         self._lockingAgentList = []
         self._debug = True
 
     def lock(self, lockingAgent, debug=True):
+        """
+        Works like the lock() method of a standard Interactant, except that the first
+        'count' agents to lock the interactant remain active.
+        """
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if lockingAgent in self._lockingAgentList:
             if debug and self._debug and lockingAgent.debug:
@@ -260,6 +300,9 @@ class MultiInteractant(Interactant):
             if self._debug:
                 print '%s fast unlock of %s' % (self._name, oldLockingAgent)
         return timeNow
+
+    def isLocked(self, agent):
+        return (agent in self._lockingAgentList or agent in self._lockQueue)
 
     def __str__(self):
         return '<%s (%d of %d)>' % (self._name, len(self._lockingAgentList), self._nLocks)
