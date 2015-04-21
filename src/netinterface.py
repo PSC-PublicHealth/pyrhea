@@ -81,7 +81,7 @@ class GblAddr(object):
 
 
 class NetworkInterface(object):
-    def __init__(self, comm, sync=True):
+    def __init__(self, comm, sync=True, deterministic=False):
         self.comm = comm
         self.vclock = VectorClock(self.comm.size, self.comm.rank)
         self.outgoingDict = {}
@@ -90,6 +90,7 @@ class NetworkInterface(object):
         self.expectFrom = set()
         self.clientIncomingCallbacks = {}
         self.sync = sync
+        self.deterministic = deterministic
         self.endOfDayMsg = []
         self.nEndOfDayNeighbors = 0
         self.incomingLclMessages = []
@@ -132,9 +133,16 @@ class NetworkInterface(object):
                                       destAddr.lclId)] = handleIncoming
 
     def startRecv(self):
-        for srcRank in self.expectFrom:
-            if srcRank != self.comm.rank:
-                self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
+        if self.deterministic:
+            l = [a for a in self.expectFrom]
+            l.sort()
+            for srcRank in l:
+                if srcRank != self.comm.rank:
+                    self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
+        else:
+            for srcRank in self.expectFrom:
+                if srcRank != self.comm.rank:
+                    self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
@@ -150,7 +158,17 @@ class NetworkInterface(object):
         while True:
             if not self.outstandingRecvReqs:
                 break
-            if self.sync:
+            if self.deterministic:
+                msg = MPI.Request.wait(self.outstandingRecvReqs[0])
+                self.outstandingRecvReqs.pop(0)
+                vtm = msg[0]
+                #
+                # Handle vtime order issues here
+                #
+                self.vclock.merge(vtm)
+                for tpl in msg[1:]:
+                    self._innerRecv(tpl)
+            elif self.sync:
                 idx, msg = MPI.Request.waitany(self.outstandingRecvReqs)
                 self.outstandingRecvReqs.pop(idx)
                 vtm = msg[0]
@@ -181,18 +199,36 @@ class NetworkInterface(object):
 
     def startSend(self):
         vTimeNow = self.vclock.vec
-        for destRank, msgList in self.outgoingDict.items():
-            if destRank == self.comm.rank:
-                # local message
-                for srcTag, destTag, msgType, cargo in msgList:
-                    self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
-            else:
-                bigCargo = [vTimeNow]
-                for srcTag, destTag, msgType, cargo in msgList:
-                    bigCargo.append((msgType, srcTag, destTag, cargo))
-                # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
-                bigCargo.extend(self.endOfDayMsg)
-                self.outstandingSendReqs.append(self.comm.isend(bigCargo, destRank))
+        if self.deterministic:
+            l = self.outgoingDict.keys()
+            l.sort()
+            for destRank in l:
+                msgList = self.outgoingDict[destRank][:]
+                msgList.sort()
+                if destRank == self.comm.rank:
+                    # local message
+                    for srcTag, destTag, msgType, cargo in msgList:
+                        self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
+                else:
+                    bigCargo = [vTimeNow]
+                    for srcTag, destTag, msgType, cargo in msgList:
+                        bigCargo.append((msgType, srcTag, destTag, cargo))
+                    # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
+                    bigCargo.extend(self.endOfDayMsg)
+                    self.outstandingSendReqs.append(self.comm.isend(bigCargo, destRank))
+        else:
+            for destRank, msgList in self.outgoingDict.items():
+                if destRank == self.comm.rank:
+                    # local message
+                    for srcTag, destTag, msgType, cargo in msgList:
+                        self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
+                else:
+                    bigCargo = [vTimeNow]
+                    for srcTag, destTag, msgType, cargo in msgList:
+                        bigCargo.append((msgType, srcTag, destTag, cargo))
+                    # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
+                    bigCargo.extend(self.endOfDayMsg)
+                    self.outstandingSendReqs.append(self.comm.isend(bigCargo, destRank))
         self.outgoingDict.clear()
         self.endOfDayMsg = []
 

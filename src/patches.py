@@ -9,9 +9,9 @@ import netinterface
 
 """
 To Do:
--Add day management logic
 -Add rollback chain support
 -Implement rollback
+-Add day management logic
 """
 
 
@@ -403,12 +403,12 @@ class PatchGroup(greenlet):
             self.nI.vclock.incr()
         return evtFun
 
-    def __init__(self, comm, name=None, sync=True, trace=False):
+    def __init__(self, comm, name=None, sync=True, trace=False, deterministic=False):
         if trace:
             greenlet.settrace(greenletTrace)
 
         self.patches = []
-        self.nI = netinterface.NetworkInterface(comm, sync=sync)
+        self.nI = netinterface.NetworkInterface(comm, sync=sync, deterministic=deterministic)
         if name is None:
             self.name = 'PatchGroup_%d' % comm.rank
         else:
@@ -419,6 +419,7 @@ class PatchGroup(greenlet):
         self.expectFrom = set()
         self.clientGateExits = {}
         self.sync = sync
+        self.deterministic = deterministic
         self.endOfDay = False
 
     @property
@@ -490,12 +491,25 @@ class PatchGroup(greenlet):
                 myInteractants[classNm].append((nm, self.getGblAddr((pId, iact.id))))
         gblAllInteractants = defaultdict(list)
         gblAllPatches = []
-        for d in self.nI.comm.allgather(myInteractants):
-            for k, v in d.items():
-                if k == '_':
-                    gblAllPatches.extend(v)
-                else:
+        if self.deterministic:
+            # Be meticulous, so that things get inserted in consistent order
+            dList = self.nI.comm.allgather(myInteractants)
+            l = [(d['_'], d) for d in dList]
+            l.sort()
+            l = [b for a, b in l]  # @UnusedVariable
+            for d in l:
+                gblAllPatches.extend(d['_'])
+                subL = [(k, v) for k, v in d.items() if k != '_']
+                subL.sort()
+                for k, v in subL:
                     gblAllInteractants[k].extend(v)
+        else:
+            for d in self.nI.comm.allgather(myInteractants):
+                for k, v in d.items():
+                    if k == '_':
+                        gblAllPatches.extend(v)
+                    else:
+                        gblAllInteractants[k].extend(v)
         return gblAllInteractants, gblAllPatches
 
     def isLocal(self, gblAddr):

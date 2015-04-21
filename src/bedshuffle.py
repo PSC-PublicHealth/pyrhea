@@ -3,7 +3,7 @@
 _rhea_svn_id_ = "$Id$"
 
 import sys
-from random import randint, shuffle
+from random import randint, shuffle, seed
 import patches
 
 
@@ -328,6 +328,7 @@ def main():
     trace = False
     verbose = False  # @UnusedVariable
     debug = False
+    deterministic = False
 
     for a in sys.argv[1:]:
         if a == '-v':
@@ -336,12 +337,18 @@ def main():
             debug = True
         elif a == '-t':
             trace = True
+        elif a == '-D':
+            deterministic = True
         else:
             describeSelf()
             sys.exit('unrecognized argument %s' % a)
 
     comm = patches.getCommWorld()
-    patchGroup = TestPatchGroup(comm, trace=trace)
+
+    if deterministic:
+        seed(1234 + comm.rank)  # Set the random number generator seed
+
+    patchGroup = TestPatchGroup(comm, trace=trace, deterministic=deterministic)
     nPatches = 2
     for j in xrange(nPatches):  # @UnusedVariable
         patch = patchGroup.addPatch(TestPatch(patchGroup))
