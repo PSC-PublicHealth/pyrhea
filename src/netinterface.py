@@ -5,6 +5,7 @@ _rhea_svn_id_ = "$Id$"
 from mpi4py import MPI
 import numpy as np
 import types
+from collections import namedtuple
 
 
 class MsgTypes():
@@ -39,16 +40,10 @@ class VectorClock(object):
         return np.amin(self.vec)
 
 
-class GblAddr(object):
-    def __init__(self, rank, lclId):
-        self.rank = rank
-        self.lclId = lclId
+_InnerGblAddr = namedtuple('_innerGblAddr', ['rank', 'lclId'])
 
-    def __str__(self):
-        if isinstance(self.lclId, types.TupleType):
-            return '%d_%d_%d' % (self.rank, self.lclId[0], self.lclId[1])
-        else:
-            return '%d_%d' % (self.rank, self.lclId)
+
+class GblAddr(_InnerGblAddr):
 
     def getLclAddr(self):
         return self.lclId
@@ -58,6 +53,12 @@ class GblAddr(object):
             return GblAddr(self.rank, self.lclId[0])
         else:
             return GblAddr(self.rank, self.lclId)
+
+    def __str__(self):
+        if isinstance(self.lclId, types.TupleType):
+            return '%d_%d_%d' % (self.rank, self.lclId[0], self.lclId[1])
+        else:
+            return '%d_%d' % (self.rank, self.lclId)
 
     def __lt__(self, other):
         return (self.rank < other.rank

@@ -310,7 +310,7 @@ class Patch(object):
         self.group = group
         self.tag = group.getGblAddr(self.patchId)
         if name is None:
-            self.name = "Patch_%s" % self.tag
+            self.name = "Patch_%s" % str(self.tag)
         self.loop = agent.MainLoop(self.name + '.loop')
         self.gateAgent = GateAgent(self)
         self.outgoingGates = []
