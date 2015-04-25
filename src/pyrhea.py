@@ -5,20 +5,10 @@ _rhea_svn_id_ = "$Id$"
 import sys
 import math
 from random import randint, random, shuffle, seed, choice
-from collections import namedtuple
 import patches
 import pyrheabase
+from pyrheautils import enum, namedtuple
 
-
-def enum(*sequential, **named):
-    """
-    Thanks to stackoverflow user Alec Thomas for this answer to 'How can I represent an
-    'Enum' in Python?'
-    """
-    enums = dict(zip(sequential, range(len(sequential))), **named)
-    reverse = dict((value, key) for key, value in enums.iteritems())
-    enums['names'] = reverse
-    return type('Enum', (), enums)
 
 CareTier = enum('HOME', 'REHAB', 'ASSISTED', 'NURSING', 'HOSP', 'ICU')
 
@@ -32,26 +22,14 @@ PatientStatus = namedtuple('PatientStatus',
                            ['diagClassA',           # one of DiagClassA
                             'diagACountdown',       # days until better
                             'diagClassB',           # one of DiagClassB
-                            ])
-
-
-def strFun(self):
-    return ('PatientStatus(diagClassA=%s, diagACountdown=%s, diagClassB=%s)' %
-            (DiagClassA.names[self.diagClassA], self.diagACountdown,
-             DiagClassB.names[self.diagClassB]))
-PatientStatus.__str__ = strFun
+                            ],
+                           field_types=[DiagClassA, None, DiagClassB])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['diagClassA',           # one of DiagClassA
                                'diagClassB',           # one of DiagClassB
-                               ])
-
-
-def strFun2(self):
-    return ('PatientDiagnosis(diagClassA=%s, diagClassB=%s)' %
-            (DiagClassA.names[self.diagClassA], DiagClassB.names[self.diagClassB]))
-PatientDiagnosis.__str__ = strFun2
-
+                               ],
+                              field_types=[DiagClassA, DiagClassB])
 
 healthyGetSickProbPerDay = 0.01
 
@@ -96,6 +74,7 @@ class Facility(pyrheabase.Facility):
                 raise RuntimeError('Unknown DiagClassB %s' % str(patientDiagnosis.diagClassB))
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
+
 
 PatientState = enum('ATWARD', 'MOVING')
 
