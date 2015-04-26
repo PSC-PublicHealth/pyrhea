@@ -252,9 +252,9 @@ class MultiInteractant(Interactant):
         Interactant.__init__(self, name, ownerLoop, debug)
         self._nLocks = count
         self._lockingAgentList = []
-        self._debug = True
+        self._debug = debug
 
-    def lock(self, lockingAgent, debug=True):
+    def lock(self, lockingAgent, debug=False):
         """
         Works like the lock() method of a standard Interactant, except that the first
         'count' agents to lock the interactant remain active.
@@ -326,7 +326,7 @@ class MainLoop(greenlet):
                 for cb in self.ownerLoop.perTickCallbacks:
                     cb(self, timeNow, newTimeNow)
                 if newTimeNow != timeNow:
-                    print '%s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
+                    print '###### %s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
                     timeNow = newTimeNow
 
     @staticmethod
