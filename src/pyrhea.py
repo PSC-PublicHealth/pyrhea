@@ -286,7 +286,7 @@ def main():
 
         count = 0
         communityWards = []
-        for tier, nBeds in [(CareTier.HOME, 10000), (CareTier.HOME, 10000)]:
+        for tier, nBeds in [(CareTier.HOME, 5500), (CareTier.HOME, 5500)]:
             w = community.addWard(CommunityWard('Community_%s_%s_%d' % (community.name,
                                                                         CareTier.names[tier],
                                                                         count),
@@ -295,7 +295,7 @@ def main():
             allItr.append(w)
             count += 1
 
-        for i in xrange(18000):
+        for i in xrange(10000):
             ward = choice(communityWards)
             a = PatientAgent('PatientAgent_%s_%d' % (str(patch.tag), i),
                              patch, choice(communityWards), debug=debug)
