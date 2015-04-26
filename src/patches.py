@@ -167,6 +167,8 @@ class GateAgent(Agent):
 
 
 class GateEntrance(Interactant):
+    queueBlockSize = 4  # limits network packet size
+
     def __init__(self, name, ownerPatch, destTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.destTag = destTag
@@ -175,9 +177,16 @@ class GateEntrance(Interactant):
     def cycleStart(self, timeNow):
         if self._debug:
             print '%s begins cycleStart; destTag is %s' % (self._name, self.destTag)
-        self.patch.group.enqueue(MsgTypes.GATE, (timeNow, self._lockQueue),
-                                 self.patch.tag, self.destTag)
         self.nInTransit = len(self._lockQueue)
+        if self._lockQueue:
+            q = self._lockQueue
+            while q:
+                self.patch.group.enqueue(MsgTypes.GATE, (timeNow, q[:GateEntrance.queueBlockSize]),
+                                         self.patch.tag, self.destTag)
+                q = q[GateEntrance.queueBlockSize:]
+        else:
+            self.patch.group.enqueue(MsgTypes.GATE, (timeNow, []),
+                                     self.patch.tag, self.destTag)
         self._lockQueue = []
         self._nEnqueued = 0
         if self._debug:
@@ -239,14 +248,14 @@ class GateExit(Interactant):
                     print '%s materializes at %s' % (a.name, self._name)
         elif msgType == MsgTypes.SINGLE_ENDOFDAY:
             srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-#             print ('%s got EOD %s from %s %s when partnerEOD = %s' %
-#                    (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay))
+            # print ('%s got EOD %s from %s %s when partnerEOD = %s' %
+            #        (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay))
             self.partnerMaxDay = partnerDay
             self.partnerEndOfDay = True
         elif msgType == MsgTypes.SINGLE_ANTI_ENDOFDAY:
             srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-#             print ('%s got Anti-EOD %d from %s when partnerEOD = %s' %
-#                    (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
+            # print ('%s got Anti-EOD %d from %s when partnerEOD = %s' %
+            #        (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
             self.partnerMaxDay = partnerDay
             self.partnerEndOfDay = False
         else:
@@ -453,10 +462,10 @@ class PatchGroup(greenlet):
             for p in self.patches:
                 # print '######## %s: running patch %s' % (self.name, p.name)
                 reply = p.loop.switch()  # @UnusedVariable
-            # print '######### %s: finish last send' % self.name
-            self.nI.finishSend()
             # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
+            # print '######### %s: finish last send' % self.name
+            self.nI.finishSend()
             # print '######### %s: start recv' % self.name
             self.nI.startRecv()
             # print '######### %s: start send' % self.name
