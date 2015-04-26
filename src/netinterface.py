@@ -8,14 +8,6 @@ import types
 from collections import namedtuple
 
 
-class MsgTypes():
-    GATE = 0
-    ENDOFDAY = 1
-    ANTI_ENDOFDAY = 2
-    SINGLE_ENDOFDAY = 3
-    SINGLE_ANTI_ENDOFDAY = 4
-
-
 def getCommWorld():
     """Provide easy access to the world to packages that don't want to know about MPI"""
     return MPI.COMM_WORLD
@@ -82,6 +74,10 @@ class GblAddr(_InnerGblAddr):
 
 
 class NetworkInterface(object):
+    MPI_TAG_MORE = 1
+    MPI_TAG_END = 2
+    maxChunksPerMsg = 8
+
     def __init__(self, comm, sync=True, deterministic=False):
         self.comm = comm
         self.vclock = VectorClock(self.comm.size, self.comm.rank)
@@ -110,14 +106,6 @@ class NetworkInterface(object):
         if toRank not in self.outgoingDict:
             self.outgoingDict[toRank] = []
         self.outgoingDict[toRank].append((srcAddr, gblAddr, msgType, thing))
-
-    def sendEOD(self, date):
-        """Send an end-of-day message through all outgoing gates"""
-        self.endOfDayMsg.append((MsgTypes.ENDOFDAY, date))
-
-    def sendAntiEOD(self, date):
-        """Send an revoke-end-of-day message through all outgoing gates"""
-        self.endOfDayMsg.append((MsgTypes.ANTI_ENDOFDAY, date))
 
     def expect(self, srcAddr, destAddr, handleIncoming):
         """
@@ -170,8 +158,13 @@ class NetworkInterface(object):
                 for tpl in msg[1:]:
                     self._innerRecv(tpl)
             elif self.sync:
-                idx, msg = MPI.Request.waitany(self.outstandingRecvReqs)
+                s = MPI.Status()
+                idx, msg = MPI.Request.waitany(self.outstandingRecvReqs, s)
                 self.outstandingRecvReqs.pop(idx)
+                tag = s.Get_tag()
+                if tag == NetworkInterface.MPI_TAG_MORE:
+                    self.outstandingRecvReqs.append(self.comm.irecv(None, s.Get_source(),
+                                                                    MPI.ANY_TAG))
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -195,8 +188,6 @@ class NetworkInterface(object):
                     # print '######## %s empty recv queue' % self.name
                     break
         self.outstandingRecvReqs = []
-        # if self.sync:
-        #     self.comm.Barrier()
 
     def startSend(self):
         vTimeNow = self.vclock.vec
@@ -224,12 +215,21 @@ class NetworkInterface(object):
                     for srcTag, destTag, msgType, cargo in msgList:
                         self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
                 else:
-                    bigCargo = [vTimeNow]
-                    for srcTag, destTag, msgType, cargo in msgList:
-                        bigCargo.append((msgType, srcTag, destTag, cargo))
+                    while msgList:
+                        bigCargo = [vTimeNow]
+                        for srcTag, destTag, msgType, cargo \
+                                in msgList[0:NetworkInterface.maxChunksPerMsg]:
+                            bigCargo.append((msgType, srcTag, destTag, cargo))
+                        msgList = msgList[NetworkInterface.maxChunksPerMsg:]
+                        if msgList:
+                            req = self.comm.isend(bigCargo, destRank,
+                                                  tag=NetworkInterface.MPI_TAG_MORE)
+                        else:
+                            bigCargo.extend(self.endOfDayMsg)
+                            req = self.comm.isend(bigCargo, destRank,
+                                                  tag=NetworkInterface.MPI_TAG_END)
+                        self.outstandingSendReqs.append(req)
                     # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
-                    bigCargo.extend(self.endOfDayMsg)
-                    self.outstandingSendReqs.append(self.comm.isend(bigCargo, destRank))
         self.outgoingDict.clear()
         self.endOfDayMsg = []
 
