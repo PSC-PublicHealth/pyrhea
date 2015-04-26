@@ -21,9 +21,10 @@ def enum(*sequential, **named):
 def namedtuple(typename, field_names, verbose=False, rename=False, field_types=None):
     """
     This is equivalent to collections.namedtuple(), but adds some support for printing
-    enum strings.
+    enum strings and for pickling.
     """
     newTp = collections.namedtuple(typename, field_names, verbose=verbose, rename=rename)
+
     if field_types is not None:
         assert isinstance(field_types, types.ListType), "field_types is not a list"
         assert len(field_types) == len(field_names), \
@@ -48,6 +49,10 @@ def namedtuple(typename, field_names, verbose=False, rename=False, field_types=N
 
         newTp.__repr__ = newrepr
 
+    assert newTp.__name__ not in globals(), \
+        "module %s already has a type named %s" % (__name__, newTp.__name__)
+    globals()[newTp.__name__] = newTp  # So the pickle can find it later
+
     return newTp
 
 
@@ -57,5 +62,20 @@ class TestUtilFuncs(unittest.TestCase):
         PatientStatus = namedtuple('PatientStatus', ['careTier', 'thing', 'age'],
                                    field_types=[CareTier, None, types.IntType])
         thing = PatientStatus(CareTier.HOSP, 'first', 7)
-        self.assertTrue(str(thing) == "PatientStatus(careTier=HOSP, thing='first', age=7)")
-        self.assertTrue(repr(thing) == "PatientStatus(careTier=HOSP, thing='first', age=7)")
+        self.assertTrue(str(thing) == "PatientStatus(careTier=HOSP, thing='first', age=7)",
+                        "namedtuple.__str__ failed")
+        self.assertTrue(repr(thing) == "PatientStatus(careTier=HOSP, thing='first', age=7)",
+                        "namedtuple.__repr__ failed")
+
+    def test_namedtuple2(self):
+        import pickle
+        CareTier = enum('HOME', 'HOSP')
+        NewStatus = namedtuple('NewStatus', ['careTier', 'thing', 'age'],
+                               field_types=[CareTier, None, types.IntType])
+        thing = NewStatus(CareTier.HOSP, 'first', 7)
+        pStr = pickle.dumps(thing)
+        thing2 = pickle.loads(pStr)
+        self.assertTrue((thing.careTier == thing2.careTier) and (thing.thing == thing2.thing)
+                        and (thing.age == thing2.age),
+                        "namedtuple pickling failed")
+        self.assertTrue(str(thing2) == str(thing), "namedtuple pickling fails to preserve __str__")
