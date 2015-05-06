@@ -7,7 +7,6 @@ import numpy as np
 import types
 from collections import namedtuple
 
-
 def getCommWorld():
     """Provide easy access to the world to packages that don't want to know about MPI"""
     return MPI.COMM_WORLD
@@ -76,7 +75,8 @@ class GblAddr(_InnerGblAddr):
 class NetworkInterface(object):
     MPI_TAG_MORE = 1
     MPI_TAG_END = 2
-    maxChunksPerMsg = 8
+    maxChunksPerMsg = 256000
+    irecvBufferSize = 1024*1024
 
     def __init__(self, comm, sync=True, deterministic=False):
         self.comm = comm
@@ -127,11 +127,13 @@ class NetworkInterface(object):
             l.sort()
             for srcRank in l:
                 if srcRank != self.comm.rank:
-                    self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
+                    buf = bytearray(NetworkInterface.irecvBufferSize)
+                    self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
         else:
             for srcRank in self.expectFrom:
                 if srcRank != self.comm.rank:
-                    self.outstandingRecvReqs.append(self.comm.irecv(None, srcRank, MPI.ANY_TAG))
+                    buf = bytearray(NetworkInterface.irecvBufferSize)
+                    self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
@@ -163,7 +165,8 @@ class NetworkInterface(object):
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
-                    self.outstandingRecvReqs.append(self.comm.irecv(None, s.Get_source(),
+                    buf = bytearray(NetworkInterface.irecvBufferSize)
+                    self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
                 vtm = msg[0]
                 #

@@ -45,7 +45,8 @@ class CommunityWard(Ward):
 
     def __init__(self, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds)
-        self.checkInterval = 30  # check health daily
+        self.checkInterval = 30  # check health monthly
+        #self.checkInterval = 1  # check health monthly
 
 
 class Facility(pyrheabase.Facility):
@@ -295,7 +296,7 @@ def main():
             allItr.append(w)
             count += 1
 
-        for i in xrange(10000):
+        for i in xrange(3000):
             ward = choice(communityWards)
             a = PatientAgent('PatientAgent_%s_%d' % (str(patch.tag), i),
                              patch, choice(communityWards), debug=debug)

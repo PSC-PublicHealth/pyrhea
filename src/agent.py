@@ -5,6 +5,7 @@ _rhea_svn_id_="$Id$"
 import sys
 import types
 from greenlet import greenlet
+#from gevent import Greenlet as greenlet
 from random import randint
 import weaklist
 

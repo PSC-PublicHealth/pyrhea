@@ -2,9 +2,6 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import sys
-import math
-from random import randint, random, shuffle, seed
 import patches
 
 
@@ -120,6 +117,8 @@ class BedRequest(patches.Agent):
     STATE_GOTWARD = 3
     STATE_FAILED = 5
     STATE_MOVING = 6
+#     brCount = 0
+#     hook = None
 
     def __init__(self, name, patch, tier, homeWardAddr, patientKey,
                  facilityOptions, debug=False):
@@ -131,6 +130,10 @@ class BedRequest(patches.Agent):
         self.bedWard = None
         self.fsmstate = BedRequest.STATE_START
         self.dest = None
+        #print 'BR %d'%BedRequest.brCount
+#         BedRequest.brCount += 1
+#         if BedRequest.brCount == 234:
+#             BedRequest.hook = self
 
     def run(self, startTime):
         timeNow = startTime
