@@ -103,46 +103,47 @@ class PatientAgent(patches.Agent):
     def updateDiseaseState(self, treatment, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
-        self.lastUpdateTime = timeNow
-        diagA = self._status.diagClassA
-        diagACountdown = self._status.diagACountdown
-        diagB = self._status.diagClassB
-        if self._status.diagClassA == DiagClassA.HEALTHY:
-            pBar = 1.0 - healthyGetSickProbPerDay
-            gotSick = (random() > math.pow(pBar, dT))
-            if gotSick:
-                diagA = DiagClassA.SICK
-                diagACountdown = randint(3, 10)
+        if dT > 0:  # moving from one ward to another can trigger two updates the same day
+            self.lastUpdateTime = timeNow
+            diagA = self._status.diagClassA
+            diagACountdown = self._status.diagACountdown
+            diagB = self._status.diagClassB
+            if self._status.diagClassA == DiagClassA.HEALTHY:
+                pBar = 1.0 - healthyGetSickProbPerDay
+                gotSick = (random() > math.pow(pBar, dT))
+                if gotSick:
+                    diagA = DiagClassA.SICK
+                    diagACountdown = randint(3, 10)
+                else:
+                    pass  # no update; still healthy
+            elif self._status.diagClassA == DiagClassA.SICK:
+                diagACountdown -= dT
+                if diagACountdown <= 0:
+                    diagA = DiagClassA.HEALTHY
+                    diagACountdown = 0
             else:
-                pass  # no update; still healthy
-        elif self._status.diagClassA == DiagClassA.SICK:
-            diagACountdown -= dT
-            if diagACountdown <= 0:
-                diagA = DiagClassA.HEALTHY
-                diagACountdown = 0
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(diagA))
-
-        if diagB == DiagClassB.CLEAR:
-            if random() < 0.1:
-                diagB = DiagClassB.COLONIZED
-        elif diagB == DiagClassB.COLONIZED:
-            r = random()
-            if r < 0.3:
-                diagB = DiagClassB.CLEAR
-            elif r < 0.7:
-                diagB = DiagClassB.COLONIZED
+                raise RuntimeError('Unknown DiagClassA %s' % str(diagA))
+    
+            if diagB == DiagClassB.CLEAR:
+                if random() < 0.1:
+                    diagB = DiagClassB.COLONIZED
+            elif diagB == DiagClassB.COLONIZED:
+                r = random()
+                if r < 0.3:
+                    diagB = DiagClassB.CLEAR
+                elif r < 0.7:
+                    diagB = DiagClassB.COLONIZED
+                else:
+                    diagB = DiagClassB.INFECTED
+            elif diagB == DiagClassB.INFECTED:
+                if random() < 0.2:
+                    diagB = DiagClassB.COLONIZED
+                else:
+                    diagB = DiagClassB.INFECTED
             else:
-                diagB = DiagClassB.INFECTED
-        elif diagB == DiagClassB.INFECTED:
-            if random() < 0.2:
-                diagB = DiagClassB.COLONIZED
-            else:
-                diagB = DiagClassB.INFECTED
-        else:
-            raise RuntimeError('Unknown DiagClassB %s' % str(diagB))
-
-        self._status = PatientStatus(diagA, diagACountdown, diagB)
+                raise RuntimeError('Unknown DiagClassB %s' % str(diagB))
+    
+            self._status = PatientStatus(diagA, diagACountdown, diagB)
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, timeNow)
@@ -169,10 +170,10 @@ class PatientAgent(patches.Agent):
                                                             key, facAddrList),
                                       timeNow)
                     timeNow = self.ward.fac.holdQueue.lock(self, key=key)
-                    # print '%s is awake with new addr %s!' % (self.name, self.newWardAddr)
                     if self.newWardAddr is None:
                         # Nowhere to go; try again tomorrow
-                        print '%s is stuck here; going back to sleep' % self.name
+                        print ('%s is stuck at %s; going back to sleep at %s' %
+                               (self.name, self.ward, timeNow))
                         timeNow = self.sleep(1)
                         # state is unchanged
                     else:
