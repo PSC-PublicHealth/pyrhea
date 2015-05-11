@@ -4,11 +4,9 @@ _rhea_svn_id_ = "$Id$"
 
 from collections import defaultdict
 from greenlet import greenlet
-#from gevent import Greenlet as greenlet
 import agent
 import netinterface
 #from pympler import tracker
-from pympler import refbrowser
 
 """
 To Do:
@@ -176,6 +174,7 @@ class GateEntrance(Interactant):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.destTag = destTag
         self.nInTransit = 0
+        self._oldLockQueue = []
 
     def cycleStart(self, timeNow):
         if self._debug:
@@ -190,9 +189,7 @@ class GateEntrance(Interactant):
         else:
             self.patch.group.enqueue(MsgTypes.GATE, (timeNow, []),
                                      self.patch.tag, self.destTag)
-#         for a in self._lockQueue:
-#             print 'shoot %s' % str(a)
-#             a.throw()  # cause greenlet to exit
+        self._oldLockQueue = self._lockQueue
         self._lockQueue = []
         self._nEnqueued = 0
         if self._debug:
@@ -202,6 +199,10 @@ class GateEntrance(Interactant):
         if self._debug:
             print '%s begins cycleFinish' % self._name
         self.nInTransit = 0
+        if not self.patch.group.isLocal(self.destTag):
+            for a in self._oldLockQueue:
+                a.kill()
+        self._oldLockQueue = []
         if self._debug:
             print '%s ends cycleFinish' % self._name
 
@@ -261,7 +262,7 @@ class GateExit(Interactant):
         elif msgType == MsgTypes.SINGLE_ANTI_ENDOFDAY:
             srcAddr, partnerDay = incomingTuple  # @UnusedVariable
             # print ('%s got Anti-EOD %d from %s when partnerEOD = %s' %
-            #        (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
+            #         (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
             self.partnerMaxDay = partnerDay
             self.partnerEndOfDay = False
         else:
@@ -293,6 +294,8 @@ class Patch(object):
                         self.group.sendGateEOD(self.tag, g.destTag, timeNow)
                 else:
                     # still not done with the day
+                    # print ('%s sequencer.doneWithToday is false at timeNow %s at %s' %
+                    #        (self.name, timeNow, self.group.nI.vclock.vec))
                     pass
             allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
             minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
@@ -410,6 +413,7 @@ def greenletTrace(event, args):
         print 'TRACE throw %s -> %s' % (origin, target)
         return
 
+
 def output_func(o):
     import types
     if hasattr(o, 'name'):
@@ -418,6 +422,7 @@ def output_func(o):
         return 'instance method %s.%s' % (output_func(o.im_self), o.im_func.__name__)
     else:
         return str(type(o))
+
 
 class PatchGroup(greenlet):
 
@@ -472,12 +477,15 @@ class PatchGroup(greenlet):
         return patch
 
     def run(self):
-        #tr = tracker.SummaryTracker()
+        # tr = tracker.SummaryTracker()
         while True:
             # print '######## %s: new pass of run' % (self.name)
             for p in self.patches:
-                # print '######## %s: running patch %s' % (self.name, p.name)
+                # print '######## %s: running patch %s: %s agents at time %s' % \
+                #     (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
+                #      p.loop.sequencer.getTimeNow())
                 reply = p.loop.switch()  # @UnusedVariable
+                # p.loop.printCensus()
             # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
             # print '######### %s: finish last send' % self.name
@@ -487,19 +495,6 @@ class PatchGroup(greenlet):
             # print '######### %s: start send' % self.name
             self.nI.startSend()
             # print '######### %s: finished networking' % self.name
-#             if self.patches[0].loop.sequencer.getTimeNow() >= 31:
-#                 if self.nI.comm.rank == 0:
-#                     from pyrheabase import BedRequest
-#                     if BedRequest.hook is None:
-#                         print '@@@@@@@ it is none'
-#                     else:
-#                         print '@@@@@@@ Hook is %s' % BedRequest.hook
-#                         fb = refbrowser.FileBrowser(BedRequest.hook, maxdepth=4, str_func=output_func)
-#                         fb.print_tree('debug2.txt')
-#                 else:
-#                     self.nI.barrier()
-#                 #tr.print_diff()
-#                 raise RuntimeError('all done')
 
     def __str__(self):
         return '<%s>' % self.name
