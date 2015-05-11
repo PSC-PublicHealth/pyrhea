@@ -52,7 +52,10 @@ class Sequencer(object):
         return self._timeNow
 
     def getNWaitingNow(self):
-        return len([a for a in self._timeQueues[self._timeNow] if not a.timeless])
+        if self._timeNow in self._timeQueues:
+            return len([a for a in self._timeQueues[self._timeNow] if not a.timeless])
+        else:
+            return 0
 
     def getTimeRange(self):
         t = self._timeNow
@@ -97,6 +100,8 @@ class Sequencer(object):
         for iact in Interactant.getLiveList():
             if (iact._lockingAgent is not None and iact._lockingAgent.timeless
                     and iact.getNWaiting()):
+                # print ('doneWithToday is false because %s has %d waiting: %s' %
+                #        (iact, iact.getNWaiting(), iact.getWaitingDetails()))
                 return False
         return all([a.timeless for a in self._timeQueues[self._timeNow]])
 
@@ -125,6 +130,17 @@ class Agent(greenlet):
     def __str__(self):
         return '<%s>' % self.name
 
+    def kill(self):
+        """
+        Cause this greenlet to throw GreenletExit.  If it is not the current greenlet,
+        this greenlet's parent is set to the current greenlet before throwing the exception,
+        causing execution to return to the current (calling) greenlet after the exception
+        is thrown.  If the greenlet is the current greenlet, execution passes to its parent.
+        """
+        if self != greenlet.getcurrent():
+            self.parent = greenlet.getcurrent()
+        self.throw()
+
 
 class Interactant():
     counter = 0
@@ -149,6 +165,17 @@ class Interactant():
         """This returns the count of waiting agents for which timeless is false"""
         return self._nEnqueued
 
+    def getWaitingDetails(self):
+        """Returns a dict of typeName:nOfThisType entries"""
+        result = {}
+        for a in self._lockQueue:
+            nm = type(a).__name__
+            if nm in result:
+                result[nm] += 1
+            else:
+                result[nm] = 1
+        return result
+
     def __str__(self):
         return '<%s>' % self._name
 
@@ -172,6 +199,7 @@ class Interactant():
             self._lockQueue.append(lockingAgent)
             if not lockingAgent.timeless:
                 self._nEnqueued += 1
+            # print '%s locked %s; nEnqueued = %d' % (self, lockingAgent, self._nEnqueued)
             if debug and self._debug and lockingAgent.debug:
                 print '%s slow lock of %s (%d in queue)' % \
                     (lockingAgent, self._name, self._nEnqueued)
@@ -220,9 +248,11 @@ class Interactant():
         if agent not in self._lockQueue:
             raise RuntimeError("%s does not hold %s in its lock queue; cannot awaken" %
                                (self._name, agent.name))
+        # print 'Interactant %s removes %s' % (self, agent)
         self._lockQueue.remove(agent)
         if not agent.timeless:
             self._nEnqueued -= 1
+        # print 'Interactant %s nEnqueued %d' % (self, self._nEnqueued)
         if self._debug:
             print ('%s removes %s from lock queue and awakens it (%d still in queue)' %
                    (self._name, agent.name, self._nEnqueued))
@@ -393,7 +423,7 @@ class MainLoop(greenlet):
     def printCensus(self):
         print '%s: Census at time %s:' % (self.name, self.sequencer.getTimeNow())
         for iact in Interactant.getLiveList():
-            print '    %s : %d' % (iact._name, iact.getNWaiting())
+            print '    %s : %s' % (iact._name, iact.getWaitingDetails())
         print '    main loop now : %d' % self.sequencer.getNWaitingNow()
 
     def __str__(self):
