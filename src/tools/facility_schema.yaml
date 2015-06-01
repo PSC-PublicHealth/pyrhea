@@ -1,0 +1,32 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/facility_schema.yaml'
+'title': 'facility schema'
+'description': 'facility schema'
+
+'definitions':
+
+  'caretier':
+    'type': 'string'
+    'enum': ['HOME', 'REHAB', 'ASSISTED','NURSING', 'HOSP', 'ICU']
+    
+  'ward':
+    'type': 'object'
+    'properties':
+      'tier': {'$ref': '#/definitions/caretier'}
+      'nBeds': {'minimum': 1, 'type': 'integer'}
+      'name': {'type': 'string'}
+    'required': ['name', 'tier', 'nBeds']
+    'additionalProperties': false
+
+  'facility':
+    'type': 'object'
+    'properties':
+      'abbrev': {'type': 'string'}
+      'wards':
+        'type': 'array'
+        'items':
+          '$ref': '#/definitions/ward'
+    'additionalProperties': false
+    
+'$ref': '#/definitions/facility'
+

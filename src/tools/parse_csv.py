@@ -4,9 +4,9 @@
 # Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
 # =============================================================================== #
 #                                                                                 #
-# Permission to use, copy, and modify this software and its documentation without # 
+# Permission to use, copy, and modify this software and its documentation without #
 # fee for personal use within your organization is hereby granted, provided that  #
-# the above copyright notice is preserved in all copies and that the copyright    # 
+# the above copyright notice is preserved in all copies and that the copyright    #
 # and this permission notice appear in supporting documentation.  All other       #
 # restrictions and obligations are defined in the GNU Affero General Public       #
 # License v3 (AGPL-3.0) located at http://www.gnu.org/licenses/agpl-3.0.html  A   #
@@ -19,8 +19,9 @@ _rhea_svn_id_="$Id$"
 
 import csv
 import os.path
-
+import math
 import csv_tools
+import yaml
 
 
 knownAbbrevs = set()
@@ -28,7 +29,13 @@ hospitalAbbrevs = set()
 nhAbbrevs = set()
 
 danteTestDir = '/home/welling/git/rhea-dante/test/nursing_home_CI_decolonization_2014'
-lclDir = '/home/welling/workspace/pyRHEA/src'
+lclDir = '/home/welling/workspace/pyRHEA/src/tools'
+
+
+def save_yaml(rec):
+    assert 'abbrev' in rec, "Required key 'abbrev' is missing"
+    with open('data/%s.yaml' % rec['abbrev'], 'w') as f:
+        yaml.dump(rec, f, canonical=True)
 
 """
 This one appears to contain an NxN matrix of transfer counts, where N is the number 
@@ -66,6 +73,7 @@ fName = 'RHEA_Hosp-NH_Inputs_ADULT_2007_v03_06APR2012_properties_MRSA-STRAT-LOS_
 with open(os.path.join(lclDir, fName), 'rU') as f:
     keys, recs = csv_tools.parseCSV(f)
 abbrevKeys = []
+print keys
 for k in keys:
     if k.lower().endswith('_abbrev'):
         abbrevKeys.append(k)
@@ -78,6 +86,9 @@ for rec in recs:
     assert all([a == firstAbbrev for a in l]), 'Mismatched abbreviation in %s' % l
     knownAbbrevs.add(firstAbbrev)
     infoRecDict[firstAbbrev] = rec
+print knownAbbrevs
+for k,v in infoRecDict['SJUD'].items():
+    print '%s: %s' % (k,v)
 #print len(knownAbbrevs)
 
 """
@@ -104,6 +115,10 @@ for k in aveCensusDict.keys():
         print 'found an abbrev late: <%s>' % k
         knownAbbrevs.add(k)
     nhAbbrevs.add(k)
+    nBeds = int(math.floor(aveCensusDict[k]/0.9))
+    save_yaml({'abbrev': k, 'wards': [{'name': 'Ward_%s_NURSING_0' % k,
+                                       'tier': 'NURSING',
+                                       'nBeds': nBeds}]})
 
 """
 Is this one actually input data? Were these entries derived from some larger collection of
@@ -140,6 +155,13 @@ for k in nhLOSDict.keys():
 for k in nhAbbrevs:
     if k not in nhLOSDict:
         print 'No LOS records for nursing home <%s>' % k
+
+for k in nhAbbrevs:
+    if k in nhLOSDict:
+        mean = (1.0*sum(nhLOSDict[k])) / (len(nhLOSDict[k]) - 1)
+        print 'LOS: %s: %s over %d entries' % (k, mean, len(nhLOSDict[k]))
+    else:
+        print 'No dict for %s'
 
 """
 If you get sent to a hospital from an assisted living nursing home, they hold your bed.

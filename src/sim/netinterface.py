@@ -20,7 +20,7 @@ _rhea_svn_id_ = "$Id$"
 from mpi4py import MPI
 import numpy as np
 import types
-from collections import namedtuple
+from collections import namedtuple, deque
 
 
 def getCommWorld():
@@ -91,15 +91,17 @@ class GblAddr(_InnerGblAddr):
 class NetworkInterface(object):
     MPI_TAG_MORE = 1
     MPI_TAG_END = 2
-    maxChunksPerMsg = 256000
+#     maxChunksPerMsg = 256000
+#     irecvBufferSize = 1024*1024
+    maxChunksPerMsg = 32
     irecvBufferSize = 1024*1024
 
     def __init__(self, comm, sync=True, deterministic=False):
         self.comm = comm
         self.vclock = VectorClock(self.comm.size, self.comm.rank)
         self.outgoingDict = {}
-        self.outstandingSendReqs = []
-        self.outstandingRecvReqs = []
+        self.outstandingSendReqs = deque()
+        self.outstandingRecvReqs = deque()
         self.expectFrom = set()
         self.clientIncomingCallbacks = {}
         self.sync = sync
@@ -166,8 +168,15 @@ class NetworkInterface(object):
             if not self.outstandingRecvReqs:
                 break
             if self.deterministic:
-                msg = MPI.Request.wait(self.outstandingRecvReqs[0])
-                self.outstandingRecvReqs.pop(0)
+                s = MPI.Status()
+                msg = MPI.Request.wait(self.outstandingRecvReqs[0], s)
+                self.outstandingRecvReqs.popleft()
+                tag = s.Get_tag()
+                if tag == NetworkInterface.MPI_TAG_MORE:
+                    print 'MORE from %s' % s.Get_source()
+                    buf = bytearray(NetworkInterface.irecvBufferSize)
+                    self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
+                                                                    MPI.ANY_TAG))
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -181,6 +190,7 @@ class NetworkInterface(object):
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
+                    print 'MORE from %s' % s.Get_source()
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
@@ -206,7 +216,7 @@ class NetworkInterface(object):
                 else:
                     # print '######## %s empty recv queue' % self.name
                     break
-        self.outstandingRecvReqs = []
+        self.outstandingRecvReqs = deque()
 
     def startSend(self):
         vTimeNow = self.vclock.vec
@@ -222,11 +232,19 @@ class NetworkInterface(object):
                         self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
                 else:
                     bigCargo = [vTimeNow]
-                    for srcTag, destTag, msgType, cargo in msgList:
+                    for srcTag, destTag, msgType, cargo \
+                            in msgList[0:NetworkInterface.maxChunksPerMsg]:
                         bigCargo.append((msgType, srcTag, destTag, cargo))
-                    # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
-                    bigCargo.extend(self.endOfDayMsg)
-                    self.outstandingSendReqs.append(self.comm.isend(bigCargo, destRank))
+                    msgList = msgList[NetworkInterface.maxChunksPerMsg:]
+                    if msgList:
+                        req = self.comm.isend(bigCargo, destRank,
+                                              tag=NetworkInterface.MPI_TAG_MORE)
+                    else:
+                        bigCargo.extend(self.endOfDayMsg)
+                        req = self.comm.isend(bigCargo, destRank,
+                                              tag=NetworkInterface.MPI_TAG_END)
+                    self.outstandingSendReqs.append(req)
+
         else:
             for destRank, msgList in self.outgoingDict.items():
                 if destRank == self.comm.rank:
@@ -257,4 +275,4 @@ class NetworkInterface(object):
         #        (self.name, len(self.outstandingSendReqs)))
         result = MPI.Request.waitall(self.outstandingSendReqs)  # @UnusedVariable
         # print '######## %s finished send waitall; result was %s' % (self.name, result)
-        self.outstandingSendReqs = []
+        self.outstandingSendReqs = deque()
