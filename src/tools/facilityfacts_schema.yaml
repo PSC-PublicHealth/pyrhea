@@ -1,0 +1,45 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/facilityfacts_schema.yaml'
+'title': 'facility facts schema'
+'description': 'facility facts schema'
+
+'$ref': '#/definitions/facilityfacts'
+
+'definitions':
+
+  'category':
+    'type': 'string'
+    'enum': ['NURSINGHOME', 'HOSPITAL']
+
+  'LOSData':
+    'type': 'object'
+    'properties':
+      'value':
+        'type': 'number'
+        'minimum': 0.0
+      'prov':
+        'type': 'string'
+      'startdate':
+        'type': 'string'
+#        'format': 'date'
+      'enddate':
+        'type': 'string'
+#        'format': 'date'
+    'additionalProperties': false
+  
+  'facilityfacts':
+    'type': 'object'
+    'properties':
+      'name': {'type': 'string'}
+      'abbrev': {'type': 'string'}
+      'category': {'$ref': '#/definitions/category'}
+      'nBeds': {'minimum': 1, 'type': 'integer'}
+      'nBeds_prov': {'type': 'string'}
+      'fracBedsICU':
+        'type': 'number'
+        'minimum': 0.0
+        'maximum': 1.0
+      'fracBedsICU_prov': {'type': 'string'}
+      'meanLOS': {'$ref': '#/definitions/LOSData'}
+    'required': ['name', 'abbrev', 'category']
+

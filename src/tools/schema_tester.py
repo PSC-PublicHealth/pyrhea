@@ -21,7 +21,7 @@ import sys
 import os.path
 import json
 import yaml
-from jsonschema import validate
+import jsonschema
 import optparse
 
 jsonSchemaFile = './sample_schema_jsonschema.json'
@@ -39,6 +39,7 @@ def fileToJSON(fname):
             "File type of %s is not understood" % fname
         with open(fname, "r") as f:
             tjson = yaml.load(f)
+            # print tjson
     return tjson
 
 
@@ -61,18 +62,32 @@ def main(myargv=None):
 
     if len(args) == 2:
         schema = fileToJSON(args[0])
+        validator = jsonschema.validators.validator_for(schema)(schema=schema)
         if opts.R and os.path.isdir(args[1]):
             for root, dirs, files in os.walk(args[1]):  # @UnusedVariable
                 for fName in files:
                     if fName.lower().endswith(('.yaml', '.yml', '.json', '.jsn')):
                         path = os.path.join(root, fName)
                         try:
-                            validate(schema, fileToJSON(path))
-                            print ('PASS: %s' % path)
+                            nErrors = sum([1 for e in validator.iter_errors(fileToJSON(path))])
+                            if nErrors:
+                                print 'FAIL: %s: %d errors' % (path, nErrors)
+                            else:
+                                print 'PASS: %s' % path
                         except Exception, e:  # @UnusedVariable
-                            print ('FAIL: %s' % path)
+                            print ('FAIL: %s %s' % (path, e))
         else:
-            validate(schema, fileToJSON(args[1]))
+            try:
+                nErrors = 0
+                for error in validator.iter_errors(fileToJSON(args[1])):
+                    print error.message
+                    nErrors += 1
+                if nErrors:
+                    print 'FAIL: %s: %d errors' % (args[1], nErrors)
+                else:
+                    print 'PASS: %s' % args[1]
+            except Exception, e:
+                print 'FAIL: %s: %s' % (args[1], e)
     else:
         parser.print_help()
 

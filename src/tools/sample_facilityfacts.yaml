@@ -1,0 +1,12 @@
+name: St. Jude Medical Center
+abbrev: SJUD
+category: HOSPIT
+nBeds: 30
+nBeds_prov: I made this up
+fracBedsICU: 0.2
+fracBedsICU_prov: I made this up too
+meanLOS: 
+  value: 12.7
+  prov: Some spreadsheet
+  startdate: 1/1/2007
+  enddate: 12/31/2007
