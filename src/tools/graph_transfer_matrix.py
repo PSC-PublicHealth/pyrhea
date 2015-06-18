@@ -73,13 +73,19 @@ class Graph(object):
         attrStr = 'label=%s' % nodeName
         for var, key in [(width, 'width'), (color, 'color'), (shape, 'shape'), (style, 'style')]:
             if var is not None:
-                attrStr += ',%s=%s' % (key, var)
+                attrStr += ', %s=%s' % (key, var)
         self.ofile.write('%s [%s];\n' % (nodeName, attrStr))
 
     def addEdge(self, fromNodeName, toNodeName, attrDict={}):
         attrStr = ''
-        if 'penwidth' in attrDict:
-            attrStr += ',penwidth=%f, weight=%d' % (attrDict['penwidth'],int(math.floor(attrDict['penwidth'])))
+        if 'weight' in attrDict:
+            attrDict['_intWt'] = int(math.floor(attrDict['weight']))
+        for k1, k2 in [('weight', 'penwidth'),
+                       ('_intWt', 'weight'),
+                       ('_intWt', 'label'),
+                       ('color', 'color')]:
+            if k1 in attrDict:
+                attrStr += ', %s=%s' % (k2, attrDict[k1])
         attrStr = attrStr[1:]  # drop leading comma
         self.ofile.write('%s -> %s [%s];\n' % (fromNodeName, toNodeName, attrStr))
 
@@ -104,24 +110,28 @@ for src, r in transferDict.items():
             fracTransfers = float(v)/totTransfers
             culledTransferDict[src].append((dst, fracTransfers))
 
-#inclusionSet = ['HOSPITAL', 'LTAC']
+inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
+                ('NURSINGHOME', 'LTAC'),
+                ('LTAC', 'NURSINGHOME'),
+                ('HOSPITAL', 'NURSINGHOME')]
 #title = "HOSPITAL + LTAC internal direct transfers"
-inclusionSet = ['NURSINGHOME']
 #title = 'NURSINGHOME internal direct transfers'
 title = "NURSINGHOME to/from HOSPITAL+LTAC direct transfers"
+minWtCutoff = 0.1
 
+createdSet = set()
 with Graph('graph.dot', title=title) as g:
-    for k, attrDict in facDict.items():
-        #if attrDict['category'] in inclusionSet:
-        if True:
-            g.addNode(k, attrDict)
-
     for src, tplVec in culledTransferDict.items():
         for dst, wt in tplVec:
-#             if (wt > 0.01 and facDict[dst]['category'] in inclusionSet
-#                     and facDict[src]['category'] in inclusionSet):
-            if (wt > 0.05 and ((facDict[dst]['category'] not in inclusionSet
-                                and facDict[src]['category'] in inclusionSet)
-                               or (facDict[dst]['category'] in inclusionSet
-                                and facDict[src]['category'] not in inclusionSet))):
-                g.addEdge(src, dst, {'penwidth': 10.0*wt})
+            if (wt >= minWtCutoff
+                    and (facDict[src]['category'], facDict[dst]['category']) in inclusionSet):
+                if src not in createdSet:
+                    g.addNode(src, facDict[src])
+                    createdSet.add(src)
+                if dst not in createdSet:
+                    g.addNode(dst, facDict[dst])
+                    createdSet.add(dst)
+                if (src, dst) not in createdSet:
+                    g.addEdge(src, dst, {'weight': 10.0*wt})
+                    createdSet.add((src, dst))
+                    createdSet.add((dst, src))
