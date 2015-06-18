@@ -91,24 +91,44 @@ class Graph(object):
 
 with open('transfer_matrix_direct_normalized.csv', 'r') as f:
     keys, transferRecs = csv_tools.parseCSV(f)
-transferDict = {r['']: r for r in transferRecs}
+
+transferDict = {}
+for r in transferRecs:
+    newR = {}
+    for k, v in r.items():
+        if k.startswith('To_'):
+            newR[k[3:]] = v
+    transferDict[r['']] = newR
 
 junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/LemonCounty/facilityfacts7')
 facDict = {r['abbrev']: r for r in facRecs}
 
+transOutDict = {}
+transInDict = {}
+invertDict = {}
+for src, r in transferDict.items():
+    totTransfersOut = float(sum([v for k, v in r.items()]))
+    if totTransfersOut == 0.0:
+        print '%s has no outgoing transfers' % src
+    transOutDict[src] = totTransfersOut
+    for dst, v in r.items():
+        if dst not in transInDict:
+            transInDict[k] = 0.0
+        transInDict[k] += float(v)
+        if dst not in invertDict:
+            invertDict[dst] = {}
+        invertDict[dst][src] = v
+
 culledTransferDict = {}
 for src, r in transferDict.items():
     culledTransferDict[src] = []
-    totTransfers = float(sum([v for k, v in r.items() if k.startswith('To_')]))
-    if totTransfers == 0.0:
-        print '%s has no outgoing transfers' % src
-        continue
-    for k, v in r.items():
-        if k.startswith('To_'):
-            dst = k[3:]
-            assert dst in facDict
-            fracTransfers = float(v)/totTransfers
+    for dst, v in r.items():
+        assert dst in facDict
+        totTransfersOut = transOutDict[src]
+        if totTransfersOut > 0.0:
+            fracTransfers = float(v)/totTransfersOut
             culledTransferDict[src].append((dst, fracTransfers))
+
 
 inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
                 ('NURSINGHOME', 'LTAC'),
@@ -121,17 +141,19 @@ minWtCutoff = 0.1
 
 createdSet = set()
 with Graph('graph.dot', title=title) as g:
-    for src, tplVec in culledTransferDict.items():
-        for dst, wt in tplVec:
-            if (wt >= minWtCutoff
-                    and (facDict[src]['category'], facDict[dst]['category']) in inclusionSet):
-                if src not in createdSet:
-                    g.addNode(src, facDict[src])
-                    createdSet.add(src)
-                if dst not in createdSet:
-                    g.addNode(dst, facDict[dst])
-                    createdSet.add(dst)
-                if (src, dst) not in createdSet:
-                    g.addEdge(src, dst, {'weight': 10.0*wt})
-                    createdSet.add((src, dst))
-                    createdSet.add((dst, src))
+    for src, r in transferDict.items():
+        if transOutDict[src] > 0.0:
+            for dst, v in r.items():
+                wt = float(v)/transOutDict[src]
+                if (wt >= minWtCutoff
+                        and (facDict[src]['category'], facDict[dst]['category']) in inclusionSet):
+                    if src not in createdSet:
+                        g.addNode(src, facDict[src])
+                        createdSet.add(src)
+                    if dst not in createdSet:
+                        g.addNode(dst, facDict[dst])
+                        createdSet.add(dst)
+                    if (src, dst) not in createdSet:
+                        g.addEdge(src, dst, {'weight': 10.0*wt})
+                        createdSet.add((src, dst))
+                        #createdSet.add((dst, src))
