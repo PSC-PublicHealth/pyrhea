@@ -82,8 +82,9 @@ class Graph(object):
             attrDict['_intWt'] = int(math.floor(attrDict['weight']))
         for k1, k2 in [('weight', 'penwidth'),
                        ('_intWt', 'weight'),
-                       ('_intWt', 'label'),
-                       ('color', 'color')]:
+                       ('label', 'label'),
+                       ('color', 'color'),
+                       ('dir', 'dir')]:
             if k1 in attrDict:
                 attrStr += ', %s=%s' % (k2, attrDict[k1])
         attrStr = attrStr[1:]  # drop leading comma
@@ -119,17 +120,6 @@ for src, r in transferDict.items():
             invertDict[dst] = {}
         invertDict[dst][src] = v
 
-culledTransferDict = {}
-for src, r in transferDict.items():
-    culledTransferDict[src] = []
-    for dst, v in r.items():
-        assert dst in facDict
-        totTransfersOut = transOutDict[src]
-        if totTransfersOut > 0.0:
-            fracTransfers = float(v)/totTransfersOut
-            culledTransferDict[src].append((dst, fracTransfers))
-
-
 inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
                 ('NURSINGHOME', 'LTAC'),
                 ('LTAC', 'NURSINGHOME'),
@@ -137,23 +127,38 @@ inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
 #title = "HOSPITAL + LTAC internal direct transfers"
 #title = 'NURSINGHOME internal direct transfers'
 title = "NURSINGHOME to/from HOSPITAL+LTAC direct transfers"
-minWtCutoff = 0.1
+minWtCutoff = 0.05
+minCntCutoff = 2
 
 createdSet = set()
 with Graph('graph.dot', title=title) as g:
     for src, r in transferDict.items():
         if transOutDict[src] > 0.0:
             for dst, v in r.items():
-                wt = float(v)/transOutDict[src]
-                if (wt >= minWtCutoff
-                        and (facDict[src]['category'], facDict[dst]['category']) in inclusionSet):
-                    if src not in createdSet:
-                        g.addNode(src, facDict[src])
-                        createdSet.add(src)
-                    if dst not in createdSet:
-                        g.addNode(dst, facDict[dst])
-                        createdSet.add(dst)
-                    if (src, dst) not in createdSet:
-                        g.addEdge(src, dst, {'weight': 10.0*wt})
-                        createdSet.add((src, dst))
-                        #createdSet.add((dst, src))
+                reverseV = invertDict[src][dst]
+                if v >= reverseV:
+                    symV = reverseV
+                    asymV = v - reverseV
+                    symWt = float(symV)/transOutDict[src]
+                    asymWt = float(asymV)/transOutDict[src]
+                    totWt = float(v)/transOutDict[src]
+                    if (totWt >= minWtCutoff
+                            and ((facDict[src]['category'], facDict[dst]['category'])
+                                 in inclusionSet)):
+                        if src not in createdSet:
+                            g.addNode(src, facDict[src])
+                            createdSet.add(src)
+                        if dst not in createdSet:
+                            g.addNode(dst, facDict[dst])
+                            createdSet.add(dst)
+                        if (src, dst) not in createdSet:
+                            if symWt > 0.0 and symV >= minCntCutoff:
+                                g.addEdge(src, dst, {'weight': 10.0*symWt, 'dir': 'both',
+                                                     'label': symV})
+                            if asymWt > 0.0 and asymV >= minCntCutoff:
+                                g.addEdge(src, dst, {'weight': 10.0*asymWt, 'color': 'red',
+                                                     'label': asymV})
+                            createdSet.add((src, dst))
+                            createdSet.add((dst, src))
+                else:
+                    pass  # handle it when we get to dst
