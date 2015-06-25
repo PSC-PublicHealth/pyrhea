@@ -24,10 +24,8 @@ import yaml
 import jsonschema
 import optparse
 
-jsonSchemaFile = './sample_schema_jsonschema.json'
-yamlSchemaFile = './facility_schema.yaml'
-tfile = './data/GREE.yaml'
-
+import yaml_ordered
+yaml_ordered.install()
 
 
 def fileToJSON(fname):
@@ -38,7 +36,7 @@ def fileToJSON(fname):
         assert fname.lower().endswith('.yaml') or fname.lower().endswith('.yml'), \
             "File type of %s is not understood" % fname
         with open(fname, "r") as f:
-            tjson = yaml.load(f)
+            tjson = yaml.safe_load(f)
             # print tjson
     return tjson
 

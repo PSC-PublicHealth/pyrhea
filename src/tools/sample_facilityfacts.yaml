@@ -1,6 +1,6 @@
 name: St. Jude Medical Center
 abbrev: SJUD
-category: HOSPIT
+category: HOSPITAL
 nBeds: 30
 nBeds_prov: I made this up
 fracBedsICU: 0.2

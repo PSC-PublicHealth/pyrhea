@@ -35,7 +35,7 @@ lclDir = '/home/welling/workspace/pyRHEA/src/tools'
 def save_yaml(rec):
     assert 'abbrev' in rec, "Required key 'abbrev' is missing"
     with open('data/%s.yaml' % rec['abbrev'], 'w') as f:
-        yaml.dump(rec, f, canonical=True)
+        yaml.dump(rec, f)
 
 """
 This one appears to contain an NxN matrix of transfer counts, where N is the number 

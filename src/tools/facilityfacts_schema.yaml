@@ -9,8 +9,12 @@
 
   'category':
     'type': 'string'
-    'enum': ['NURSINGHOME', 'HOSPITAL']
+    'enum': ['NURSINGHOME', 'HOSPITAL', 'LTAC']
 
+  'datestring':
+    'type': 'string'
+    'pattern': '^(0[1-9]|[1-9]|[01][0-2])/(0[1-9]|[1-9]|[12][0-9]|3[01])/(19|20)[0-9][0-9]$'
+    
   'LOSData':
     'type': 'object'
     'properties':
@@ -19,13 +23,9 @@
         'minimum': 0.0
       'prov':
         'type': 'string'
-      'startdate':
-        'type': 'string'
-#        'format': 'date'
-      'enddate':
-        'type': 'string'
-#        'format': 'date'
-    'additionalProperties': false
+      'startdate': {'$ref': '#/definitions/datestring'}
+      'enddate': {'$ref': '#/definitions/datestring'}
+    'required': ['value', 'prov']
   
   'facilityfacts':
     'type': 'object'
@@ -41,5 +41,22 @@
         'maximum': 1.0
       'fracBedsICU_prov': {'type': 'string'}
       'meanLOS': {'$ref': '#/definitions/LOSData'}
-    'required': ['name', 'abbrev', 'category']
+      'meanLOSICU': {'$ref': '#/definitions/LOSData'}
+      'address': {'type': 'string'}
+      'address_prov': {'type': 'string'}
+      'longitude': {'type': 'number', 'minimum': -180.0, 'maximum': 180.0}
+      'latitude':  { 'type': 'number', 'minimum': -90.0, 'maximum': 90.0}
+      'lat_lon_prov': {'type': 'string'}
+    'required': 
+      - 'name'
+      - 'abbrev'
+      - 'category'
+      - 'fracAdultPatientDaysICU'
+      - 'meanLOS'
+      - 'meanLOSICU'
+      - 'address'
+      - 'address_prov'
+      - 'longitude'
+      - 'latitude'
+      - 'lat_lon_prov'
 

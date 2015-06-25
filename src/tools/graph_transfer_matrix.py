@@ -41,47 +41,25 @@ class Graph(object):
         self.ofile.close()
 
     def addNode(self, nodeName, attrDict={}):
-        width = None
-        shape = None
-        color = None
-        style = None
-        if attrDict['category'] == 'HOSPITAL':
-            shape = 'box'
-            try:
-                width = 0.01*attrDict['meanPop']
-            except:
-                print '%s has no meanPop' % attrDict['abbrev']
-                color = 'blue'
-                style = 'dashed'
-        elif attrDict['category'] == 'NURSINGHOME':
-            shape = 'ellipse'
-            try:
-                width = 0.01*attrDict['nBeds']
-            except:
-                print '%s has no nBeds' % attrDict['abbrev']
-                color = 'blue'
-                style = 'dashed'
-        else:
-            shape = 'triangle'
-            try:
-                width = 0.01*attrDict['meanPop']
-            except:
-                print '%s has no meanPop' % attrDict['abbrev']
-                color = 'blue'
-                style = 'dashed'
-
         attrStr = 'label=%s' % nodeName
-        for var, key in [(width, 'width'), (color, 'color'), (shape, 'shape'), (style, 'style')]:
-            if var is not None:
-                attrStr += ', %s=%s' % (key, var)
+        for k1, k2 in [('label', 'label'),
+                       ('width', 'width'),
+                       ('color', 'color'),
+                       ('shape', 'shape'),
+                       ('style', 'style'),
+                       ('height', 'height')]:
+            if k1 in attrDict:
+                attrStr += ', %s=%s' % (k2, attrDict[k1])
+        attrStr = attrStr[1:]  # drop leading comma
         self.ofile.write('%s [%s];\n' % (nodeName, attrStr))
 
     def addEdge(self, fromNodeName, toNodeName, attrDict={}):
         attrStr = ''
         if 'weight' in attrDict:
-            attrDict['_intWt'] = int(math.floor(attrDict['weight']))
-        for k1, k2 in [('weight', 'penwidth'),
-                       ('_intWt', 'weight'),
+            attrDict['_layoutWt'] = int(math.ceil(10.0*attrDict['weight']))
+            attrDict['_penWt'] = max(0.3, 3.0*math.log(attrDict['weight']))
+        for k1, k2 in [('_penWt', 'penwidth'),
+                       ('_layoutWt', 'weight'),
                        ('label', 'label'),
                        ('color', 'color'),
                        ('dir', 'dir')]:
@@ -90,16 +68,59 @@ class Graph(object):
         attrStr = attrStr[1:]  # drop leading comma
         self.ofile.write('%s -> %s [%s];\n' % (fromNodeName, toNodeName, attrStr))
 
-with open('transfer_matrix_direct_normalized.csv', 'r') as f:
-    keys, transferRecs = csv_tools.parseCSV(f)
+
+def facToNodeAttrs(facRec):
+    attrDict = {'label': facRec['abbrev']}
+
+    if 'nBeds' in facRec:
+        szFac = facRec['nBeds']
+    elif 'meanPop' in facRec:
+        szFac = facRec['meanPop']
+    else:
+        print '%s has no nBeds or meanPop'
+        szFac = None
+    if szFac is None:
+        attrDict['color'] = 'blue'
+        attrDict['style'] = 'dashed'
+    else:
+#         scaledSz = 0.17 * math.sqrt(float(szFac))
+#         attrDict['width'] = scaledSz
+#         attrDict['height'] = scaledSz
+        scaledSz = 0.03 * float(szFac)
+        attrDict['width'] = scaledSz
+
+    if facRec['category'] == 'HOSPITAL':
+        attrDict['shape'] = 'box'
+    elif facRec['category'] == 'NURSINGHOME':
+        attrDict['shape'] = 'ellipse'
+    else:
+        attrDict['shape'] = 'triangle'
+    return attrDict
+
+
+def importTransferTable(fname):
+    with open(fname, 'r') as f:
+        keys, transferRecs = csv_tools.parseCSV(f)  # @UnusedVariable
+
+    transferDict = {}
+    for r in transferRecs:
+        newR = {}
+        for k, v in r.items():
+            if k.startswith('To_'):
+                newR[k[3:]] = v
+        transferDict[r['']] = newR
+    return transferDict
+
+directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
+readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
 
 transferDict = {}
-for r in transferRecs:
-    newR = {}
-    for k, v in r.items():
-        if k.startswith('To_'):
-            newR[k[3:]] = v
-    transferDict[r['']] = newR
+for k, rec in directTransferDict.items():
+    transferDict[k] = rec.copy()
+for k, r2 in readmitTransferDict.items():
+    r1 = transferDict[k]
+    for k2, v in r2.items():
+        r1[k2] += v
 
 junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/LemonCounty/facilityfacts7')
 facDict = {r['abbrev']: r for r in facRecs}
@@ -114,8 +135,8 @@ for src, r in transferDict.items():
     transOutDict[src] = totTransfersOut
     for dst, v in r.items():
         if dst not in transInDict:
-            transInDict[k] = 0.0
-        transInDict[k] += float(v)
+            transInDict[dst] = 0.0
+        transInDict[dst] += float(v)
         if dst not in invertDict:
             invertDict[dst] = {}
         invertDict[dst][src] = v
@@ -123,42 +144,89 @@ for src, r in transferDict.items():
 inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
                 ('NURSINGHOME', 'LTAC'),
                 ('LTAC', 'NURSINGHOME'),
-                ('HOSPITAL', 'NURSINGHOME')]
+                ('HOSPITAL', 'NURSINGHOME'),
+                ('HOSPITAL', 'HOSPITAL'),
+                ('NURSINGHOME', 'NURSINGHOME'),
+                ('LTAC','LTAC'),
+                ('LTAC','HOSPITAL'),
+                ('HOSPITAL', 'LTAC')]
 #title = "HOSPITAL + LTAC internal direct transfers"
 #title = 'NURSINGHOME internal direct transfers'
 title = "NURSINGHOME to/from HOSPITAL+LTAC direct transfers"
-minWtCutoff = 0.05
+minWtCutoff = 0.1
 minCntCutoff = 2
+wtScale = 0.1
 
 createdSet = set()
 with Graph('graph.dot', title=title) as g:
     for src, r in transferDict.items():
-        if transOutDict[src] > 0.0:
-            for dst, v in r.items():
+        for dst, v in r.items():
+            if transOutDict[src] > 0.0 and transInDict[dst] > 0.0:
                 reverseV = invertDict[src][dst]
-                if v >= reverseV:
-                    symV = reverseV
-                    asymV = v - reverseV
-                    symWt = float(symV)/transOutDict[src]
-                    asymWt = float(asymV)/transOutDict[src]
-                    totWt = float(v)/transOutDict[src]
-                    if (totWt >= minWtCutoff
-                            and ((facDict[src]['category'], facDict[dst]['category'])
-                                 in inclusionSet)):
-                        if src not in createdSet:
-                            g.addNode(src, facDict[src])
-                            createdSet.add(src)
-                        if dst not in createdSet:
-                            g.addNode(dst, facDict[dst])
-                            createdSet.add(dst)
-                        if (src, dst) not in createdSet:
-                            if symWt > 0.0 and symV >= minCntCutoff:
-                                g.addEdge(src, dst, {'weight': 10.0*symWt, 'dir': 'both',
-                                                     'label': symV})
-                            if asymWt > 0.0 and asymV >= minCntCutoff:
-                                g.addEdge(src, dst, {'weight': 10.0*asymWt, 'color': 'red',
+                visWt = float(v)/min(transOutDict[src], transInDict[dst])
+                if (visWt >= minWtCutoff
+                        and ((facDict[src]['category'], facDict[dst]['category'])
+                             in inclusionSet)):
+                    if src not in createdSet:
+                        g.addNode(src, facToNodeAttrs(facDict[src]))
+                        createdSet.add(src)
+                    if dst not in createdSet:
+                        g.addNode(dst, facToNodeAttrs(facDict[dst]))
+                        createdSet.add(dst)
+                    if (src, dst) not in createdSet:
+                        if v >= reverseV:
+                            symV = reverseV
+                            asymV = v - reverseV
+                            if symV >= minCntCutoff:
+                                g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
+                                                     'label': symV, 'color':'black'})
+                            if asymV >= minCntCutoff:
+                                g.addEdge(src, dst, {'weight': wtScale * asymV, 'color': 'red',
                                                      'label': asymV})
-                            createdSet.add((src, dst))
-                            createdSet.add((dst, src))
-                else:
-                    pass  # handle it when we get to dst
+                        else:
+                            symV = v
+                            asymV = reverseV - v
+                            if symV >= minCntCutoff:
+                                g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
+                                                     'label': symV, 'color': 'black'})
+                            if asymV >= minCntCutoff:
+                                g.addEdge(dst, src, {'weight': wtScale * asymV, 'color': 'red',
+                                                     'label': asymV})
+                        createdSet.add((src, dst))
+                        createdSet.add((dst, src))
+
+orderedSources = transferDict.keys()[:]
+orderedSources.sort()
+totalIn = 0
+totalOut = 0
+totalInHosp = 0
+totalOutHosp = 0
+totalInNH = 0
+totalOutNH = 0
+totBeds = 0
+totBedsHosp = 0
+totBedsNH = 0
+for src in orderedSources:
+    print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src], transOutDict[src])
+    totalIn += transInDict[src]
+    totalOut += transOutDict[src]
+    if facDict[src]['category'] == 'NURSINGHOME':
+        totalInNH += transInDict[src]
+        totalOutNH += transOutDict[src]
+        if 'nBeds' in facDict[src]:
+            totBeds += facDict[src]['nBeds']
+            totBedsNH += facDict[src]['nBeds']
+        else:
+            print '%s has no nBeds' % src
+    else:
+        totalInHosp += transInDict[src]
+        totalOutHosp += transOutDict[src]
+        if 'meanPop' in facDict[src]:
+            totBeds += facDict[src]['meanPop']
+            totBedsHosp += facDict[src]['meanPop']
+        else:
+            print '%s has no meanPop' % src
+
+print 'Total incoming transfers: %s (%s hospitals, %s NH)' % (totalIn, totalInHosp, totalInNH)
+print 'Total outgoing transfers: %s (%s hospitals, %s NH)' % (totalOut, totalOutHosp, totalOutNH)
+print 'Total beds: %s (%s hospitals, %s NH)' % (totBeds, totBedsHosp, totBedsNH)
