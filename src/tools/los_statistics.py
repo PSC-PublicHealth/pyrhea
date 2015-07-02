@@ -108,7 +108,9 @@ code, dist = vq(features, book)
 
 trackers = ['EDNA', 'ELIZ', 'HSOU', 'NNRC', 'ORRH', 'PALM', 'SCRT']
 clrs = ['red', 'blue', 'green']
-fig, ax = plt.subplots()
+fig1, axes = plt.subplots()
+scatterAx = axes
+fig2, histoAxes = plt.subplots(nrows=1, ncols=3)
 
 xIndex = 0
 yIndex = 2
@@ -116,18 +118,16 @@ yIndex = 2
 labels = ['median', 'median/mean', 'q3-q1/median']
 
 xVals = [v[xIndex] for v in valVec]
-plt.xlabel(labels[xIndex])
 
 yVals = [v[yIndex] for v in valVec]
-plt.ylabel(labels[yIndex])
 
 cVals = [clrs[code[i]] for i in xrange(len(valVec))]
-ax.scatter(xVals, yVals, c=cVals)
+scatterAx.scatter(xVals, yVals, c=cVals)
 
 for abbrev, offset in indexDict.items():
     xy = (xVals[offset], yVals[offset])
     xytext = (xVals[offset]+0.5, yVals[offset]+0.05)
-    ax.annotate(abbrev, xy=xy, xytext=xytext)
+    scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
 xT = []
 yT = []
@@ -137,14 +137,30 @@ for i, x, y, c in zip(xrange(len(valVec)), xVals, yVals, cVals):
         xT.append(x)
         yT.append(y)
         cT.append(c)
-ax.scatter(xT, yT, c=cT, marker='+', s=200)
+scatterAx.scatter(xT, yT, c=cT, marker='+', s=200)
 
-# xCtr = book[:, xIndex]
-# yCtr = book[:, yIndex]
-# ax.scatter(xCtr, yCtr, marker='^', s=200)
+unwhitenedBook = book * np.std(valVec, axis=0)[None, :]
+xCtr = unwhitenedBook[:, xIndex]
+yCtr = unwhitenedBook[:, yIndex]
+clrCtr = [clrs[i] for i in xrange(xCtr.shape[0])]
+scatterAx.scatter(xCtr, yCtr, marker='^', c=clrCtr, s=200)
+scatterAx.grid(True)
+scatterAx.set_title("LOS distribution characteristics by facility")
+scatterAx.set_xlabel(labels[xIndex])
+scatterAx.set_ylabel(labels[yIndex])
 
-ax.grid(True)
-fig.tight_layout()
+for i in xrange(xCtr.shape[0]):
+    samples = []
+    for abbrev, offset in indexDict.items():
+        if code[offset] == i:
+            samples.append(losListDict[abbrev])
+    histoAxes[i].hist(samples, bins=100, range=(0.0, 400.0), stacked=True)
+    histoAxes[i].set_title('locations in ' + clrs[i])
+
+fig1.tight_layout()
+fig1.canvas.set_window_title("Clustering")
+fig2.tight_layout()
+fig2.canvas.set_window_title("Cluster LOS Histograms")
 plt.show()
 
 
