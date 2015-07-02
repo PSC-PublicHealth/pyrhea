@@ -50,15 +50,17 @@ def importLOSTable(fname):
 #         print '%s: %d' % (k,len(v))
     return losListDict
 
+
 def fiveNumberSummary(vec):
-    return [ len(vec),
+    return [len(vec),
             np.mean(vec),
             np.std(vec),
-            np.percentile(vec,25.0),
+            np.percentile(vec, 25.0),
             np.median(vec),
-            np.percentile(vec,75.0),
+            np.percentile(vec, 75.0),
             ]
-    
+
+
 def betterSummary(vec):
     fNS = fiveNumberSummary(vec)
     N = fNS[0]
@@ -70,6 +72,7 @@ def betterSummary(vec):
     #return [median/mean, ((q3-q1)/stdv), q1/median, q3/median]
     #return [median, median/mean, (q3-median)/(median-q1)]
     return [median, median/mean, (q3-q1)/median]
+    #return [float(N), median/mean, (q3-q1)/median]
 
 indexDict = {}
 valVec = []
@@ -89,13 +92,6 @@ for abbrev, losList in losListDict.items():
                         })
 
 reverseMap = {v: k for k, v in indexDict.items()}
-# with open('distshapes.csv', 'w') as f:
-#     csv_tools.writeCSV(f,
-#                        ['abbrev', 'median', 'medianOverMean', 'quartileBalance'],
-#                        tblRecs)
-    
-# for k,ind in indexDict.items():
-#     print '%s: %s' % (k, valVec[ind])
 
 features = whiten(valVec)
 print 'finished whiten'
@@ -162,5 +158,3 @@ fig1.canvas.set_window_title("Clustering")
 fig2.tight_layout()
 fig2.canvas.set_window_title("Cluster LOS Histograms")
 plt.show()
-
-
