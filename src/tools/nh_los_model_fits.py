@@ -103,6 +103,7 @@ losListDict = importLOSTable('/home/welling/git/rhea-dante/test/'
                              'nursing_home_CI_decolonization_2014/'
                              'Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
 tblRecs = []
+aggregateLosList = []
 for abbrev, losList in losListDict.items():
     if len(losList) >= 10:
         indexDict[abbrev] = offset
@@ -110,6 +111,10 @@ for abbrev, losList in losListDict.items():
         valVec.append(fitVec)
         offset += 1
         tblRecs.append({'abbrev': abbrev})
+        aggregateLosList.extend(losList[:])
+
+aggregateFitVec = modelFit(aggregateLosList)
+print 'aggregateFitVec: %s' % aggregateFitVec
 
 reverseMap = {v: k for k, v in indexDict.items()}
 
