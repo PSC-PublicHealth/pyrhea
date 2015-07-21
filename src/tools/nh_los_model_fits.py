@@ -29,6 +29,9 @@ import matplotlib.pyplot as plt
 from scipy.cluster.vq import whiten, kmeans, vq
 from scipy.stats import lognorm
 
+# Truncate the sample set at how many days during fitting?
+truncLim = 300
+
 
 def importLOSTable(fname):
     with open(fname, 'r') as f:
@@ -45,11 +48,14 @@ def importLOSTable(fname):
     return losListDict
 
 
-def expectVal(fitParms, xVec):
+def fullPDF(fitParms, xVec, truncLim):
     k = fitParms[0]
     mu = fitParms[1]
     sigma = fitParms[2]
-    alpha = 1.0/float(max(xVec))
+    if truncLim is None:
+        alpha = 1.0/float(max(xVec))
+    else:
+        alpha = 1.0/float(truncLim)
     # print "k= %s, sigma= %s, mu= %s, alpha= %s" % (k, sigma, mu, alpha)
 
     pVec = (k * lognorm.pdf(xVec, sigma, scale=math.exp(mu), loc=0.0)
@@ -57,14 +63,17 @@ def expectVal(fitParms, xVec):
     return pVec
 
 
-def lnLik(fitParms, xVec):
+def lnLik(fitParms, xVec, truncLim):
     """
     model is k*lognorm( sampVec, shape=sigma, scale=exp(mu), loc=0.0 ) + (1-k)*(alpha)
     """
     k = fitParms[0]
     mu = fitParms[1]
     sigma = fitParms[2]
-    alpha = 1.0/float(max(xVec))
+    if truncLim is None:
+        alpha = 1.0/float(max(xVec))
+    else:
+        alpha = 1.0/float(truncLim)
     # print "k= %s, sigma= %s, mu= %s, alpha= %s" % (k, sigma, mu, alpha)
 
     lpVec = np.log(k * lognorm.pdf(xVec, sigma, scale=math.exp(mu), loc=0.0)
@@ -74,26 +83,49 @@ def lnLik(fitParms, xVec):
 #            (result, k, mu, sigma, alpha, len(xVec)))
     return result
 
+def truncatedLnLik(fitParms, xVec, truncLim):
+    k = fitParms[0]
+    mu = fitParms[1]
+    sigma = fitParms[2]
+    #alpha = 1.0/float(max(xVec))
+    alpha = 1.0/float(truncLim)
+    cdfAtBound = (k*lognorm.cdf(1.0/alpha, sigma, scale=math.exp(mu), loc=0.0)
+                  + (1-k))
+    pVec = (k * lognorm.pdf(xVec, sigma, scale=math.exp(mu), loc=0.0)
+            + (1.0 - k) * alpha)
+    lpVec = np.log(pVec)
+    result = np.sum(lpVec) - len(xVec) * np.log(cdfAtBound)
+    #print '%s -> %s %s -> %s' % (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
+    return result
 
-def modelFit(sampVec):
-    #initialGuess = [1.0, math.log(33.843041745424408), 1.0689299528774443, 0.5]
-    initialGuess = [1.0, math.log(33.843041745424408), 1.0689299528774443]
-    #bounds = [(0.005, 1.0), (0.05, None), (0.05, None), (0.0, 0.01)]
-    bounds = [(0.005, 1.0), (0.05, None), (0.05, None)]
+
+def modelFit(sampVec, fun=lnLik, truncLim=None):
+    initialGuess = [0.5, math.log(33.843041745424408), 1.0689299528774443]
+    bounds = [(0.001, 0.999), (0.05, None), (0.05, None)]
 
     def nll(*args):
-        return -lnLik(*args)
+        return -fun(*args)
 
     try:
-        result = op.minimize(nll, initialGuess, args=sampVec, bounds=bounds)
-        print ("success %s: nll = %s for %s on %d samples" %
-               (result.success, result.fun, result.x, len(sampVec)))
+        result = op.minimize(nll, initialGuess, args=(sampVec, truncLim), bounds=bounds)
+        print ("success %s: nll/samp = %s for %s on %d samples" %
+               (result.success, result.fun/len(sampVec), result.x, len(sampVec)))
         if not result.success:
             print result
         return result.x
     except Exception, e:
         print 'Exception: %s' % e
-        sys.exit(e)
+        raise
+
+
+def truncatedModelFit(sampVec, fun=truncatedLnLik):
+    return modelFit([s for s in sampVec if s <= truncLim], fun=fun, truncLim=truncLim)
+
+
+def plotCurve(axes, parmVec, scale, rng, nbins, pattern='r-'):
+    curveX = np.linspace(rng[0], rng[1], nbins)
+    curveY = (fullPDF(parmVec, curveX, truncLim) * scale * ((rng[1]-rng[0])/nbins))
+    axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
 indexDict = {}
@@ -104,17 +136,25 @@ losListDict = importLOSTable('/home/welling/git/rhea-dante/test/'
                              'Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
 tblRecs = []
 aggregateLosList = []
-for abbrev, losList in losListDict.items():
+lLD = losListDict.items()[:]
+lLD.sort()
+for abbrev, losList in lLD:
     if len(losList) >= 10:
         indexDict[abbrev] = offset
-        fitVec = modelFit(losList)
+        print '%s:' % abbrev,
+        #fitVec = modelFit(losList)
+        fitVec = truncatedModelFit(losList)
         valVec.append(fitVec)
         offset += 1
         tblRecs.append({'abbrev': abbrev})
-        aggregateLosList.extend(losList[:])
+    else:
+        print '%s: only %d samples' % (abbrev, len(losList))
 
-aggregateFitVec = modelFit(aggregateLosList)
-print 'aggregateFitVec: %s' % aggregateFitVec
+for losList in losListDict.values():
+    for v in losList:
+        aggregateLosList.append(v)
+print 'aggregated: ',
+aggregateFitVec = truncatedModelFit(aggregateLosList)
 
 reverseMap = {v: k for k, v in indexDict.items()}
 
@@ -126,12 +166,14 @@ code, dist = vq(features, book)
 # print code
 
 #trackers = ['EDNA', 'ELIZ', 'NNRC', 'ORRH', 'PALM', 'SCRT']
-trackers = ['WLNT', 'SNMR', 'FREE', 'COVI', 'GPCC', 'CAPO']
+#trackers = ['WLNT', 'SNMR', 'FREE', 'COVI', 'GPCC', 'CAPO']
+trackers = ['EXTW', 'ROYL', 'FREE', 'COVI', 'BGYL', 'STAN', 'NSUB']
 clrs = ['red', 'blue', 'green', 'yellow']
 fig1, axes = plt.subplots()
 scatterAx = axes
 fig2, histoAxes = plt.subplots(nrows=1, ncols=3)
 fig3, locAxes = plt.subplots(nrows=1, ncols=len(trackers))
+fig4, allAxes = plt.subplots()
 
 xIndex = 0
 yIndex = 2
@@ -179,7 +221,25 @@ for i in xrange(xCtr.shape[0]):
             samples.append(losListDict[abbrev])
     if samples:
         histoAxes[i].hist(samples, bins=100, range=histoRange, stacked=True)
+        allSamples = [v for vl in samples for v in vl]  # Thank you stackoverflow
+        print '%s:' % clrs[i],
+        fitVec = truncatedModelFit(allSamples)
+        plotCurve(histoAxes[i], fitVec, len(allSamples), rng=histoRange, nbins=100)
     histoAxes[i].set_title('locations in ' + clrs[i])
+
+allAxes.hist(aggregateLosList, bins=100, range=histoRange)
+allAxes.set_title('All locations')
+plotCurve(allAxes, aggregateFitVec, len(aggregateLosList),
+          rng=histoRange, nbins=100)
+
+# guess1 = [0.75, 3.0, 0.75]
+# guess2 = [0.75, 3.25, 0.75]
+# plotCurve(allAxes, guess1, len(aggregateLosList),
+#           rng=histoRange, nbins=100, pattern='g-')
+# plotCurve(allAxes, guess2, len(aggregateLosList),
+#           rng=histoRange, nbins=100, pattern='k-')
+# print 'guess1 %s gives %s' % (guess1, truncatedLnLik(guess1, aggregateLosList, truncLim))
+# print 'guess2 %s gives %s' % (guess2, truncatedLnLik(guess2, aggregateLosList, truncLim))
 
 nbins = 50
 for i in xrange(len(trackers)):
@@ -187,10 +247,8 @@ for i in xrange(len(trackers)):
     locAxes[i].hist(losListDict[abbrev], bins=nbins, range=histoRange)
     locAxes[i].set_title(abbrev)
     fitParms = valVec[indexDict[abbrev]]
-    curveX = np.linspace(histoRange[0], histoRange[1], 100)
-    curveY = (expectVal(fitParms, curveX) * len(losListDict[abbrev])
-              * ((histoRange[1]-histoRange[0])/nbins))
-    locAxes[i].plot(curveX, curveY, 'r-', lw=2, alpha=0.6)
+    plotCurve(locAxes[i], fitParms, len(losListDict[abbrev]),
+              rng=histoRange, nbins=nbins)
 
 fig1.tight_layout()
 fig1.canvas.set_window_title("Clustering")
