@@ -17,9 +17,7 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import sys
 import csv_tools
-import yaml_tools
 import math
 
 import numpy as np
@@ -27,7 +25,7 @@ import scipy.optimize as op
 import matplotlib.pyplot as plt
 
 from scipy.cluster.vq import whiten, kmeans, vq
-from scipy.stats import lognorm
+from scipy.stats import lognorm, expon
 
 # Truncate the sample set at how many days during fitting?
 truncLim = 300
@@ -54,12 +52,31 @@ def fullPDF(fitParms, xVec):
     mu = fitParms[1]
     sigma = fitParms[2]
     lmda = fitParms[3]
-    #print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-    pVec = (k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-            + (1.0 - k) * lmda*np.exp(-lmda*xArr))
+    # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+    pVec = ((k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0))
+            + ((1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)))
     return pVec
- 
- 
+
+
+def fullLogPDF(fitParms, xVec):
+    xArr = np.asarray(xVec, np.float64)
+    k = fitParms[0]
+    mu = fitParms[1]
+    sigma = fitParms[2]
+    lmda = fitParms[3]
+    # print "fullLogPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+    lnTerm = k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+    expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
+    oldErrInfo = np.seterr(all='ignore')
+    lnVersion = (math.log(k) + lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+                 + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
+    expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
+                  + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
+    np.seterr(**oldErrInfo)
+    lpVec = np.where(lnTerm > expTerm, lnVersion, expVersion)
+    return lpVec
+
+
 def fullCDF(fitParms, limVec):
     limArr = np.asarray(limVec, np.float64)
     k = fitParms[0]
@@ -67,33 +84,15 @@ def fullCDF(fitParms, limVec):
     sigma = fitParms[2]
     lmda = fitParms[3]
     cdfVec = ((k * lognorm.cdf(limArr, sigma, scale=math.exp(mu), loc=0.0))
-              + (1.0-k) * (1.0 - np.exp(-lmda * limArr)))
+              + (1.0-k) * expon.cdf(limArr, scale=1.0/lmda))
     return cdfVec
-
-
-# def fullPDF(fitParms, xVec):
-#     xArr = np.asarray(xVec, np.float64)
-#     mu = fitParms[0]
-#     sigma = fitParms[1]
-#     #print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-#     pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-#     return pVec
-# 
-# 
-# def fullCDF(fitParms, limVec):
-#     limArr = np.asarray(limVec, np.float64)
-#     mu = fitParms[0]
-#     sigma = fitParms[1]
-#     cdfVec = lognorm.cdf(limArr, sigma, scale=math.exp(mu), loc=0.0)
-#     return cdfVec
 
 
 def lnLik(fitParms, xVec, dummy):
     """
     model is k*lognorm( sampVec, shape=sigma, scale=exp(mu), loc=0.0 ) + (1-k)*(alpha)
     """
-    lpVec = np.log(fullPDF(fitParms, xVec))
-    result = np.sum(lpVec)
+    result = np.sum(fullLogPDF(fitParms, xVec))
 #     print ("sum = %s for k = %s, mu = %s, sigma = %s, alpha = %s on %d samples" %
 #            (result, k, mu, sigma, alpha, len(xVec)))
     return result
@@ -103,12 +102,12 @@ def truncatedLnLik(fitParms, xVec, truncLim):
     cdfAtBound = fullCDF(fitParms, truncLim)
     lpVec = np.log(fullPDF(fitParms, xVec))
     result = np.sum(lpVec) - len(xVec) * np.log(cdfAtBound)
-    #print '%s -> %s %s -> %s' % (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
+    # print '%s -> %s %s -> %s' % \
+    #   (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
     return result
 
 
 def modelFit(sampVec, fun=lnLik, truncLim=None):
-    #initialGuess = [0.5, math.log(33.843041745424408), 1.0689299528774443, 0.01]
     initialGuess = [0.8, 3.246, 0.5, 0.0015]
     bounds = [(0.001, 0.999), (0.05, None), (0.05, None), (0.00001, 0.1)]
 #     initialGuess = [math.log(33.843041745424408), 1.0689299528774443]
@@ -156,45 +155,45 @@ def main():
             indexDict[abbrev] = offset
             print '%s:' % abbrev,
             fitVec, nllPerSamp = modelFit(losList)
-            #fitVec, nllPerSamp = truncatedModelFit(losList)
             valVec.append(fitVec)
             offset += 1
-            tblRecs.append({'abbrev': abbrev, 'nllPerSamp': nllPerSamp})
+            tblRecs.append({'abbrev': abbrev, 'nllPerSamp': nllPerSamp,
+                            'k': fitVec[0], 'mu': fitVec[1], 'sigma': fitVec[2],
+                            'lmda': fitVec[3]})
         else:
             print '%s: only %d samples' % (abbrev, len(losList))
 
+    ofName = 'nl_los_model_fit_parms.csv'
+    print 'writing summary file %s' % ofName
+    with open(ofName, 'w') as f:
+        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp'],
+                           tblRecs)
+        
     for losList in losListDict.values():
         for v in losList:
             aggregateLosList.append(v)
     print 'aggregated: ',
-    aggregateFitVec, aggregateNllPerSamp = modelFit(aggregateLosList)
-    #aggregateFitVec, aggregateNllPerSamp = truncatedModelFit(aggregateLosList)
+    aggregateFitVec, aggregateNllPerSamp = modelFit(aggregateLosList)  # @UnusedVariable
 
     reverseMap = {v: k for k, v in indexDict.items()}
 
     features = whiten(valVec)
-    book, distortion = kmeans(features, 3)
+    book, distortion = kmeans(features, 3)  # @UnusedVariable
     # print book
     # print distortion
-    code, dist = vq(features, book)
+    code, dist = vq(features, book)  # @UnusedVariable
     # print code
-
-    #trackers = ['EDNA', 'ELIZ', 'NNRC', 'ORRH', 'PALM', 'SCRT']
-    #trackers = ['WLNT', 'SNMR', 'FREE', 'COVI', 'GPCC', 'CAPO']
-    #trackers = ['EXTW', 'ROYL', 'FREE', 'COVI', 'BGYL', 'STAN', 'NSUB']
 
     trackers = []
     pairs = [(r['nllPerSamp'], r['abbrev']) for r in tblRecs]
-    pairs = sorted(pairs, reverse=False)
+    pairs = sorted(pairs, reverse=True)
     print 'Top six pairs:'
     for v, k in pairs[:6]:
         print '  %s: %s' % (k, v)
         trackers.append(k)
 
-
     clrs = ['red', 'blue', 'green', 'yellow']
-    fig1, axes = plt.subplots()
-    scatterAx = axes
+    fig1, scatterAx = plt.subplots()
     fig2, histoAxes = plt.subplots(nrows=1, ncols=3)
     fig3, locAxes = plt.subplots(nrows=1, ncols=len(trackers))
     fig4, allAxes = plt.subplots()
@@ -202,11 +201,6 @@ def main():
     xIndex = 0
     yIndex = 2
     labels = ['k', 'mu', 'sigma', 'lmda']
-
-#     xIndex = 0
-#     yIndex = 1
-#     labels = ['mu', 'sigma']
-
 
     histoRange = (0.0, 400.0)
 
@@ -252,7 +246,7 @@ def main():
             allSamples = [v for vl in samples for v in vl]  # Thank you stackoverflow
             print '%s:' % clrs[i],
             fitVec, nllPerSamp = modelFit(allSamples)
-            #fitVec, nllPerSamp = truncatedModelFit(allSamples)
+            # fitVec, nllPerSamp = truncatedModelFit(allSamples)
             plotCurve(histoAxes[i], fitVec, len(allSamples), rng=histoRange, nbins=100)
         histoAxes[i].set_title('locations in ' + clrs[i])
 
@@ -260,18 +254,6 @@ def main():
     allAxes.set_title('All locations')
     plotCurve(allAxes, aggregateFitVec, len(aggregateLosList),
               rng=histoRange, nbins=100)
-#     guess1 = [1.0, 3.5, 2.0, 0.02]
-#     guess2 = [1.0, 3.5, 10.0, 0.02]
-    guess1 = [1.0, 3.246, 0.5, 0.0015]
-    guess2 = [0.8, 3.246, 0.5, 0.0015]
-    plotCurve(allAxes, guess1, len(aggregateLosList),
-              rng=histoRange, nbins=100, pattern='g-')
-    plotCurve(allAxes, guess2, len(aggregateLosList),
-              rng=histoRange, nbins=100, pattern='y-')
-    print 'guess1 %s gives %s' % (guess1,
-                                  lnLik(guess1, aggregateLosList, truncLim)/len(aggregateLosList))
-    print 'guess2 %s gives %s' % (guess2,
-                                  lnLik(guess2, aggregateLosList, truncLim)/len(aggregateLosList))
 
     nbins = 50
     for i in xrange(len(trackers)):
@@ -287,6 +269,7 @@ def main():
     fig2.tight_layout()
     fig2.canvas.set_window_title("Cluster LOS Histograms")
     fig3.canvas.set_window_title("Tracked Locations")
+    fig4.canvas.set_window_title("All LOS Samples")
     plt.show()
 
 ############
