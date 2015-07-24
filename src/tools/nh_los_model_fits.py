@@ -163,7 +163,7 @@ def main():
         else:
             print '%s: only %d samples' % (abbrev, len(losList))
 
-    ofName = 'nl_los_model_fit_parms.csv'
+    ofName = 'nh_los_model_fit_parms.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
         csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp',
