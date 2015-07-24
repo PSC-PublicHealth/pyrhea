@@ -159,14 +159,15 @@ def main():
             offset += 1
             tblRecs.append({'abbrev': abbrev, 'nllPerSamp': nllPerSamp,
                             'k': fitVec[0], 'mu': fitVec[1], 'sigma': fitVec[2],
-                            'lmda': fitVec[3]})
+                            'lmda': fitVec[3], 'nsamples': len(losList)})
         else:
             print '%s: only %d samples' % (abbrev, len(losList))
 
     ofName = 'nl_los_model_fit_parms.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
-        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp'],
+        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp',
+                               'nsamples'],
                            tblRecs)
         
     for losList in losListDict.values():
