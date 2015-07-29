@@ -3,6 +3,7 @@
 import yaml
 import os.path
 from collections import OrderedDict
+import types
 
 import yaml_ordered
 yaml_ordered.install()
@@ -25,6 +26,45 @@ def parse_all(dirName):
                 allKeys.update(newD.keys())
                 recs.append(newD)
     return allKeys, recs
+
+
+def _simplify(entry):
+    if isinstance(entry, types.DictType):
+        pairs = []
+        for k, v in entry.items():
+            if k.find('_prov') >= 0:
+                continue
+            elif k == 'prov':
+                continue
+            elif k == 'value':
+                return v
+            else:
+                simpV = _simplify(v)
+                if isinstance(simpV, types.ListType):
+                    newList = []
+                    for item in simpV:
+                        if (isinstance(item, types.DictType)
+                                and 'category' in item):
+                            if 'count' in item:
+                                pairs.append((k + item['category'], item['count']))
+                            elif 'value' in item:
+                                pairs.append((k + item['category'], item['value']))
+                        else:
+                            newList.append(item)
+                    if newList:
+                        pairs.append((k, newList))
+                else:
+                    pairs.append((k, simpV))
+        return dict(pairs)
+    elif isinstance(entry, types.ListType):
+        return [_simplify(e) for e in entry]
+    else:
+        return entry
+
+
+def parse_all_simplified(dirName):
+    allKeys, rawRecs = parse_all(dirName)
+    return allKeys, [_simplify(r) for r in rawRecs]
 
 
 def save_all(dirName, recList):

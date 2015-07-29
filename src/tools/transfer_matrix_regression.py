@@ -21,6 +21,8 @@ import sys
 import csv_tools
 import yaml_tools
 import math
+from collections import defaultdict
+import types
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,8 +61,29 @@ def clrCurves(xPts, yPts, clrPts, ctPts, clr):
     return xxPts, yyPts, ccPts, cctPts
 
 
-junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts10')
-facDict = {r['abbrev']: r for r in facRecs}
+def regressionModel(rec):
+    try:
+        # simplest model
+        return rec['timeSec']
+        # NH -> Hospital regression model
+    #     return -(-6.759e-05 * rec['timeSec']
+    #              + 3.706e-05 * rec['toTotTransfersIn']
+    #              + -1.140e-03 * rec['toMeanLOS'])
+        # Hospital -> NH regression model
+#         return -(-2.185e-05 * rec['timeSec']
+#                  + 9.792e-05 * rec['toMeanPop'] * rec['toTransientPatientFrac'])
+    except Exception, e:
+        print 'Error on %s -> %s: %s' % (rec['from'], rec['to'], e)
+        return None
+    
+def regressionLabel():
+     return 'Travel Time (seconds)'
+#     return "NH -> Hosp regression model"
+#    return 'Hosp -> NH regression model'
+
+
+junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts11')
+facDict = {r['abbrev']: defaultdict(lambda: None, r) for r in facRecs}
 
 directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
 
@@ -77,6 +100,20 @@ for r in transitRecs:
         transitDict[r['From']] = {}
     transitDict[r['From']][r['To']] = {'Seconds': r['Seconds'], 'Meters': r['Meters']}
 
+hhRecs = []
+nnRecs = []
+hnRecs = []
+nhRecs = []
+recCollections = {'HOSPITAL:HOSPITAL': hhRecs,
+                  'HOSPITAL:LTAC': hhRecs,
+                  'LTAC:HOSPITAL': hhRecs,
+                  'LTAC:LTAC': hhRecs,
+                  'HOSPITAL:NURSINGHOME': hnRecs,
+                  'LTAC:NURSINGHOME': hnRecs,
+                  'NURSINGHOME:NURSINGHOME': nnRecs,
+                  'NURSINGHOME:HOSPITAL': nhRecs,
+                  'NURSINGHOME:LTAC': nhRecs}
+
 clrMap = {'HOSPITAL:HOSPITAL': 'red',
           'HOSPITAL:LTAC': 'red',
           'LTAC:HOSPITAL': 'red',
@@ -90,6 +127,9 @@ xPts = []
 yPts = []
 clrPts = []
 ctPts = []
+yPts2 = []
+
+totalsDict = {}
 
 if len(sys.argv) > 1:
     facVec = [f for f in sys.argv[1:] if f in directTransferDict]
@@ -101,28 +141,64 @@ for fmLoc in facVec:
             if toLoc == fmLoc:
                 continue
             if toLoc in facDict:
-                ttoRec = facDict[fmLoc]['totalTransfersOut']
                 if fmLoc in transitDict and toLoc in transitDict[fmLoc]:
-                    x, y = transitDict[fmLoc][toLoc]['Seconds'], directTransferDict[fmLoc][toLoc]
+                    timeSec = transitDict[fmLoc][toLoc]['Seconds']
                 elif toLoc in transitDict and fmLoc in transitDict[toLoc]:
-                    x, y = transitDict[toLoc][fmLoc]['Seconds'], directTransferDict[fmLoc][toLoc]
+                    timeSec = transitDict[toLoc][fmLoc]['Seconds']
                 else:
                     print 'No transit data for %s -> %s' % (fmLoc, toLoc)
-                xPts.append(x)
-                yPts.append(float(y))
-                clrPts.append(clrMap['%s:%s' %
-                                     (facDict[fmLoc]['category'],
-                                      facDict[toLoc]['category'])])
-                ctPts.append(y)
+                kStr = '%s:%s' % (facDict[fmLoc]['category'], facDict[toLoc]['category'])
+                fmTotTransfersOut = sum([v['count']['value'] for v in facDict[fmLoc]['totalTransfersOut']])
+                newRec = {'from': fmLoc, 'to': toLoc,
+                          'timeSec': timeSec, 'nTransfered': directTransferDict[fmLoc][toLoc],
+                          'fmMeanPop': facDict[fmLoc]['meanPop'],
+                          'toMeanPop': facDict[toLoc]['meanPop'],
+                          'fmNBeds': facDict[fmLoc]['nBeds'],
+                          'toNBeds': facDict[toLoc]['nBeds'],
+                          'fmMeanLOS': facDict[fmLoc]['meanLOS'],
+                          'toMeanLOS': facDict[toLoc]['meanLOS'],
+                          'fmTotTransfersIn': facDict[fmLoc]['totalTransfersIn'],
+                          'toTotTransfersIn': facDict[toLoc]['totalTransfersIn'],
+                          'fmTotTransfersOut': fmTotTransfersOut,
+                          }
+                for loc, key in [(fmLoc, 'fmTransientPatientFrac'),
+                                 (toLoc, 'toTransientPatientFrac')]:
+                    if facDict[loc]['category'] in ['HOSPITAL', 'LTAC']:
+                        v = 1.0
+                    elif facDict[loc]['losModel'] is None:
+                        v = None
+                    else:
+                        v = facDict[loc]['losModel']['parms'][0]
+                    newRec[key] = v
+                for k in newRec.keys():
+                    if isinstance(newRec[k], types.DictType):
+                        newRec[k] = newRec[k]['value']
+                recCollections[kStr].append(newRec)
+                if kStr not in totalsDict:
+                    totalsDict[kStr] = 0
+                xPts.append(regressionModel(newRec))
+                yPts.append(float(newRec['nTransfered']))
+                clrPts.append(clrMap[kStr])
+                ctPts.append(newRec['nTransfered'])
+                totalsDict[kStr] += newRec['nTransfered']
             else:
                 continue
     else:
         print 'No information for %s' % fmLoc
 
+for k, v in totalsDict.items():
+    print '%s: %s' % (k, v)
+
+for fName, recSet in [('hosp_hosp_transfer_data.csv', hhRecs),
+                      ('hosp_nh_transfer_data.csv', hnRecs),
+                      ('nh_hosp_transfer_data.csv', nhRecs),
+                      ('nh_nh_transfer_data.csv', nnRecs)]:
+    with open(fName, 'w') as f:
+        csv_tools.writeCSV(f, recSet[0].keys(), recSet)
 
 fig1, axes = plt.subplots(nrows=2, ncols=2)
 
-labels = ['Travel Time (seconds)', 'Fraction of Direct Transfers']
+labels = [regressionLabel(), 'Fraction of Direct Transfers']
 
 for yId, xId, clr, lbl in [(0, 0, 'red', 'Hospital to Hospital'),
                            (0, 1, 'blue', 'Hospital to Nursing Home'),

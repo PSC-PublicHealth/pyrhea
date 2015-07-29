@@ -27,69 +27,30 @@ import matplotlib.pyplot as plt
 from scipy.cluster.vq import whiten, kmeans, vq
 
 
-def importLOSTable(fname):
-    with open(fname, 'r') as f:
-        keys, losRecs = csv_tools.parseCSV(f)  # @UnusedVariable
-        
-    losListDict = {}
-    for r in losRecs:
-        k = r['# Abbreviation']
-        v = r['LOS']
-        if k not in losListDict:
-            losListDict[k] = []
-        losListDict[k].append(v)
-#     for k,v in losListDict.items():
-#         print '%s: %d' % (k,len(v))
-    return losListDict
-
-
-def fiveNumberSummary(vec):
-    return [len(vec),
-            np.mean(vec),
-            np.std(vec),
-            np.percentile(vec, 25.0),
-            np.median(vec),
-            np.percentile(vec, 75.0),
-            ]
-
-
-def betterSummary(vec):
-    fNS = fiveNumberSummary(vec)
-    N = fNS[0]
-    mean = fNS[1]
-    stdv = fNS[2]
-    q1 = fNS[3]
-    median = fNS[4]
-    q3 = fNS[5]
-    #return [median/mean, ((q3-q1)/stdv), q1/median, q3/median]
-    #return [median, median/mean, (q3-median)/(median-q1)]
-    return [median, median/mean, (q3-q1)/median]
-    #return [float(N), median/mean, (q3-q1)/median]
 
 indexDict = {}
 valVec = []
 offset = 0
-losListDict = importLOSTable('/home/welling/git/rhea-dante/test/nursing_home_CI_decolonization_2014/Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
+facKeys, facRecs= yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts10')
+facDict = {r['abbrev']: r for r in facRecs}
+
+
 tblRecs = []
-allLosSamples = []
-for abbrev, losList in losListDict.items():
-    allLosSamples.extend(losList)
-    if len(losList) >= 10:
-        indexDict[abbrev] = offset
-        bSVec = betterSummary(losList)
+for abbrev in facDict.keys():
+    try:
+        bSVec = [(facDict[abbrev]['meanPop'] 
+                  if 'meanPop' in facDict[abbrev] 
+                  else float(facDict[abbrev]['nBeds'])),
+                 float(facDict[abbrev]['totalTransfersIn']['value'])/facDict[abbrev]['totalDischarges']['value'],
+                 sum([float(thing['count']['value']) for thing in facDict[abbrev]['totalTransfersOut']])/facDict[abbrev]['totalDischarges']['value']
+                 ]
         valVec.append(bSVec)
+        indexDict[abbrev] = offset
         offset += 1
-        tblRecs.append({'abbrev': abbrev,
-                        'median': bSVec[0],
-                        'medianOverMean': bSVec[1],
-                        'quartileBalance': bSVec[2]
+        tblRecs.append({'abbrev': abbrev
                         })
-
-print 'Statistics over all LOS samples:'
-allLossSampleSummary = fiveNumberSummary(allLosSamples)
-for lbl, val in zip(['N', 'mean', 'stdv', 'Q1', 'median', 'Q3'], allLossSampleSummary):
-    print '   %s: %s' % (lbl, val)
-
+    except Exception, e:
+        print 'Cannot map %s: %s' % (abbrev, e)
 
 reverseMap = {v: k for k, v in indexDict.items()}
 
@@ -102,27 +63,32 @@ print 'finished kmeans'
 code, dist = vq(features, book)
 # print code
 
-trackers = ['EDNA', 'ELIZ', 'HSOU', 'NNRC', 'ORRH', 'PALM', 'SCRT']
+categories = ['HOSPITAL', 'LTAC', 'NURSINGHOME']
+
+#trackers = ['EDNA', 'ELIZ', 'HSOU', 'NNRC', 'ORRH', 'PALM', 'SCRT']
+trackers = ['TUSH', 'KINW', 'KINB', 'HSOU', 'COLL']
 clrs = ['red', 'blue', 'green']
 fig1, axes = plt.subplots()
 scatterAx = axes
 fig2, histoAxes = plt.subplots(nrows=1, ncols=3)
 
-xIndex = 0
+xIndex = 1
 yIndex = 2
 
-labels = ['median', 'median/mean', 'q3-q1/median']
+labels = ['approx pop', 'transfers in / discharges', 'transfers out / discharges']
 
 xVals = [v[xIndex] for v in valVec]
 
 yVals = [v[yIndex] for v in valVec]
 
-cVals = [clrs[code[i]] for i in xrange(len(valVec))]
+#cVals = [clrs[code[i]] for i in xrange(len(valVec))]
+cVals = [clrs[categories.index(facDict[reverseMap[i]]['category'])] for i in xrange(len(xVals))]
 scatterAx.scatter(xVals, yVals, c=cVals)
 
 for abbrev, offset in indexDict.items():
     xy = (xVals[offset], yVals[offset])
-    xytext = (xVals[offset]+0.5, yVals[offset]+0.05)
+    #xytext = (xVals[offset]+0.5, yVals[offset]+0.05)
+    xytext = (xVals[offset]+0.02, yVals[offset]+0.02)
     scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
 xT = []
@@ -149,7 +115,7 @@ for i in xrange(xCtr.shape[0]):
     samples = []
     for abbrev, offset in indexDict.items():
         if code[offset] == i:
-            samples.append(losListDict[abbrev])
+            samples.append(valVec[indexDict[abbrev]])
     histoAxes[i].hist(samples, bins=100, range=(0.0, 400.0), stacked=True)
     histoAxes[i].set_title('locations in ' + clrs[i])
 
