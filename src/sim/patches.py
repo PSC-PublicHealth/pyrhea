@@ -313,24 +313,43 @@ class Patch(object):
                     #        (self.name, timeNow, self.group.nI.vclock.vec))
                     pass
             allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
-            minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
-            if (self.loop.sequencer.doneWithToday() and self.endOfDay
-                    and allPartnersEOD and minPartnerDay >= timeNow):
-                if self.stillEndOfDay:
-                    # print '%s: bumping day!' % self.name
-                    self.loop.sequencer.bumpIfAllTimeless()
-                    timeNow += 1
-                    self.endOfDay = False
+            if len(self.incomingGates) > 0:
+                minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
+                if (self.loop.sequencer.doneWithToday() and self.endOfDay
+                        and allPartnersEOD and minPartnerDay >= timeNow):
+                    if self.stillEndOfDay:
+                        # print '%s: bumping day!' % self.name
+                        self.loop.sequencer.bumpIfAllTimeless()
+                        timeNow += 1
+                        self.endOfDay = False
+                        # print '%s: stillEndOfDay -> False' % self.name
+                        self.stillEndOfDay = False
+                        for g in self.outgoingGates:
+                            self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
+                    else:
+                        # print '%s: stillEndOfDay -> True' % self.name
+                        self.stillEndOfDay = True
+                else:
                     # print '%s: stillEndOfDay -> False' % self.name
                     self.stillEndOfDay = False
-                    for g in self.outgoingGates:
-                        self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
-                else:
-                    # print '%s: stillEndOfDay -> True' % self.name
-                    self.stillEndOfDay = True
             else:
-                # print '%s: stillEndOfDay -> False' % self.name
-                self.stillEndOfDay = False
+                if (self.loop.sequencer.doneWithToday() and self.endOfDay
+                        and allPartnersEOD):
+                    if self.stillEndOfDay:
+                        # print '%s: bumping day!' % self.name
+                        self.loop.sequencer.bumpIfAllTimeless()
+                        timeNow += 1
+                        self.endOfDay = False
+                        # print '%s: stillEndOfDay -> False' % self.name
+                        self.stillEndOfDay = False
+                        for g in self.outgoingGates:
+                            self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
+                    else:
+                        # print '%s: stillEndOfDay -> True' % self.name
+                        self.stillEndOfDay = True
+                else:
+                    # print '%s: stillEndOfDay -> False' % self.name
+                    self.stillEndOfDay = False
             # And now we force the current patch to exit so that the next patch gets
             # a time slice.
             thisAgent.ownerLoop.sequencer.enqueue(thisAgent, timeNow)

@@ -1,0 +1,202 @@
+#! /usr/bin/env python
+
+###################################################################################
+# Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
+# =============================================================================== #
+#                                                                                 #
+# Permission to use, copy, and modify this software and its documentation without #
+# fee for personal use within your organization is hereby granted, provided that  #
+# the above copyright notice is preserved in all copies and that the copyright    #
+# and this permission notice appear in supporting documentation.  All other       #
+# restrictions and obligations are defined in the GNU Affero General Public       #
+# License v3 (AGPL-3.0) located at http://www.gnu.org/licenses/agpl-3.0.html  A   #
+# copy of the license is also provided in the top level of the source directory,  #
+# in the file LICENSE.txt.                                                        #
+#                                                                                 #
+###################################################################################
+
+_rhea_svn_id_ = "$Id: pyrhea.py 30 2015-06-01 21:48:41Z welling $"
+
+import sys
+import math
+import set_paths
+from random import randint, random, shuffle, seed, choice
+import patches
+import pyrheabase
+from pyrheautils import enum, namedtuple
+
+DiseaseStatus = enum('Susceptible',
+                    'Exposed',
+                    'Infectious',
+                    'Recovered')
+
+PersonStatus = namedtuple('PersonStatus',
+                          ['diseaseStatus',
+                           'diseaseStatusCountDown'],
+                          field_types=[DiseaseStatus,None])
+
+R0 = 1.4
+InfectiousPeriod = 4.1
+LatentPeriod = 1.9
+Beta = R0/(InfectiousPeriod)
+
+
+class Community(patches.MultiInteractant):
+    def __init__(self,name,patch):
+        patches.MultiInteractant.__init__(self,name,100,patch)
+        self.checkInterval = 1 # check the population once per day
+        self.populationStatus = [0.0 for id,key in DiseaseStatus.names.items()]
+        
+class Person(patches.Agent):
+    def __init__(self,name,patch,timeNow=0,debug=False):
+        patches.Agent.__init__(self,name,patch,debug=debug)
+        self._status = PersonStatus(DiseaseStatus.Susceptible,0)
+        self.lastUpdateTime = timeNow
+    
+    def setDiseaseStatus(self,status,decrement_=True):
+        currentStatus =self._status.diseaseStatus
+        newCountDown = 0;
+        if status == 'Susceptible':
+            newCountDown = 1;
+        elif status == 'Exposed':
+            newCountDown = LatentPeriod
+        elif status == 'Infectious':
+            newCountDown = InfectiousPeriod
+        elif status == "Recovered":
+            newCountDown = 0;
+        
+        self._status = PersonStatus(getattr(DiseaseStatus,status),newCountDown)
+                            
+        if hasattr(self,'community'):
+            print "incrementing {0} by 1".format(self._status.diseaseStatus)
+            if decrement_:
+                self.community.populationStatus[currentStatus] -=1
+            self.community.populationStatus[self._status.diseaseStatus] += 1
+           
+    def updateDiseaseStatus(self,timeNow):
+        dT = timeNow - self.lastUpdateTime
+        print "TimeNow = {0}".format(timeNow)
+        if dT > 0:
+            self.lastUpdateTime = timeNow
+            ## Decrement the state counter
+            newCountDown = self._status.diseaseStatusCountDown - dT
+            newDiseaseStatus = self._status.diseaseStatus
+            print "Updating {0}".format(self.name)
+            if newCountDown <= 0:
+                if self._status.diseaseStatus == DiseaseStatus.Exposed:
+                    newDiseaseStatus = DiseaseStatus.Infectious
+                    timeDiff = newCountDown
+                    newCountDown = InfectiousPeriod - timeDiff
+                elif self._status.diseaseStatus == DiseaseStatus.Infectious:
+                    newDiseaseStatus = DiseaseStatus.Recovered
+                    newCountDown = 0
+                elif self._status.diseaseStatus == DiseaseStatus.Susceptible:
+                    pass
+                elif self._status.diseaseStatus == DiseaseStatus.Recovered:
+                    pass
+                
+                self.community.populationStatus[self._status.diseaseStatus] -=1
+                self.community.populationStatus[newDiseaseStatus] +=1
+                self._status = PersonStatus(newDiseaseStatus,newCountDown)
+                    ## must check if this agent will get infected
+                    ## get the total number of infectious people in this bin
+    
+    def run(self,startTime):
+        timeNow =startTime 
+        while True:
+            #timeNow = self.community.lock(self)
+            self.updateDiseaseStatus(timeNow)
+            timeNow = self.sleep(1)
+        
+
+    def __getstate__(self):
+        d = patches.Agent.__getstate__(self)
+        d['status'] = self.status
+        d['lastUpdateTime'] = self.lastUpdateTime
+        
+    def __setstate__(self,stateDict):
+        patches.Agent.__setstate(self,stateDict)
+        self.status = stateDict['status']
+        self.lastUpdateTime = stateDict['lastUpdateTime']
+        
+    
+def main():
+    import random
+    
+    test = getattr(DiseaseStatus,'Exposed')
+    print test
+    trace = False
+    verbose = False # @UnusedVariable
+    debug = False
+    deterministic = False
+    
+    for a in sys.argv[1:]:
+        if a == '-v':
+            verbose = True  # @UnusedVariable
+        elif a == '-d':
+            debug = True
+        elif a == '-t':
+            trace = True
+        elif a == '-D':
+            deterministic = True
+        else:
+            describeSelf()
+            sys.exit('unrecognized argument %s' % a)
+        
+    comm = patches.getCommWorld()
+    
+    patchGroup = patches.PatchGroup(comm,trace=trace,deterministic=False)
+    
+    nPatches = 1
+    nPeoplePerPatch = 100
+    nSeeds = 2
+    
+    for j in xrange(nPatches):
+        patch = patchGroup.addPatch(patches.Patch(patchGroup))
+        community = Community("Pittsburgh",patch)
+        allAgents = []
+        for i in xrange(nPeoplePerPatch):
+            person = Person('Person_{0}_{1}'.format(str(patch.tag),i),
+                            patch,debug=debug)
+            community.lock(person)
+            person.community = community
+            #community.unlock(person)
+            person.setDiseaseStatus('Susceptible',False)
+            allAgents.append(person)
+        
+        seedAgents = []
+        for i in xrange(nSeeds):
+            if len(seedAgents)>0:
+                seedIndex = seedAgents[-1]
+                while seedIndex in seedAgents:
+                    seedIndex = random.randint(0,nPeoplePerPatch-1)
+                seedAgents.append(seedIndex)
+            else:
+                seedAgents.append(random.randint(0,nPeoplePerPatch-1))
+        
+        for iS in seedAgents:
+            allAgents[iS].setDiseaseStatus('Exposed')
+            #allAgents[iS]._status.diseaseStatusCountDown = LatentPeriod
+        
+        for agent in allAgents:
+            print agent.name
+            #community.populationStatus[agent._status.diseaseStatus] += 1.0
+        
+        print community.populationStatus
+        patch.addAgents(allAgents)
+        
+    print allAgents[0].name
+    patchGroup.start()
+                   
+############
+# Main hook
+############
+
+if __name__ == "__main__":
+    main()       
+            
+    
+                        
+                
+                    
+
