@@ -371,7 +371,8 @@ class MainLoop(greenlet):
                 for cb in self.ownerLoop.perTickCallbacks:
                     cb(self, timeNow, newTimeNow)
                 if newTimeNow != timeNow:
-                    print '###### %s ClockAgent: time is now %s' % (self.ownerLoop.name, newTimeNow)
+                    for cb in self.ownerLoop.perDayCallbacks:
+                        cb(self.ownerLoop, newTimeNow)
                     timeNow = newTimeNow
 
     @staticmethod
@@ -382,10 +383,15 @@ class MainLoop(greenlet):
             loop.parent.switch(loop.counter)
             loop.counter = 0
 
+    @staticmethod
+    def everyDayCB(loop, timeNow):
+        print '###### %s: time is now %s' % (loop.name, timeNow)
+
     def __init__(self, name=None, safety=None):
         self.newAgents = [MainLoop.ClockAgent(self)]
         self.perTickCallbacks = []
         self.perEventCallbacks = []
+        self.perDayCallbacks = []
         self.safety = safety  # After how many ticks to bail, if any
         assert safety is None or isinstance(safety, types.IntType)
         if name is None:
@@ -395,6 +401,7 @@ class MainLoop(greenlet):
         self.sequencer = Sequencer(self.name + ".Sequencer")
         self.dateFrozen = False
         self.counter = 0
+        self.addPerDayCallback(MainLoop.everyDayCB)
         if self.safety is not None:
             self.addPerEventCallback(MainLoop.everyEventCB)
 
@@ -402,6 +409,9 @@ class MainLoop(greenlet):
         assert all([a.ownerLoop == self for a in agentList]), \
             "%s: Tried to add a foreign agent!" % self.name
         self.newAgents.extend(agentList)
+
+    def addPerDayCallback(self, cb):
+        self.perDayCallbacks.append(cb)
 
     def addPerTickCallback(self, cb):
         self.perTickCallbacks.append(cb)

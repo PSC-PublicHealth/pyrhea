@@ -100,8 +100,10 @@ class NetworkInterface(object):
         self.comm = comm
         self.vclock = VectorClock(self.comm.size, self.comm.rank)
         self.outgoingDict = {}
-        self.outstandingSendReqs = deque()
-        self.outstandingRecvReqs = deque()
+#         self.outstandingSendReqs = deque()
+#         self.outstandingRecvReqs = deque()
+        self.outstandingSendReqs = []
+        self.outstandingRecvReqs = []
         self.expectFrom = set()
         self.clientIncomingCallbacks = {}
         self.sync = sync
@@ -216,7 +218,8 @@ class NetworkInterface(object):
                 else:
                     # print '######## %s empty recv queue' % self.name
                     break
-        self.outstandingRecvReqs = deque()
+#         self.outstandingRecvReqs = deque()
+        self.outstandingRecvReqs = []
 
     def startSend(self):
         vTimeNow = self.vclock.vec
@@ -275,4 +278,5 @@ class NetworkInterface(object):
         #        (self.name, len(self.outstandingSendReqs)))
         result = MPI.Request.waitall(self.outstandingSendReqs)  # @UnusedVariable
         # print '######## %s finished send waitall; result was %s' % (self.name, result)
-        self.outstandingSendReqs = deque()
+#         self.outstandingSendReqs = deque()
+        self.outstandingSendReqs = []
