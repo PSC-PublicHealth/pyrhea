@@ -24,11 +24,19 @@ from random import randint, random, shuffle, seed, choice
 import patches
 import pyrheabase
 from pyrheautils import enum, namedtuple
+import random
 
 DiseaseStatus = enum('Susceptible',
                     'Exposed',
                     'Infectious',
+                    'Asymptomatic',
                     'Recovered')
+
+StatusList = ['Susceptible',
+              'Exposed',
+              'Infectious',
+              'Asymptomatic',
+              'Recovered']
 
 PersonStatus = namedtuple('PersonStatus',
                           ['diseaseStatus',
@@ -39,19 +47,30 @@ R0 = 1.4
 InfectiousPeriod = 4.1
 LatentPeriod = 1.9
 Beta = R0/(InfectiousPeriod)
+AsymptProb = 0.33
 
 
 class Community(patches.MultiInteractant):
-    def __init__(self,name,patch):
-        patches.MultiInteractant.__init__(self,name,100,patch)
+    def __init__(self,name,patch,nAgents):
+        patches.MultiInteractant.__init__(self,name,nAgents,patch)
         self.checkInterval = 1 # check the population once per day
         self.populationStatus = [0.0 for id,key in DiseaseStatus.names.items()]
+        self.totalAgents = nAgents
+        self.dailyInfectiousAttemps = []
         
+    def printPopulationStatus(self,mainLoop,timeNow):
+        returnString = "Community Status for Time {0}: ".format(timeNow)
+        for i in xrange(len(self.populationStatus)):
+            returnString += " {0}:{1} ".format(StatusList[i],self.populationStatus[i])
+        
+        print returnString
+            
 class Person(patches.Agent):
-    def __init__(self,name,patch,timeNow=0,debug=False):
+    def __init__(self,name,patch,timeNow=0,comIndex=0,debug=False):
         patches.Agent.__init__(self,name,patch,debug=debug)
         self._status = PersonStatus(DiseaseStatus.Susceptible,0)
         self.lastUpdateTime = timeNow
+        self.comIndex = comIndex
     
     def setDiseaseStatus(self,status,decrement_=True):
         currentStatus =self._status.diseaseStatus
@@ -60,7 +79,7 @@ class Person(patches.Agent):
             newCountDown = 1;
         elif status == 'Exposed':
             newCountDown = LatentPeriod
-        elif status == 'Infectious':
+        elif status == 'Infectious' or status == 'Asymptomatic':
             newCountDown = InfectiousPeriod
         elif status == "Recovered":
             newCountDown = 0;
@@ -68,45 +87,81 @@ class Person(patches.Agent):
         self._status = PersonStatus(getattr(DiseaseStatus,status),newCountDown)
                             
         if hasattr(self,'community'):
-            print "incrementing {0} by 1".format(self._status.diseaseStatus)
+            #print "incrementing {0} by 1".format(self._status.diseaseStatus)
             if decrement_:
                 self.community.populationStatus[currentStatus] -=1
             self.community.populationStatus[self._status.diseaseStatus] += 1
-           
+    
+    def updateIfInfected(self,timeNow):
+        if self._status.diseaseStatus == DiseaseStatus.Susceptible:
+            if self.comIndex in self.community.dailyInfectiousAttemps:
+                self._status = PersonStatus(DiseaseStatus.Exposed,LatentPeriod)
+                self.community.populationStatus[DiseaseStatus.Susceptible] -=1
+                self.community.populationStatus[DiseaseStatus.Exposed] +=1
+        if self.comIndex in self.community.dailyInfectiousAttemps:
+            del self.community.dailyInfectiousAttemps[self.community.dailyInfectiousAttemps.index(self.comIndex)]
+        
     def updateDiseaseStatus(self,timeNow):
         dT = timeNow - self.lastUpdateTime
-        print "TimeNow = {0}".format(timeNow)
+        #print "TimeNow = {0}".format(timeNow)
         if dT > 0:
             self.lastUpdateTime = timeNow
             ## Decrement the state counter
             newCountDown = self._status.diseaseStatusCountDown - dT
             newDiseaseStatus = self._status.diseaseStatus
-            print "Updating {0}".format(self.name)
+            #if self._status.diseaseStatus == DiseaseStatus.Exposed:
+                #print "New CountDown for Exposed: {0}".format(newCountDown)
             if newCountDown <= 0:
                 if self._status.diseaseStatus == DiseaseStatus.Exposed:
-                    newDiseaseStatus = DiseaseStatus.Infectious
+                    #print "Updating Exposed Status: {0}".format(newCountDown)
+                    if random.random() < AsymptProb:
+                         newDiseaseStatus = DiseaseStatus.Asymptomatic
+                    else:
+                        newDiseaseStatus = DiseaseStatus.Infectious
                     timeDiff = newCountDown
                     newCountDown = InfectiousPeriod - timeDiff
-                elif self._status.diseaseStatus == DiseaseStatus.Infectious:
+                    #print "Exposed new countdown: {0}".format(newCountDown)
+                elif self._status.diseaseStatus == DiseaseStatus.Infectious or self._status.diseaseStatus == DiseaseStatus.Asymptomatic:
                     newDiseaseStatus = DiseaseStatus.Recovered
                     newCountDown = 0
                 elif self._status.diseaseStatus == DiseaseStatus.Susceptible:
-                    pass
+                    newCountDown = 1.0
                 elif self._status.diseaseStatus == DiseaseStatus.Recovered:
+                    newCountDown = 0.0
                     pass
+            
+            if self._status.diseaseStatus == DiseaseStatus.Infectious or self._status.diseaseStatus == DiseaseStatus.Asymptomatic:
+                ## determine the number of attempts to infect
+                factor=1.0
+                if self._status.diseaseStatus == DiseaseStatus.Asymptomatic:
+                    factor = 0.5
                 
-                self.community.populationStatus[self._status.diseaseStatus] -=1
-                self.community.populationStatus[newDiseaseStatus] +=1
-                self._status = PersonStatus(newDiseaseStatus,newCountDown)
-                    ## must check if this agent will get infected
+                nAttempts = int(math.floor(Beta*factor))
+                if random.random() < (Beta*factor % 1.0):
+                    nAttempts += 1
+                
+                for i in xrange(nAttempts):
+                    attIndex = random.randint(0,self.community.totalAgents)
+                    if attIndex not in self.community.dailyInfectiousAttemps:
+                        self.community.dailyInfectiousAttemps.append(attIndex)
+                                
+            self.community.populationStatus[self._status.diseaseStatus] -=1
+            self.community.populationStatus[newDiseaseStatus] +=1
+            self._status = PersonStatus(newDiseaseStatus,newCountDown)
+            
+            ## must check if this agent will get infected
                     ## get the total number of infectious people in this bin
     
     def run(self,startTime):
         timeNow =startTime 
         while True:
             #timeNow = self.community.lock(self)
+            self.updateIfInfected(timeNow)
             self.updateDiseaseStatus(timeNow)
             timeNow = self.sleep(1)
+            if timeNow > 200:
+                sys.exit()
+            
         
 
     def __getstate__(self):
@@ -119,12 +174,10 @@ class Person(patches.Agent):
         self.status = stateDict['status']
         self.lastUpdateTime = stateDict['lastUpdateTime']
         
-    
-def main():
-    import random
-    
-    test = getattr(DiseaseStatus,'Exposed')
-    print test
+
+
+def main():    
+
     trace = False
     verbose = False # @UnusedVariable
     debug = False
@@ -148,16 +201,17 @@ def main():
     patchGroup = patches.PatchGroup(comm,trace=trace,deterministic=False)
     
     nPatches = 1
-    nPeoplePerPatch = 100
-    nSeeds = 2
+    nPeoplePerPatch = 10000
+    nSeeds = int(nPeoplePerPatch*.01)
     
     for j in xrange(nPatches):
         patch = patchGroup.addPatch(patches.Patch(patchGroup))
-        community = Community("Pittsburgh",patch)
+        community = Community("Pittsburgh",patch,nPeoplePerPatch)
+        patch.loop.addPerDayCallback(community.printPopulationStatus)
         allAgents = []
         for i in xrange(nPeoplePerPatch):
             person = Person('Person_{0}_{1}'.format(str(patch.tag),i),
-                            patch,debug=debug)
+                            patch,comIndex=i,debug=debug)
             community.lock(person)
             person.community = community
             #community.unlock(person)
@@ -186,7 +240,9 @@ def main():
         patch.addAgents(allAgents)
         
     print allAgents[0].name
+    print "Done Initializing"
     patchGroup.start()
+    print "we are done!!!!"
                    
 ############
 # Main hook
