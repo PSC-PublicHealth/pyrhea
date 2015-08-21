@@ -1,15 +1,15 @@
 '$schema': 'http://json-schema.org/schema#'
-'$id': 'http://rhea.psc.edu/facilityfacts_schema.yaml'
-'title': 'facility facts schema'
-'description': 'facility facts schema'
+'$id': 'http://rhea.psc.edu/communityfacts_schema.yaml'
+'title': 'community facts schema'
+'description': 'community facts schema'
 
-'$ref': '#/definitions/facilityfacts'
+'$ref': '#/definitions/communityfacts'
 
 'definitions':
 
   'category':
     'type': 'string'
-    'enum': ['NURSINGHOME', 'HOSPITAL', 'LTAC']
+    'enum': ['COMMUNITY']
 
   'datestring':
     'type': 'string'
@@ -59,48 +59,18 @@
       'category': {'$ref': '#/definitions/category'}
       'count': {'$ref': '#/definitions/count'}
   
-  'facilityfacts':
+  'communityfacts':
     'type': 'object'
     'properties':
       'name': {'type': 'string'}
       'abbrev': {'type': 'string'}
       'category': {'$ref': '#/definitions/category'}
-      'nBeds': {'minimum': 1, 'type': 'integer'}
-      'nBeds_prov': {'type': 'string'}
-      'fracBedsICU':
-        'type': 'number'
-        'minimum': 0.0
-        'maximum': 1.0
-      'fracBedsICU_prov': {'type': 'string'}
-      'meanLOS': {'$ref': '#/definitions/LOSData'}
-      'meanLOSICU': {'$ref': '#/definitions/LOSData'}
-      'address': {'type': 'string'}
-      'address_prov': {'type': 'string'}
-      'longitude': {'type': 'number', 'minimum': -180.0, 'maximum': 180.0}
-      'latitude':  { 'type': 'number', 'minimum': -90.0, 'maximum': 90.0}
-      'lat_lon_prov': {'type': 'string'}
-      'totalDischarges': {'$ref': '#/definitions/count'}
-      'totalTransfersIn': {'$ref': '#/definitions/count'}
-      'totalTransfersOut': 
-        'type': 'array'
-        'items': {'$ref': '#/definitions/categorycount'}
-      'losModel': {'$ref': '#/definitions/PDF'}
+      'meanPop': {'minimum': 0.0, 'type': 'number'}
+      'meanPop_prov': {'type': 'string'}
     'required': 
       - 'name'
       - 'abbrev'
       - 'category'
-      - 'fracAdultPatientDaysICU'
-      - 'meanLOS'
-      - 'meanLOSICU'
-      - 'address'
-      - 'address_prov'
-      - 'longitude'
-      - 'latitude'
-      - 'lat_lon_prov'
-      - 'totalDischarges'
-      - 'totalTransfersIn'
-      - 'totalTransfersOut'
-#      - 'losModel'
-#      - 'nBeds'
-#      - 'meanPop'
+      - 'meanPop'
+      - 'meanPop_prov'
 

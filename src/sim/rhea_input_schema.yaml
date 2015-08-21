@@ -1,0 +1,22 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/rhea_input_schema.yaml'
+'title': 'rhea input schema'
+'description': 'rhea input schema'
+
+'$ref': '#/definitions/rhea_input'
+
+'definitions':
+  
+  'rhea_input':
+    'type': 'object'
+    'properties':
+      'facilityDirs':
+        'type': 'array'
+        'items':
+          'type': 'string'
+      'facilityImplementationDir':
+        'type': 'string'
+    'required':
+      - 'facilityDirs'
+      - 'facilityImplementationDir'
+

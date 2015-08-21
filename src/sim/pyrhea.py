@@ -18,314 +18,199 @@
 _rhea_svn_id_ = "$Id$"
 
 import sys
-import math
-from random import randint, random, shuffle, seed, choice
+import os
+import yaml
+from imp import load_source
+import jsonschema
+from random import seed
+from collections import defaultdict
+import optparse
+
 import patches
-import pyrheabase
-from pyrheautils import enum, namedtuple
+import yaml_tools
+
+inputSchema = 'rhea_input_schema.yaml'
 
 
-CareTier = enum('HOME', 'REHAB', 'ASSISTED', 'NURSING', 'HOSP', 'ICU')
-
-DiagClassA = enum('HEALTHY', 'SICK')
-
-DiagClassB = enum('CLEAR', 'COLONIZED', 'INFECTED')
-
-TreatmentProtocol = enum('NORMAL')  # for things like patient isolation
-
-PatientStatus = namedtuple('PatientStatus',
-                           ['diagClassA',           # one of DiagClassA
-                            'diagACountdown',       # days until better
-                            'diagClassB',           # one of DiagClassB
-                            ],
-                           field_types=[DiagClassA, None, DiagClassB])
-
-PatientDiagnosis = namedtuple('PatientDiagnosis',
-                              ['diagClassA',           # one of DiagClassA
-                               'diagClassB',           # one of DiagClassB
-                               ],
-                              field_types=[DiagClassA, DiagClassB])
-
-healthyGetSickProbPerDay = 0.01
-
-
-class Ward(pyrheabase.Ward):
-    def __init__(self, name, patch, tier, nBeds):
-        pyrheabase.Ward.__init__(self, name, patch, tier, nBeds)
-        self.checkInterval = 1  # check health daily
-
-
-class CommunityWard(Ward):
-    """This 'ward' type represents being out in the community"""
-
-    def __init__(self, name, patch, nBeds):
-        Ward.__init__(self, name, patch, CareTier.HOME, nBeds)
-        self.checkInterval = 30  # check health monthly
-        #self.checkInterval = 1  # check health monthly
-
-
-class Facility(pyrheabase.Facility):
-    def diagnose(self, patientStatus):
-        """
-        This provides a way to introduce false positive or false negative diagnoses.  The
-        only way in which patient status affects treatment policy or ward is via diagnosis.
-        """
-        return PatientDiagnosis(patientStatus.diagClassA, patientStatus.diagClassB)
-
-    def prescribe(self, patientDiagnosis, patientTreatment):
-        """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.diagClassB in [DiagClassB.CLEAR, DiagClassB.COLONIZED]:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.diagClassB == DiagClassB.INFECTED:
-                return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(patientDiagnosis.diagClassB))
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            if patientDiagnosis.diagClassB in [DiagClassB.CLEAR, DiagClassB.COLONIZED]:
-                return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.diagClassB == DiagClassB.INFECTED:
-                return (CareTier.ICU, TreatmentProtocol.NORMAL)
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(patientDiagnosis.diagClassB))
+def loadFacilityImplementations(implementationDir):
+    print 'Loading facility implementations'
+    implDict = {}
+    sys.path.append(implementationDir)
+    for fname in os.listdir(implementationDir):
+        name, ext = os.path.splitext(fname)
+        if ext == '.py':
+            newMod = load_source(name, os.path.join(implementationDir, fname))
+            for requiredAttr in ['category', 'generateFull']:
+                if not hasattr(newMod, requiredAttr):
+                    raise RuntimeError('The facility implemenation in %s has no %s' %
+                                       (os.path.join(implementationDir, fname),
+                                        requiredAttr))
+            assert newMod.category not in implDict, \
+                "Redundant definitions for category %s" % newMod.category
+            implDict[newMod.category] = newMod
+            print 'Loaded %s implementing %s' % (fname, newMod.category)
+        elif ext.startswith('.py'):
+            pass  # .pyc files for example
         else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
+            print 'Skipping non-python file %s' % fname
+    sys.path.pop()  # drop implementaionDir
+    return implDict
 
 
-PatientState = enum('ATWARD', 'MOVING')
+def loadFacilityDescriptions(dirList, facImplDict):
+    """
+    This loads facilities, including communities, checking them against a schema.
+    """
+    print 'Parsing facilities descriptions'
+    allKeySet = set()
+    rawRecs = []
+    for d in dirList:
+        kS, recs = yaml_tools.parse_all(d)
+        rawRecs.extend(recs)
+        allKeySet.update(kS)
+    facRecs = []
+    for rec in rawRecs:
+        assert 'abbrev' in rec, "Facility description has no 'abbrev' field: %s" % rec
+        assert 'category' in rec, \
+            "Facility description for %(abbrev) has no 'category' field" % rec
+        nErrors = facImplDict[rec['category']].checkSchema(rec)
+        if nErrors:
+            print 'dropping %s; %d schema violations' % (rec['abbrev'], nErrors)
+        else:
+            facRecs.append(rec)
+    return facRecs
 
 
-class PatientAgent(patches.Agent):
-
-    def __init__(self, name, patch, ward, timeNow=0, debug=False):
-        patches.Agent.__init__(self, name, patch, debug=debug)
-        self.ward = ward
-        self.tier = ward.tier
-        self.newWardAddr = None
-        self.fsmstate = PatientState.ATWARD
-        self._status = PatientStatus(DiagClassA.HEALTHY, 0, DiagClassB.CLEAR)
-        self._diagnosis = self.ward.fac.diagnose(self._status)
-        newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
-                                                           TreatmentProtocol.NORMAL)
-        self.lastUpdateTime = timeNow
-
-    def printSummary(self):
-        print '%s as of %s' % (self.name, self.lastUpdateTime)
-        print '  status: %s ' % str(self._status)
-        print '  diagnosis: %s' % str(self._diagnosis)
-        print '  treatment: %s' % TreatmentProtocol.names[self._treatment]
-
-    def updateDiseaseState(self, treatment, timeNow):
-        """This should embody healing, community-acquired infection, etc."""
-        dT = timeNow - self.lastUpdateTime
-        if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            self.lastUpdateTime = timeNow
-            diagA = self._status.diagClassA
-            diagACountdown = self._status.diagACountdown
-            diagB = self._status.diagClassB
-            if self._status.diagClassA == DiagClassA.HEALTHY:
-                pBar = 1.0 - healthyGetSickProbPerDay
-                gotSick = (random() > math.pow(pBar, dT))
-                if gotSick:
-                    diagA = DiagClassA.SICK
-                    diagACountdown = randint(3, 10)
-                else:
-                    pass  # no update; still healthy
-            elif self._status.diagClassA == DiagClassA.SICK:
-                diagACountdown -= dT
-                if diagACountdown <= 0:
-                    diagA = DiagClassA.HEALTHY
-                    diagACountdown = 0
+def distributeFacilities(comm, facDirs, facImplDict):
+    """
+    Estimate work associated with each facility and attempt to share it out fairly
+    """
+    if comm.rank == 0:
+        facRecs = loadFacilityDescriptions(facDirs, facImplDict)
+        assignments = defaultdict(list)
+        tots = {k: 0 for k in xrange(comm.size)}
+        pairL = [(facImplDict[rec['category']].estimateWork(rec), rec) for rec in facRecs]
+        pairL.sort(reverse=True)
+        for newWork, rec in pairL:
+            leastWork, leastBusy = min([(v, k) for k, v in tots.items()])  # @UnusedVariable
+            assignments[leastBusy].append(rec)
+            tots[leastBusy] += newWork
+        print 'Estimated work by rank: %s' % tots
+        for targetRank in xrange(comm.size):
+            if targetRank == comm.rank:
+                myFacList = assignments[targetRank]
             else:
-                raise RuntimeError('Unknown DiagClassA %s' % str(diagA))
-    
-            if diagB == DiagClassB.CLEAR:
-                if random() < 0.1:
-                    diagB = DiagClassB.COLONIZED
-            elif diagB == DiagClassB.COLONIZED:
-                r = random()
-                if r < 0.3:
-                    diagB = DiagClassB.CLEAR
-                elif r < 0.7:
-                    diagB = DiagClassB.COLONIZED
-                else:
-                    diagB = DiagClassB.INFECTED
-            elif diagB == DiagClassB.INFECTED:
-                if random() < 0.2:
-                    diagB = DiagClassB.COLONIZED
-                else:
-                    diagB = DiagClassB.INFECTED
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(diagB))
-    
-            self._status = PatientStatus(diagA, diagACountdown, diagB)
-
-    def updateEverything(self, timeNow):
-        self.updateDiseaseState(self._treatment, timeNow)
-        self._diagnosis = self.ward.fac.diagnose(self._status)
-        newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis, self._treatment)
-        self.lastUpdateTime = timeNow
-        return newTier
-
-    def run(self, startTime):
-        timeNow = startTime
-        while True:
-            if self.fsmstate == PatientState.ATWARD:
-                tier = self.updateEverything(timeNow)
-                if self.ward.tier == tier:
-                    timeNow = self.sleep(self.ward.checkInterval)
-                else:
-                    print ('%s wants a tier %s ward at %s' %
-                           (self.name, CareTier.names[tier], timeNow))
-                    facAddrList = [tpl[1] for tpl in self.patch.serviceLookup('BedRequestQueue')]
-                    shuffle(facAddrList)
-                    key = self.ward.fac.holdQueue.getUniqueKey()
-                    self.patch.launch(pyrheabase.BedRequest(self.name + '_bedReq', self.patch,
-                                                            tier, self.ward.getGblAddr(),
-                                                            key, facAddrList),
-                                      timeNow)
-                    timeNow = self.ward.fac.holdQueue.lock(self, key=key)
-                    if self.newWardAddr is None:
-                        # Nowhere to go; try again tomorrow
-                        print ('%s is stuck at %s; going back to sleep at %s' %
-                               (self.name, self.ward, timeNow))
-                        timeNow = self.sleep(1)
-                        # state is unchanged
-                    else:
-                        rQAddr = self.ward.fac.reqQueue.getGblAddr()
-                        self.patch.launch(pyrheabase.DepartureMsg(self.name + '_depMsg',
-                                                                  self.patch, self.ward.tier,
-                                                                  self.ward.getGblAddr(),
-                                                                  rQAddr),
-                                          timeNow)
-                        timeNow = self.ward.unlock(self)
-                        self.fsmstate = PatientState.MOVING
-            elif self.fsmstate == PatientState.MOVING:
-                self.ward = None
-                addr, final = self.patch.getPathTo(self.newWardAddr)
-                if final:
-                    self.fsmstate = PatientState.ATWARD
-                    self.ward = addr
-                    print '%s arrived at new ward %s' % (self.name, addr._name)
-                timeNow = addr.lock(self)
-
-    def __getstate__(self):
-        d = patches.Agent.__getstate__(self)
-        d['tier'] = self.tier
-        d['ward'] = self.ward
-        d['newWardAddr'] = self.newWardAddr
-        d['fsmstate'] = self.fsmstate
-        d['status'] = self._status
-        d['diagnosis'] = self._diagnosis
-        d['treatment'] = self._treatment
-        d['lastUpdateTime'] = self.lastUpdateTime
-        return d
-
-    def __setstate__(self, d):
-        patches.Agent.__setstate__(self, d)
-        self.tier = d['tier']
-        self.ward = d['ward']
-        self.newWardAddr = d['newWardAddr']
-        self.fsmstate = d['fsmstate']
-        self._status = d['status']
-        self._diagnosis = d['diagnosis']
-        self._treatment = d['treatment']
-        self.lastUpdateTime = d['lastUpdateTime']
+                comm.send(assignments[targetRank], dest=targetRank)
+    else:
+        myFacList = comm.recv(source=0)
+    if comm.rank == 0:
+        print 'Finished distributing facilities'
+    return myFacList
 
 
-def describeSelf():
-    print """This should write some documentation"""
+class TweakedOptParser(optparse.OptionParser):
+    def setComm(self, comm):
+        self.comm = comm
+
+    def exit(self, code, msg):
+        print msg
+        if hasattr(self, 'comm'):
+            self.comm.Abort(code)
+        else:
+            sys.exit(code)
+
+
+def checkInputFileSchema(fname, schemaFname, comm):
+    try:
+        with open(fname, 'rU') as f:
+            inputJSON = yaml.safe_load(f)
+        with open(os.path.join(os.path.dirname(__file__), schemaFname), 'rU') as f:
+            schemaJSON = yaml.safe_load(f)
+        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+        if nErrors:
+            print 'Input file violates schema:'
+            for e in validator.iter_errors(inputJSON):
+                print e
+            comm.Abort(2)
+        else:
+            return inputJSON
+    except Exception, e:
+        print 'Error checking input against its schema: %s' % e
+        comm.Abort(2)
 
 
 def main():
-    trace = False
-    verbose = False  # @UnusedVariable
-    debug = False
-    deterministic = False
-
-    for a in sys.argv[1:]:
-        if a == '-v':
-            verbose = True  # @UnusedVariable
-        elif a == '-d':
-            debug = True
-        elif a == '-t':
-            trace = True
-        elif a == '-D':
-            deterministic = True
-        else:
-            describeSelf()
-            sys.exit('unrecognized argument %s' % a)
 
     comm = patches.getCommWorld()
+
+    if comm.rank == 0:
+        parser = TweakedOptParser(usage="""
+        %prog [-v][-d][-t][-D] input.yaml
+        """)
+        parser.setComm(comm)
+        parser.add_option("-v", "--verbose", action="store_true",
+                          help="verbose output")
+        parser.add_option("-d", "--debug", action="store_true",
+                          help="debugging output")
+        parser.add_option("-t", "--trace", action="store_true",
+                          help="enable greenlet thread tracing")
+        parser.add_option("-D", "--deterministic", action="store_true",
+                          help="deterministic mode")
+
+        opts, args = parser.parse_args()
+        clData = {'verbose': opts.verbose,
+                  'debug': opts.debug,
+                  'trace': opts.trace,
+                  'deterministic': opts.deterministic
+                  }
+        if len(args) == 1:
+            clData['input'] = checkInputFileSchema(args[0], inputSchema, comm)
+        else:
+            parser.error("A YAML-format file specifying run parameters must be specified.")
+        parser.destroy()
+    else:
+        clData = None
+    clData = comm.bcast(clData, root=0)
+
+    verbose = clData['verbose']  # @UnusedVariable
+    debug = clData['debug']  # @UnusedVariable
+    trace = clData['trace']
+    deterministic = clData['deterministic']
+    inputDict = clData['input']
 
     if deterministic:
         seed(1234 + comm.rank)  # Set the random number generator seed
 
+    facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
+
+    myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
+    print 'Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList])
+
     patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic)
-    nPatches = 2
-    for j in xrange(nPatches):  # @UnusedVariable
-        patch = patchGroup.addPatch(patches.Patch(patchGroup))
+    # Only one patch per rank for now
+    patch = patchGroup.addPatch(patches.Patch(patchGroup))
 
-        hosp = Facility('Hospital_%s' % str(patch.tag), patch)
-        rehab = Facility('Rehab_%s' % str(patch.tag), patch)
-        assisted = Facility('Assisted_%s' % str(patch.tag), patch)
-        community = Facility('Community_%s' % str(patch.tag), patch)
+    allIter = []
+    allAgents = []
+    for facDescription in myFacList:
+        if facDescription['category'] in facImplDict:
+            facilities, wards, patients = \
+                facImplDict[facDescription['category']].generateFull(facDescription, patch)
+            allIter.extend([fac.reqQueue for fac in facilities])
+            allIter.extend([fac.holdQueue for fac in facilities])
+            allIter.extend(wards)
+            allAgents.extend([fac.manager for fac in facilities])
+            allAgents.extend(patients)
+        else:
+            raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %
+                               facDescription)
 
-        allItr = [hosp.reqQueue, hosp.holdQueue,
-                  rehab.reqQueue, rehab.holdQueue,
-                  assisted.reqQueue, assisted.holdQueue,
-                  community.reqQueue, community.holdQueue]
-        allAgents = [hosp.manager, rehab.manager, assisted.manager, community.manager]
+    patch.addInteractants(allIter)
+    patch.addAgents(allAgents)
+    print 'Rank %d: %d interactants, %d agents' % (comm.rank, len(allIter), len(allAgents))
 
-        count = 0
-        for tier, nBeds in [(CareTier.HOSP, 100), (CareTier.HOSP, 50), (CareTier.ICU, 20)]:
-            allItr.append(hosp.addWard(Ward('Ward_%s_%s_%d' % (hosp.name,
-                                                               CareTier.names[tier],
-                                                               count),
-                                            patch, tier, nBeds)))
-            count += 1
-
-        count = 0
-        for tier, nBeds in [(CareTier.REHAB, 200)]:
-            allItr.append(rehab.addWard(Ward('Ward_%s_%s_%d' % (rehab.name,
-                                                                CareTier.names[tier],
-                                                                count),
-                                             patch, tier, nBeds)))
-            count += 1
-
-        count = 0
-        for tier, nBeds in [(CareTier.NURSING, 100), (CareTier.ASSISTED, 1000)]:
-            allItr.append(assisted.addWard(Ward('Ward_%s_%s_%d' % (assisted.name,
-                                                                   CareTier.names[tier],
-                                                                   count),
-                                                patch, tier, nBeds)))
-            count += 1
-
-        count = 0
-        communityWards = []
-        for tier, nBeds in [(CareTier.HOME, 5500), (CareTier.HOME, 5500)]:
-            w = community.addWard(CommunityWard('Community_%s_%s_%d' % (community.name,
-                                                                        CareTier.names[tier],
-                                                                        count),
-                                                patch, nBeds))
-            communityWards.append(w)
-            allItr.append(w)
-            count += 1
-
-        for i in xrange(3000):
-            ward = choice(communityWards)
-            a = PatientAgent('PatientAgent_%s_%d' % (str(patch.tag), i),
-                             patch, choice(communityWards), debug=debug)
-            ward.lock(a)
-            a.ward = ward
-            allAgents.append(a)
-
-        patch.addInteractants(allItr)
-        patch.addAgents(allAgents)
-
-    allAgents[-1].printSummary()
-
-    patchGroup.start()
+    #patchGroup.start()
     print '%s all done (from main)' % patchGroup.name
 
 

@@ -1,0 +1,15 @@
+---
+type: //rec
+required:
+  name: //str
+  wards:
+    type: //arr
+    length: { min: 1 }
+    contents: {
+      type: //rec
+      required:
+        name: //str
+        beds: //int
+        tier: //str
+    }
+

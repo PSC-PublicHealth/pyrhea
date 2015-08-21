@@ -1,0 +1,15 @@
+{
+    "category": "HOSP", 
+    "name": "St. Jude Medical Center", 
+    "fracBedsICU": 0.2, 
+    "nBeds": "30 is a lot", 
+    "abbrev": "SJUD", 
+    "nBeds_prov": "I made this up", 
+    "fracBedsICU_prov": "I made this up too", 
+    "meanLOS": {
+	"prov": "Some spreadsheet", 
+	"enddate": "12/31/2007", 
+	"value": "helloworld", 
+	"startdate": "1/1/2007"
+    }
+}

@@ -17,6 +17,7 @@
 
 _rhea_svn_id_ = "$Id$"
 
+from itertools import chain
 import patches
 
 
@@ -124,6 +125,18 @@ class Facility(object):
         ward.fac = self
         return ward
 
+    def getWards(self, tier=None):
+        if tier:
+            if tier in self.wardDict:
+                return [w for w, n in self.wardDict[tier]]  # @UnusedVariable
+            else:
+                return []
+        else:
+            return [w for w, n in chain.from_iterable(self.wardDict.values())]  # @UnusedVariable
+
+    def getTiers(self):
+        return self.wardDict.keys()
+    
 
 class BedRequest(patches.Agent):
     STATE_START = 0

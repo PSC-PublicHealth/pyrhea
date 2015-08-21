@@ -1,0 +1,5 @@
+'facilityDirs':
+  - '/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfactsCurrent'
+  - '/home/welling/workspace/pyRHEA/models/OrangeCounty/communitiesCurrent'
+
+'facilityImplementationDir': './facilityImplementations'

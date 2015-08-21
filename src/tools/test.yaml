@@ -1,0 +1,15 @@
+---
+abbrev: SJOS
+category: HOSPITAL
+fracBedsICU: 0.091610562
+fracBedsICU_prov: ICU Estimated LOS 7-22-09.xls $B
+meanLOSICU:
+    enddate: 1/12/2017
+    prov: ICU Estimated LOS 7-22-09.xls $D
+    startdate: 31/10/2015
+    value: 8.6
+meanPop: 286.44931507013695
+meanPop_prov: RHEA_Hosp-NH_Inputs_ADULT_2007_v03_06APR2012_properties_MRSA-STRAT-LOS.csv $B*$C/365
+nBeds: 315
+nBeds_prov: meanPop * 1.1
+name: ST. JOSEPH HOSPITAL - ORANGE

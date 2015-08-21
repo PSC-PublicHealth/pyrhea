@@ -1,0 +1,37 @@
+{
+	"$schema": "http://json-schema.org/schema#",
+	"$id": "http://rhea.psc.edu/sample_schema.json",
+	"title": "facility schema",
+	"description": "facility schema",
+	"definitions": {
+		"caretier": {
+			"type": "string",
+			"enum": ["HOME", "REHAB", "ASSISTED", "NURSING", "HOSP", "ICU"]
+		},
+		"ward": {
+			"type": "object",
+			"properties": {
+				"name": { "type": "string" },
+				"tier": { "$ref": "#/definitions/caretier" },
+				"nBeds": { 
+					"type": "integer",
+					"minimum": 1
+				 }
+			},
+			"required": ["name", "tier", "nBeds"],
+			"additionalProperties": false
+		}
+	},
+	"type": "object",
+	"properties": {
+		"abbrev": { "type": "string" },
+		"wards": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/ward"
+			}
+		}
+	},
+	"additionalProperties": false
+	
+}

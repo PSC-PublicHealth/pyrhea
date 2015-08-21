@@ -1,0 +1,25 @@
+!!python/unicode '$id': !!python/unicode 'http://rhea.psc.edu/sample_schema.json'
+!!python/unicode '$schema': !!python/unicode 'http://json-schema.org/schema#'
+!!python/unicode 'additionalProperties': false
+!!python/unicode 'definitions':
+  !!python/unicode 'caretier':
+    !!python/unicode 'enum': [!!python/unicode 'HOME', !!python/unicode 'REHAB', !!python/unicode 'ASSISTED',
+      !!python/unicode 'NURSING', !!python/unicode 'HOSP', !!python/unicode 'ICU']
+    !!python/unicode 'type': !!python/unicode 'string'
+  !!python/unicode 'ward':
+    !!python/unicode 'properties':
+      !!python/unicode 'careTier': {!!python/unicode '$ref': !!python/unicode '#/definitions/caretier'}
+      !!python/unicode 'nBeds': {!!python/unicode 'minimum': 1, !!python/unicode 'type': !!python/unicode 'integer'}
+      !!python/unicode 'name': {!!python/unicode 'type': !!python/unicode 'string'}
+    !!python/unicode 'required': [!!python/unicode 'name', !!python/unicode 'careTier',
+      !!python/unicode 'nBeds']
+    !!python/unicode 'type': !!python/unicode 'object'
+!!python/unicode 'description': !!python/unicode 'facility schema'
+!!python/unicode 'properties':
+  !!python/unicode 'name': !!python/unicode 'string'
+  !!python/unicode 'wards':
+    !!python/unicode 'items':
+      !!python/unicode 'type': {!!python/unicode '$ref': !!python/unicode '#/definitions/ward'}
+    !!python/unicode 'type': !!python/unicode 'array'
+!!python/unicode 'title': !!python/unicode 'facility schema'
+!!python/unicode 'type': !!python/unicode 'object'
