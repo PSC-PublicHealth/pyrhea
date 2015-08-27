@@ -136,7 +136,7 @@ class Facility(object):
 
     def getTiers(self):
         return self.wardDict.keys()
-    
+
 
 class BedRequest(patches.Agent):
     STATE_START = 0
@@ -166,6 +166,7 @@ class BedRequest(patches.Agent):
     def run(self, startTime):
         timeNow = startTime
         while True:
+            print '?',
             if self.fsmstate == BedRequest.STATE_START:
                 if len(self.facilityOptions) == 0:
                     self.fsmstate = BedRequest.STATE_FAILED
@@ -181,6 +182,7 @@ class BedRequest(patches.Agent):
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
                 raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
+                print '!',
                 addr, final = self.patch.getPathTo(self.homeWardAddr)
                 if final:
                     oldWard = addr
@@ -196,6 +198,7 @@ class BedRequest(patches.Agent):
                     oldWard = addr
                     patientAgent = oldWard.fac.holdQueue.awaken(self.patientKey)
                     patientAgent.newWardAddr = None
+                    print '(',
                     break
                 timeNow = addr.lock(self)
 
@@ -236,10 +239,10 @@ class DepartureMsg(patches.Agent):
         timeNow = startTime  # @UnusedVariable
         while True:
             if self.fsmstate == DepartureMsg.STATE_MOVING:
-                    addr, final = self.patch.getPathTo(self.destAddr)
-                    if final:
-                        self.fsmstate = DepartureMsg.STATE_ARRIVED
-                    timeNow = addr.lock(self)  # @UnusedVariable
+                addr, final = self.patch.getPathTo(self.destAddr)
+                if final:
+                    self.fsmstate = DepartureMsg.STATE_ARRIVED
+                timeNow = addr.lock(self)  # @UnusedVariable
             elif self.fsmstate == DepartureMsg.STATE_ARRIVED:
                 break  # we are done
 

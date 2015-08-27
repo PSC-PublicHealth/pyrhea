@@ -16,7 +16,11 @@
           'type': 'string'
       'facilityImplementationDir':
         'type': 'string'
+      'runDurationDays':
+        'type': integer
+        'min': 1
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'
+      - 'runDurationDays'
 

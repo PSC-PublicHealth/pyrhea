@@ -404,6 +404,10 @@ class MainLoop(greenlet):
         self.addPerDayCallback(MainLoop.everyDayCB)
         if self.safety is not None:
             self.addPerEventCallback(MainLoop.everyEventCB)
+        self.stopNow = False
+
+    def stopRunning(self):
+        self.stopNow = True
 
     def addAgents(self, agentList):
         assert all([a.ownerLoop == self for a in agentList]), \
@@ -436,7 +440,9 @@ class MainLoop(greenlet):
                 cb(self, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
             # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
-        print 'sequencer ran dry'
+            if self.stopNow:
+                break
+        return '%s exiting' % self.name
 
     def sleep(self, agent, nDays):
         assert isinstance(nDays, types.IntType), 'nDays should be an integer'

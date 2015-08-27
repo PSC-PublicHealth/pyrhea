@@ -1,0 +1,26 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/hospital_constants_schema.yaml'
+'title': 'hospital constants schema'
+'description': 'hospital constants schema'
+
+'$ref': '#/definitions/hospitalconstants'
+
+'definitions':
+    
+  'count':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'integer', 'minimum': 0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+      
+  'hospitalconstants':
+    'type': 'object'
+    'properties':
+      'bedsPerWard': {'$ref': '#/definitions/count'}
+      'bedsPerICUWard': {'$ref': '#/definitions/count'}
+    'required':
+      - 'bedsPerWard'
+      - 'bedsPerICUWard'

@@ -41,7 +41,7 @@ class Community(facilitybase.Facility):
     def __init__(self, descr, patch):
         facilitybase.Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
         meanPop = descr['meanPop']
-        nBeds = int(round(meanPop))
+        nBeds = int(round(1.3*meanPop))
         self.addWard(CommunityWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                    patch, nBeds))
 

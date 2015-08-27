@@ -24,20 +24,21 @@ import pyrheabase
 from pyrheautils import enum, namedtuple
 
 
-CareTier = enum('HOME', 'REHAB', 'ASSISTED', 'NURSING', 'HOSP', 'ICU')
+CareTier = enum('HOME', 'NURSING', 'HOSP', 'ICU')
 
-DiagClassA = enum('HEALTHY', 'SICK')
+DiagClassA = enum('HEALTHY', 'POORHEALTH', 'REHAB', 'SICK', 'VERYSICK', 'DEATH')
 
 DiagClassB = enum('CLEAR', 'COLONIZED', 'INFECTED')
 
-TreatmentProtocol = enum('NORMAL')  # for things like patient isolation
+TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
 
 PatientStatus = namedtuple('PatientStatus',
                            ['diagClassA',           # one of DiagClassA
-                            'diagACountdown',       # days until better
+                            'startDateA',           # date diagClassA status was entered
                             'diagClassB',           # one of DiagClassB
+                            'startDateB'            # date diagClassB status was entered
                             ],
-                           field_types=[DiagClassA, None, DiagClassB])
+                           field_types=[DiagClassA, None, DiagClassB, None])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['diagClassA',           # one of DiagClassA
@@ -65,27 +66,46 @@ class Facility(pyrheabase.Facility):
     def prescribe(self, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.diagClassB in [DiagClassB.CLEAR, DiagClassB.COLONIZED]:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.diagClassB == DiagClassB.INFECTED:
-                return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(patientDiagnosis.diagClassB))
+            return (CareTier.HOME, TreatmentProtocol.NORMAL)
+        if patientDiagnosis.diagClassA == DiagClassA.POORHEALTH:
+            return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+        if patientDiagnosis.diagClassA == DiagClassA.REHAB:
+            return (CareTier.REHAB, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            if patientDiagnosis.diagClassB in [DiagClassB.CLEAR, DiagClassB.COLONIZED]:
-                return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.diagClassB == DiagClassB.INFECTED:
-                return (CareTier.ICU, TreatmentProtocol.NORMAL)
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(patientDiagnosis.diagClassB))
+            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
+            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
+            return (None, TreatmentProtocol.NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
+    def diagnosisFromCareTier(self, careTier):
+        """
+        If I look at a patient under a given care tier, what would I expect their diagnostic class
+        to be?
+        """
+        return {CareTier.HOME: PatientDiagnosis(DiagClassA.HEALTHY, DiagClassB.CLEAR),
+                CareTier.NURSING: PatientDiagnosis(DiagClassA.POORHEALTH, DiagClassB.CLEAR),
+                CareTier.HOSP: PatientDiagnosis(DiagClassA.SICK, DiagClassB.CLEAR),
+                CareTier.ICU: PatientDiagnosis(DiagClassA.VERYSICK, DiagClassB.CLEAR),
+                }[careTier]
 
-PatientState = enum('ATWARD', 'MOVING')
+    def getStatusChangeCDF(self, patientStatus, careTier, treatment, startTime, timeNow):
+        """
+        Return a list of pairs of the form [(prob1, newStatus), (prob2, newStatus), ...]
+        where newStatus is a full patientStatus and prob is the probability of reaching
+        that status at the end of timeNow.  The sum of all the probs must equal 1.0.
+        """
+        return [(1.0, patientStatus)]
+
+
+PatientState = enum('ATWARD', 'MOVING', 'JUSTARRIVED')
 
 
 class PatientAgent(patches.Agent):
+
+    diseaseTransitionPDFs = {}
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         patches.Agent.__init__(self, name, patch, debug=debug)
@@ -93,8 +113,9 @@ class PatientAgent(patches.Agent):
         self.tier = ward.tier
         self.newWardAddr = None
         self.fsmstate = PatientState.ATWARD
-        self._status = PatientStatus(DiagClassA.HEALTHY, 0, DiagClassB.CLEAR)
-        self._diagnosis = self.ward.fac.diagnose(self._status)
+        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier)
+        self._status = PatientStatus(self._diagnosis.diagClassA, 0,
+                                     self._diagnosis.diagClassB, 0)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)
         self.lastUpdateTime = timeNow
@@ -105,53 +126,28 @@ class PatientAgent(patches.Agent):
         print '  diagnosis: %s' % str(self._diagnosis)
         print '  treatment: %s' % TreatmentProtocol.names[self._treatment]
 
-    def updateDiseaseState(self, treatment, timeNow):
+    def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            self.lastUpdateTime = timeNow
-            diagA = self._status.diagClassA
-            diagACountdown = self._status.diagACountdown
-            diagB = self._status.diagClassB
-            if self._status.diagClassA == DiagClassA.HEALTHY:
-                pBar = 1.0 - healthyGetSickProbPerDay
-                gotSick = (random() > math.pow(pBar, dT))
-                if gotSick:
-                    diagA = DiagClassA.SICK
-                    diagACountdown = randint(3, 10)
-                else:
-                    pass  # no update; still healthy
-            elif self._status.diagClassA == DiagClassA.SICK:
-                diagACountdown -= dT
-                if diagACountdown <= 0:
-                    diagA = DiagClassA.HEALTHY
-                    diagACountdown = 0
+            probOutcomes = self.ward.fac.getStatusChangeCDF(self._status, self.tier,
+                                                            self._treatment,
+                                                            self.lastUpdateTime, timeNow)
+            r = random()
+            for deltaProb, newStatus in probOutcomes:
+                r -= deltaProb
+                if r < 0.0:
+                    if self._status != newStatus:
+                        print '%s new status %s' % (self.name, newStatus)
+                    self._status = newStatus
+                    break
             else:
-                raise RuntimeError('Unknown DiagClassA %s' % str(diagA))
-
-            if diagB == DiagClassB.CLEAR:
-                if random() < 0.1:
-                    diagB = DiagClassB.COLONIZED
-            elif diagB == DiagClassB.COLONIZED:
-                r = random()
-                if r < 0.3:
-                    diagB = DiagClassB.CLEAR
-                elif r < 0.7:
-                    diagB = DiagClassB.COLONIZED
-                else:
-                    diagB = DiagClassB.INFECTED
-            elif diagB == DiagClassB.INFECTED:
-                if random() < 0.2:
-                    diagB = DiagClassB.COLONIZED
-                else:
-                    diagB = DiagClassB.INFECTED
-            else:
-                raise RuntimeError('Unknown DiagClassB %s' % str(diagB))
-
-            self._status = PatientStatus(diagA, diagACountdown, diagB)
+                raise RuntimeError('Facility %s produced an incomplete PDF' % self.ward.fac.name)
 
     def updateEverything(self, timeNow):
-        self.updateDiseaseState(self._treatment, timeNow)
+        self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
+        if self._status.diagClassA == DiagClassA.DEATH:
+            return None
         self._diagnosis = self.ward.fac.diagnose(self._status)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis, self._treatment)
         self.lastUpdateTime = timeNow
@@ -159,9 +155,23 @@ class PatientAgent(patches.Agent):
 
     def run(self, startTime):
         timeNow = startTime
+        # For locations with long checkintervals, random sleep to desynchronize
+        if self.fsmstate == PatientState.ATWARD and self.ward.checkInterval > 1:
+            timeNow = self.sleep(randint(0, self.ward.checkInterval-1))
         while True:
             if self.fsmstate == PatientState.ATWARD:
                 tier = self.updateEverything(timeNow)
+                if tier is None:
+                    assert self._status.diagClassA == DiagClassA.DEATH, \
+                        '%s is not dead?' % self.name
+                    print 'Alas poor %s! %s' % (self.name, timeNow)
+                    self.patch.launch(pyrheabase.DepartureMsg(self.name + '_depMsg',
+                                                              self.patch, self.ward.tier,
+                                                              self.ward.getGblAddr(),
+                                                              self.ward.fac.reqQueue.getGblAddr()),
+                                      timeNow)
+                    timeNow = self.ward.unlock(self)
+                    break
                 if self.ward.tier == tier:
                     timeNow = self.sleep(self.ward.checkInterval)
                 else:
@@ -194,10 +204,13 @@ class PatientAgent(patches.Agent):
                 self.ward = None
                 addr, final = self.patch.getPathTo(self.newWardAddr)
                 if final:
-                    self.fsmstate = PatientState.ATWARD
+                    self.fsmstate = PatientState.JUSTARRIVED
                     self.ward = addr
-                    print '%s arrived at new ward %s' % (self.name, addr._name)
+                    print '%s arrived at new ward %s at %s' % (self.name, addr._name, timeNow)
                 timeNow = addr.lock(self)
+            elif self.fsmstate == PatientState.JUSTARRIVED:
+                self.fsmstate = PatientState.ATWARD
+                timeNow = self.sleep(randint(0, self.ward.checkInterval-1))
 
     def __getstate__(self):
         d = patches.Agent.__getstate__(self)

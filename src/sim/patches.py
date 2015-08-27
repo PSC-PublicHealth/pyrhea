@@ -483,6 +483,15 @@ class PatchGroup(greenlet):
         self.sync = sync
         self.deterministic = deterministic
         self.endOfDay = False
+        self.prevTraceCB = None
+        self.stopNow = False
+
+    def setTrace(self):
+        self.prevTraceCB = greenlet.gettrace()
+        greenlet.settrace(greenletTrace)
+
+    def unsetTrace(self):
+        greenlet.settrace(self.prevTraceCB)
 
     @property
     def vclock(self):
@@ -514,16 +523,31 @@ class PatchGroup(greenlet):
         # tr = tracker.SummaryTracker()
         while True:
             # print '######## %s: new pass of run' % (self.name)
-            for p in self.patches:
+            for p in self.patches[:]:
                 # print '######## %s: running patch %s: %s agents at time %s' % \
                 #     (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
                 #      p.loop.sequencer.getTimeNow())
                 reply = p.loop.switch()  # @UnusedVariable
                 # p.loop.printCensus()
+#                if p.loop.stopNow:
+#                     if reply:
+#                         print '%s stopped running: %s' % (p.name, reply)
+#                     else:
+#                         print '%s stopped running' % p.name
+#                    self.patches.remove(p)
+#                    self.setTrace()
+
             # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
             # print '######### %s: finish last send' % self.name
             self.nI.finishSend()
+            # print ('######### %s: checking done; seen %d, unfinished patches = %d' %
+            #        (self.name, self.nI.doneSignalsSeen,
+            #         len([1 for p in self.patches if p.loop.stopNow])))
+            if self.stopNow:
+                print '%s Sending done signal' % self.name
+                if self.nI.sendDoneSignal():
+                    return '%s claims all done' % self.name
             # print '######### %s: start recv' % self.name
             self.nI.startRecv()
             # print '######### %s: start send' % self.name
@@ -593,7 +617,11 @@ class PatchGroup(greenlet):
                     localP.addGateTo(friend)
                     localP.addGateFrom(friend)
 
-        self.switch()
+        self.stopNow = False
+        return self.switch()
+
+    def stop(self):
+        self.stopNow = True
 
     def doneWithToday(self):
         return all([p.loop.sequencer.doneWithToday() for p in self.patches])

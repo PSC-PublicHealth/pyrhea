@@ -21,17 +21,23 @@ import os.path
 from itertools import cycle
 import jsonschema
 import yaml
-import facilitybase
 import math
+from scipy.stats import lognorm
+
+import facilitybase
 
 category = 'HOSPITAL'
 schema = 'facilityfacts_schema.yaml'
-validator = None
+constants_values = 'hospital_constants.yaml'
+constants_schema = 'hospital_constants_schema.yaml'
 
-"""An empirical estimate"""
-bedsPerWard = 20
-"""Another empirical estimate"""
-bedsPerICUWard = 12
+validator = None
+constants = None
+
+# """An empirical estimate"""
+# bedsPerWard = 20
+# """Another empirical estimate"""
+# bedsPerICUWard = 12
 
 # class CommunityWard(Ward):
 #     """This 'ward' type represents being out in the community"""
@@ -45,6 +51,8 @@ bedsPerICUWard = 12
 class Hospital(facilitybase.Facility):
     def __init__(self, descr, patch):
         facilitybase.Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        bedsPerWard = constants['bedsPerWard']['value']
+        bedsPerICUWard = constants['bedsPerWard']['value']
         if 'nBeds' in descr:
             icuBeds = descr['fracAdultPatientDaysICU'] * descr['nBeds']
             icuWards = int(icuBeds/bedsPerICUWard) + 1
@@ -67,6 +75,12 @@ class Hospital(facilitybase.Facility):
 #                      (icuBeds + nonICUBeds)/(meanICUPop+meanNonICUPop)))
 #         print '%s: %d + %d = %d vs. %s' % (descr['abbrev'], icuBeds, nonICUBeds,
 #                                            icuBeds+nonICUBeds, baseStr)
+
+        assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
+            'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
+        mu = descr['losModel']['parms'][0]
+        sigma = descr['losModel']['parms'][1]
+        self.frozenPDF = lognorm(sigma, scale=math.exp(mu))
         for i in xrange(icuWards):
             self.addWard(facilitybase.Ward(('%s_%s_%s_%s_%d' %
                                             (category, patch.name, descr['abbrev'], 'ICU', i)),
@@ -75,6 +89,29 @@ class Hospital(facilitybase.Facility):
             self.addWard(facilitybase.Ward(('%s_%s_%s_%s_%d' %
                                             (category, patch.name, descr['abbrev'], 'HOSP', i)),
                                            patch, facilitybase.CareTier.HOSP, bedsPerWard))
+
+    def getStatusChangeCDF(self, patientStatus, careTier, treatment, startTime, timeNow):
+        """
+        Return a list of pairs of the form [(prob1, newStatus), (prob2, newStatus), ...]
+        where newStatus is a full patientStatus and prob is the probability of reaching
+        that status at the end of timeNow.  The sum of all the probs must equal 1.0.
+        """
+        if careTier == facilitybase.CareTier.HOSP:
+            changeProb = self.frozenPDF.cdf(timeNow) - self.frozenPDF.cdf(startTime)
+            fracDischargesViaDeath = 0.0081
+            return [(changeProb * fracDischargesViaDeath,
+                     facilitybase.PatientStatus(facilitybase.DiagClassA.DEATH, timeNow,
+                                                patientStatus.diagClassB,
+                                                patientStatus.startDateB)),
+                    (changeProb * (1.0-fracDischargesViaDeath),
+                     facilitybase.PatientStatus(facilitybase.DiagClassA.HEALTHY, timeNow,
+                                                patientStatus.diagClassB,
+                                                patientStatus.startDateB)),
+                    (1.0 - changeProb, patientStatus)]
+        elif careTier == facilitybase.CareTier.ICU:
+            return [(1.0, patientStatus)]
+        else:
+            raise RuntimeError('Hospitals do not provide care tier %s' % careTier)
 
 
 def _populate(fac, descr, patch):
@@ -122,3 +159,26 @@ def checkSchema(facilityDescr):
         validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
     nErrors = sum([1 for e in validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
+
+
+def _importConstants():
+    global constants
+    if constants is None:
+        with open(os.path.join(os.path.dirname(__file__), constants_values), 'rU') as f:
+            cJSON = yaml.safe_load(f)
+        with open(os.path.join(os.path.dirname(__file__), constants_schema), 'rU') as f:
+            schemaJSON = yaml.safe_load(f)
+        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+        nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
+        if nErrors:
+            for e in validator.iter_errors(cJSON):
+                print ('Schema violation: %s: %s' %
+                       (' '.join([str(word) for word in e.path]), e.message))
+            raise RuntimeError('%s does not satisfy the schema %s' %
+                               (constants_values, constants_schema))
+        constants = cJSON
+
+###########
+# Initialize the module
+###########
+_importConstants()

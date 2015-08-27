@@ -52,12 +52,18 @@
     'properties':
       'value': {'type': 'number', 'minimum': 0.0}
       'prov': {'type': 'string'}
+    'required':
+      - 'prov'
+      - 'value'
       
   'categorycount':
     'type': 'object'
     'properties':
       'category': {'$ref': '#/definitions/category'}
       'count': {'$ref': '#/definitions/count'}
+    'required':
+      - 'category'
+      - 'count'
   
   'facilityfacts':
     'type': 'object'

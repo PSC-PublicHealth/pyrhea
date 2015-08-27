@@ -1,0 +1,9 @@
+'bedsPerWard':
+  'value': 20
+  'prov': 'empirical, based on rhea-dante'
+
+'bedsPerICUWard':
+  'value': 12
+  'prov': 'empirical, based on rhea-dante'
+  
+  

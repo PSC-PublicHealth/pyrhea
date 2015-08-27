@@ -31,6 +31,8 @@ import yaml_tools
 
 inputSchema = 'rhea_input_schema.yaml'
 
+patchGroup = None
+
 
 def loadFacilityImplementations(implementationDir):
     print 'Loading facility implementations'
@@ -131,7 +133,8 @@ def checkInputFileSchema(fname, schemaFname, comm):
         if nErrors:
             print 'Input file violates schema:'
             for e in validator.iter_errors(inputJSON):
-                print e
+                print ('Schema violation: %s: %s' %
+                       (' '.join([str(word) for word in e.path]), e.message))
             comm.Abort(2)
         else:
             return inputJSON
@@ -140,7 +143,15 @@ def checkInputFileSchema(fname, schemaFname, comm):
         comm.Abort(2)
 
 
+def createPerDayCB(patchGroup, runDurationDays):
+    def perDayCB(loop, timeNow):
+        if timeNow > runDurationDays:
+            patchGroup.stop()
+    return perDayCB
+
+
 def main():
+    global patchGroup
 
     comm = patches.getCommWorld()
 
@@ -190,6 +201,7 @@ def main():
     patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic)
     # Only one patch per rank for now
     patch = patchGroup.addPatch(patches.Patch(patchGroup))
+    patch.loop.addPerDayCallback(createPerDayCB(patchGroup, inputDict['runDurationDays']))
 
     allIter = []
     allAgents = []
@@ -210,8 +222,8 @@ def main():
     patch.addAgents(allAgents)
     print 'Rank %d: %d interactants, %d agents' % (comm.rank, len(allIter), len(allAgents))
 
-    #patchGroup.start()
-    print '%s all done (from main)' % patchGroup.name
+    exitMsg = patchGroup.start()
+    print '%s all done (from main); %s' % (patchGroup.name, exitMsg)
 
 
 ############

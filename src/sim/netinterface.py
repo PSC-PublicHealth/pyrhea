@@ -93,7 +93,7 @@ class NetworkInterface(object):
     MPI_TAG_END = 2
 #     maxChunksPerMsg = 256000
 #     irecvBufferSize = 1024*1024
-    maxChunksPerMsg = 32
+    maxChunksPerMsg = 32*128
     irecvBufferSize = 1024*1024
 
     def __init__(self, comm, sync=True, deterministic=False):
@@ -108,9 +108,10 @@ class NetworkInterface(object):
         self.clientIncomingCallbacks = {}
         self.sync = sync
         self.deterministic = deterministic
-        self.endOfDayMsg = []
-        self.nEndOfDayNeighbors = 0
+        self.doneMsg = [False]
         self.incomingLclMessages = []
+        self.doneSignalSent = False
+        self.doneSignalsSeen = 0
 
     def getGblAddr(self, lclId):
         return GblAddr(self.comm.rank, lclId)
@@ -175,10 +176,13 @@ class NetworkInterface(object):
                 self.outstandingRecvReqs.popleft()
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
-                    print 'MORE from %s' % s.Get_source()
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
+                else:
+                    doneMsg = msg.pop()
+                    if doneMsg:
+                        self.doneSignalsSeen += 1
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -192,10 +196,14 @@ class NetworkInterface(object):
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
-                    print 'MORE from %s' % s.Get_source()
+                    print 'Rank %d: MORE from %s' % s.Get_source()
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
+                else:
+                    doneMsg = msg.pop()
+                    if doneMsg:
+                        self.doneSignalsSeen += 1
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -208,6 +216,9 @@ class NetworkInterface(object):
                 if idx >= 0:
                     self.outstandingRecvReqs.pop(idx)
                 if flag:
+                    doneMsg = msg.pop()
+                    if doneMsg:
+                        self.doneSignalsSeen += 1
                     vtm = msg[0]
                     #
                     # Handle vtime order issues here
@@ -243,7 +254,7 @@ class NetworkInterface(object):
                         req = self.comm.isend(bigCargo, destRank,
                                               tag=NetworkInterface.MPI_TAG_MORE)
                     else:
-                        bigCargo.extend(self.endOfDayMsg)
+                        bigCargo.extend(self.doneMsg)
                         req = self.comm.isend(bigCargo, destRank,
                                               tag=NetworkInterface.MPI_TAG_END)
                     self.outstandingSendReqs.append(req)
@@ -265,13 +276,13 @@ class NetworkInterface(object):
                             req = self.comm.isend(bigCargo, destRank,
                                                   tag=NetworkInterface.MPI_TAG_MORE)
                         else:
-                            bigCargo.extend(self.endOfDayMsg)
+                            bigCargo.extend(self.doneMsg)
                             req = self.comm.isend(bigCargo, destRank,
                                                   tag=NetworkInterface.MPI_TAG_END)
                         self.outstandingSendReqs.append(req)
                     # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
         self.outgoingDict.clear()
-        self.endOfDayMsg = []
+        self.doneMsg = [False]  # to avoid accidental re-sends
 
     def finishSend(self):
         # print ('######## %s entering send waitall on %d requests' %
@@ -280,3 +291,22 @@ class NetworkInterface(object):
         # print '######## %s finished send waitall; result was %s' % (self.name, result)
 #         self.outstandingSendReqs = deque()
         self.outstandingSendReqs = []
+
+    def sendDoneSignal(self):
+        """
+        This routine signals all partners of this NetworkInterface that it is 'done' and ready to
+        close communication.  It can be called repeatedly; calls after the first have no effect.
+
+        The return value is boolean, True if all partners have also sent the 'done' signal and
+        False otherwise.  Thus one would typically call it in a communication loop, and exit the
+        loop when it returns True.
+
+        Once the 'done' signal has been sent, there is no way to return the NetworkInterface to the
+        not-done state.
+        """
+        if self.doneSignalSent:
+            self.doneMsg = [False]
+        else:
+            self.doneMsg = [True]
+            self.doneSignalSent = True
+        return (self.doneSignalsSeen == len(self.expectFrom))
