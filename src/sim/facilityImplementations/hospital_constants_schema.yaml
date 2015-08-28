@@ -15,12 +15,38 @@
     'required':
       - 'value'
       - 'prov'
+
+  'fraction':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+      
+  'float':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number'}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
       
   'hospitalconstants':
     'type': 'object'
     'properties':
       'bedsPerWard': {'$ref': '#/definitions/count'}
       'bedsPerICUWard': {'$ref': '#/definitions/count'}
+      'hospDischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
+      'icuDischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
+      'icuLOSLogNormSigma': {'$ref': '#/definitions/float'}
     'required':
       - 'bedsPerWard'
       - 'bedsPerICUWard'
+      - 'hospDischargeViaDeathFrac'
+      - 'icuLOSLogNormSigma'
+      - 'icuDischargeViaDeathFrac'
+      
+      

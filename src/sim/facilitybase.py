@@ -17,7 +17,6 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import math
 from random import randint, random, shuffle
 import patches
 import pyrheabase
@@ -46,8 +45,6 @@ PatientDiagnosis = namedtuple('PatientDiagnosis',
                                ],
                               field_types=[DiagClassA, DiagClassB])
 
-healthyGetSickProbPerDay = 0.01
-
 
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
@@ -70,7 +67,7 @@ class Facility(pyrheabase.Facility):
         if patientDiagnosis.diagClassA == DiagClassA.POORHEALTH:
             return (CareTier.NURSING, TreatmentProtocol.NORMAL)
         if patientDiagnosis.diagClassA == DiagClassA.REHAB:
-            return (CareTier.REHAB, TreatmentProtocol.NORMAL)
+            return (CareTier.NURSING, TreatmentProtocol.REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
@@ -206,6 +203,7 @@ class PatientAgent(patches.Agent):
                 if final:
                     self.fsmstate = PatientState.JUSTARRIVED
                     self.ward = addr
+                    self.tier = self.ward.tier
                     print '%s arrived at new ward %s at %s' % (self.name, addr._name, timeNow)
                 timeNow = addr.lock(self)
             elif self.fsmstate == PatientState.JUSTARRIVED:

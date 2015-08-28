@@ -25,34 +25,37 @@ import math
 from scipy.stats import lognorm
 
 import facilitybase
+from facilitybase import DiagClassA, PatientStatus, CareTier
+from facilitybase import Facility, PatientAgent
 
 category = 'HOSPITAL'
-schema = 'facilityfacts_schema.yaml'
-constants_values = 'hospital_constants.yaml'
-constants_schema = 'hospital_constants_schema.yaml'
-
-validator = None
-constants = None
-
-# """An empirical estimate"""
-# bedsPerWard = 20
-# """Another empirical estimate"""
-# bedsPerICUWard = 12
-
-# class CommunityWard(Ward):
-#     """This 'ward' type represents being out in the community"""
-#
-#     def __init__(self, name, patch, nBeds):
-#         Ward.__init__(self, name, patch, CareTier.HOME, nBeds)
-#         self.checkInterval = 30  # check health monthly
-#         #self.checkInterval = 1  # check health monthly
+_schema = 'facilityfacts_schema.yaml'
+_constants_values = 'hospital_constants.yaml'
+_constants_schema = 'hospital_constants_schema.yaml'
+_validator = None
+_constants = None
 
 
-class Hospital(facilitybase.Facility):
+class Hospital(Facility):
     def __init__(self, descr, patch):
-        facilitybase.Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
-        bedsPerWard = constants['bedsPerWard']['value']
-        bedsPerICUWard = constants['bedsPerWard']['value']
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        bedsPerWard = _constants['bedsPerWard']['value']
+        bedsPerICUWard = _constants['bedsPerWard']['value']
+        self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
+        nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
+        hospTotalTransferFrac = (float(nTotalTransfersOut)
+                                 / float(descr['totalDischarges']['value']))
+        self.fracDischargeHealthy = 1.0 - (hospTotalTransferFrac + self.hospDischargeViaDeathFrac)
+        transferFrac = {v['category']: hospTotalTransferFrac * (float(v['count']['value'])
+                                                                / float(nTotalTransfersOut))
+                        for v in descr['totalTransfersOut']}
+        self.fracTransferHosp = (transferFrac['HOSPITAL'] if 'HOSPITAL' in transferFrac else 0.0)
+        self.fracTransferLTAC = (transferFrac['LTAC'] if 'LTAC' in transferFrac else 0.0)
+        self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
+                               else 0.0)
+        self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
+        self.hospProbCache = {}
+        self.icuProbCache = {}
         if 'nBeds' in descr:
             icuBeds = descr['fracAdultPatientDaysICU'] * descr['nBeds']
             icuWards = int(icuBeds/bedsPerICUWard) + 1
@@ -78,17 +81,51 @@ class Hospital(facilitybase.Facility):
 
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        mu = descr['losModel']['parms'][0]
-        sigma = descr['losModel']['parms'][1]
-        self.frozenPDF = lognorm(sigma, scale=math.exp(mu))
+        self.frozenHospPDF = self._calcHospPDF(descr['losModel']['parms'][0],
+                                               descr['losModel']['parms'][1])
+
+        self.frozenICUPDF = self._calcICUPDF(descr['meanLOSICU']['value'],
+                                             _constants['icuLOSLogNormSigma']['value'])
+
         for i in xrange(icuWards):
             self.addWard(facilitybase.Ward(('%s_%s_%s_%s_%d' %
                                             (category, patch.name, descr['abbrev'], 'ICU', i)),
-                                           patch, facilitybase.CareTier.ICU, bedsPerICUWard))
+                                           patch, CareTier.ICU, bedsPerICUWard))
         for i in xrange(nonICUWards):
             self.addWard(facilitybase.Ward(('%s_%s_%s_%s_%d' %
                                             (category, patch.name, descr['abbrev'], 'HOSP', i)),
-                                           patch, facilitybase.CareTier.HOSP, bedsPerWard))
+                                           patch, CareTier.HOSP, bedsPerWard))
+
+    def _calcHospPDF(self, mu, sigma):
+        return lognorm(sigma, scale=math.exp(mu))
+
+    def _calcICUPDF(self, mean, sigma):
+        if mean > 0.0:
+            mu = math.log(mean) - (0.5 * sigma * sigma)
+            return lognorm(sigma, scale=math.exp(mu))
+        else:
+            return None
+
+    def _hospChangeProb(self, startTime, timeNow):
+        key = (startTime, timeNow - startTime)
+        if key in self.hospProbCache:
+            return self.hospProbCache[key]
+        else:
+            changeProb = self.frozenHospPDF.cdf(timeNow) - self.frozenHospPDF.cdf(startTime)
+            self.hospProbCache[key] = changeProb
+            return changeProb
+
+    def _icuChangeProb(self, startTime, timeNow):
+        key = (startTime, timeNow - startTime)
+        if key in self.icuProbCache:
+            return self.icuProbCache[key]
+        else:
+            if not self.frozenICUPDF:
+                raise RuntimeError('ICU LOS distribution for %s is needed but unknown!'
+                                   % self.name)
+            changeProb = self.frozenICUPDF.cdf(timeNow) - self.frozenICUPDF.cdf(startTime)
+            self.icuProbCache[key] = changeProb
+            return changeProb
 
     def getStatusChangeCDF(self, patientStatus, careTier, treatment, startTime, timeNow):
         """
@@ -96,20 +133,28 @@ class Hospital(facilitybase.Facility):
         where newStatus is a full patientStatus and prob is the probability of reaching
         that status at the end of timeNow.  The sum of all the probs must equal 1.0.
         """
-        if careTier == facilitybase.CareTier.HOSP:
-            changeProb = self.frozenPDF.cdf(timeNow) - self.frozenPDF.cdf(startTime)
-            fracDischargesViaDeath = 0.0081
-            return [(changeProb * fracDischargesViaDeath,
-                     facilitybase.PatientStatus(facilitybase.DiagClassA.DEATH, timeNow,
-                                                patientStatus.diagClassB,
-                                                patientStatus.startDateB)),
-                    (changeProb * (1.0-fracDischargesViaDeath),
-                     facilitybase.PatientStatus(facilitybase.DiagClassA.HEALTHY, timeNow,
-                                                patientStatus.diagClassB,
-                                                patientStatus.startDateB)),
+        assert treatment == facilitybase.TreatmentProtocol.NORMAL, \
+            "Hospitals only offer 'NORMAL' treatment; found %s" % treatment
+        if careTier == CareTier.HOSP:
+            changeProb = self._hospChangeProb(startTime - patientStatus.startDateA,
+                                              timeNow - patientStatus.startDateA)
+            return [(changeProb * self.hospDischargeViaDeathFrac,
+                     patientStatus._replace(diagClassA=DiagClassA.DEATH, startDateA=timeNow)),
+                    (changeProb * (self.fracTransferHosp + self.fracTransferLTAC),
+                     patientStatus._replace(diagClassA=DiagClassA.SICK, startDateA=timeNow)),
+                    (changeProb * self.fracTransferNH,
+                     patientStatus._replace(diagClassA=DiagClassA.REHAB, startDateA=timeNow)),
+                    (changeProb * self.fracDischargeHealthy,
+                     patientStatus._replace(diagClassA=DiagClassA.HEALTHY, startDateA=timeNow)),
                     (1.0 - changeProb, patientStatus)]
-        elif careTier == facilitybase.CareTier.ICU:
-            return [(1.0, patientStatus)]
+        elif careTier == CareTier.ICU:
+            changeProb = self._icuChangeProb(startTime - patientStatus.startDateA,
+                                             timeNow - patientStatus.startDateA)
+            return [(changeProb * self.icuDischargeViaDeathFrac,
+                     patientStatus._replace(diagClassA=DiagClassA.DEATH, startDateA=timeNow)),
+                    (changeProb * (1.0 - self.icuDischargeViaDeathFrac),
+                     patientStatus._replace(diagClassA=DiagClassA.SICK, startDateA=timeNow)),
+                    (1.0 - changeProb, patientStatus)]
         else:
             raise RuntimeError('Hospitals do not provide care tier %s' % careTier)
 
@@ -120,17 +165,17 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop'])
     meanICUPop = meanPop * descr['fracAdultPatientDaysICU']
     meanHospPop = meanPop - meanICUPop
-    icuWards = fac.getWards(facilitybase.CareTier.ICU)
-    hospWards = fac.getWards(facilitybase.CareTier.HOSP)
+    icuWards = fac.getWards(CareTier.ICU)
+    hospWards = fac.getWards(CareTier.HOSP)
     agentList = []
     for i, ward in zip(xrange(int(round(meanICUPop))), cycle(icuWards)):
-        a = facilitybase.PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i),
-                                      patch, ward)
+        a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i),
+                         patch, ward)
         ward.lock(a)
         agentList.append(a)
     for i, ward in zip(xrange(int(round(meanHospPop))), cycle(hospWards)):
-        a = facilitybase.PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i),
-                                      patch, ward)
+        a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i),
+                         patch, ward)
         ward.lock(a)
         agentList.append(a)
     return agentList
@@ -152,21 +197,21 @@ def estimateWork(facRec):
 
 
 def checkSchema(facilityDescr):
-    global validator
-    if validator is None:
-        with open(os.path.join(os.path.dirname(__file__), schema), 'rU') as f:
+    global _validator
+    if _validator is None:
+        with open(os.path.join(os.path.dirname(__file__), _schema), 'rU') as f:
             schemaJSON = yaml.safe_load(f)
-        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
-    nErrors = sum([1 for e in validator.iter_errors(facilityDescr)])  # @UnusedVariable
+        _validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+    nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
 
 
 def _importConstants():
-    global constants
-    if constants is None:
-        with open(os.path.join(os.path.dirname(__file__), constants_values), 'rU') as f:
+    global _constants
+    if _constants is None:
+        with open(os.path.join(os.path.dirname(__file__), _constants_values), 'rU') as f:
             cJSON = yaml.safe_load(f)
-        with open(os.path.join(os.path.dirname(__file__), constants_schema), 'rU') as f:
+        with open(os.path.join(os.path.dirname(__file__), _constants_schema), 'rU') as f:
             schemaJSON = yaml.safe_load(f)
         validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
         nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
@@ -175,8 +220,8 @@ def _importConstants():
                 print ('Schema violation: %s: %s' %
                        (' '.join([str(word) for word in e.path]), e.message))
             raise RuntimeError('%s does not satisfy the schema %s' %
-                               (constants_values, constants_schema))
-        constants = cJSON
+                               (_constants_values, _constants_schema))
+        _constants = cJSON
 
 ###########
 # Initialize the module

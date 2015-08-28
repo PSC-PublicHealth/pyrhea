@@ -6,4 +6,17 @@
   'value': 12
   'prov': 'empirical, based on rhea-dante'
   
+'hospDischargeViaDeathFrac':
+  'value': 0.0154
+  'prov': 'OrangeCounty model CategoryTransferRates.xls r68 RateCalcs:$59$B'
+  
+'icuDischargeViaDeathFrac':
+  'value': 0.0616
+  'prov': 'OrangeCounty model CategoryTransferRates.xls r68 RateCalcs:$60$B'
+  
+'icuLOSLogNormSigma':
+  'value': 0.7
+  'prov': 'OrangeCounty ICU_Estimated_LOS_7-22-09 BWH sd_ln value for category 2==total'
+  
+  
   
