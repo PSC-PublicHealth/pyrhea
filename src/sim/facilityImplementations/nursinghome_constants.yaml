@@ -1,0 +1,40 @@
+'nhLOSModel':
+    negLogLikPerSample: 5.65736498834
+    nsamp: 55731
+    parms:
+    - 6.77776462e-01
+    - 3.30759124e+00
+    - 5.93862260e-01
+    - 1.73725154e-03
+    pdf: $0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)
+    prov: nh_los_model_fit.py r51 applied to Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv
+  
+'rehabDeathRate':
+  'value': 0.001
+  'prov': 'DEBUGGING ONLY'
+  
+'rehabSickRate':
+  'value': 0.003
+  'prov': 'DEBUGGING ONLY'
+  
+'rehabVerySickRate':
+  'value': 0.0015
+  'prov': 'DEBUGGING ONLY'
+  
+'residentDeathRate':
+  'value': 0.001
+  'prov': 'DEBUGGING ONLY'
+  
+'residentSickRate':
+  'value': 0.003
+  'prov': 'DEBUGGING ONLY'
+  
+'residentVerySickRate':
+  'value': 0.0015
+  'prov': 'DEBUGGING ONLY'
+  
+'residentReturnToCommunityRate':
+  'value': 0.0005
+  'prov': 'DEBUGGING ONLY'
+  
+  

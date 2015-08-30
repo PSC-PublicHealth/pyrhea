@@ -1,0 +1,79 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/nursinghome_constants_schema.yaml'
+'title': 'nursinghome constants schema'
+'description': 'nursinghome constants schema'
+
+'$ref': '#/definitions/nursinghomeconstants'
+
+'definitions':
+    
+  'count':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'integer', 'minimum': 0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'fraction':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+      
+  'float':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number'}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'PDF':
+    'type': 'object'
+    'properties':
+      'prov':
+        'type': 'string'
+      'pdf':
+        'type': 'string'
+      'parms':
+        'type': 'array'
+        'items': {'type': 'number'}
+      'nsamp':
+        'type': 'integer'
+        'minimum': 1
+      'negLogLikPerSample':
+        'type': 'number'
+    'required':
+      - 'pdf'
+      - 'parms'
+      - 'prov'
+    
+
+  'nursinghomeconstants':
+    'type': 'object'
+    'properties':
+      'nhLOSModel': {'$ref': '#/definitions/PDF'}
+      'rehabDeathRate': {'$ref': '#/definitions/fraction'}
+      'rehabSickRate': {'$ref': '#/definitions/fraction'}
+      'rehabVerySickRate': {'$ref': '#/definitions/fraction'}
+      'reesidentDeathRate': {'$ref': '#/definitions/fraction'}
+      'residentSickRate': {'$ref': '#/definitions/fraction'}
+      'residentVerySickRate': {'$ref': '#/definitions/fraction'}
+      'residentReturnToCommunityRate': {'$ref': '#/definitions/fraction'}
+    'required':
+      - 'nhLOSModel'
+      - 'rehabDeathRate'
+      - 'rehabSickRate'
+      - 'rehabVerySickRate'
+      - 'residentDeathRate'
+      - 'residentSickRate'
+      - 'residentVerySickRate'
+      - 'residentReturnToCommunityRate'
+      
+      

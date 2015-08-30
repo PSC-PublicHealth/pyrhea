@@ -17,33 +17,39 @@
 
 _rhea_svn_id_ = "$Id$"
 
+import types
 from random import randint, random, shuffle
 import patches
 import pyrheabase
 from pyrheautils import enum, namedtuple
+from math import fabs
 
 
 CareTier = enum('HOME', 'NURSING', 'HOSP', 'ICU')
 
-DiagClassA = enum('HEALTHY', 'POORHEALTH', 'REHAB', 'SICK', 'VERYSICK', 'DEATH')
+PatientOverallHealth = enum('HEALTHY', 'FRAIL')
+
+DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'SICK', 'VERYSICK', 'DEATH')
 
 DiagClassB = enum('CLEAR', 'COLONIZED', 'INFECTED')
 
 TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
 
 PatientStatus = namedtuple('PatientStatus',
-                           ['diagClassA',           # one of DiagClassA
+                           ['overall',              # one of patientOverallHealth
+                            'diagClassA',           # one of DiagClassA
                             'startDateA',           # date diagClassA status was entered
                             'diagClassB',           # one of DiagClassB
                             'startDateB'            # date diagClassB status was entered
                             ],
-                           field_types=[DiagClassA, None, DiagClassB, None])
+                           field_types=[PatientOverallHealth, DiagClassA, None, DiagClassB, None])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
-                              ['diagClassA',           # one of DiagClassA
+                              ['overall',              # one of PatientOverallHealth
+                               'diagClassA',           # one of DiagClassA
                                'diagClassB',           # one of DiagClassB
                                ],
-                              field_types=[DiagClassA, DiagClassB])
+                              field_types=[PatientOverallHealth, DiagClassA, DiagClassB])
 
 
 class Ward(pyrheabase.Ward):
@@ -58,15 +64,14 @@ class Facility(pyrheabase.Facility):
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        return PatientDiagnosis(patientStatus.diagClassA, patientStatus.diagClassB)
+        return PatientDiagnosis(patientStatus.overall,
+                                patientStatus.diagClassA, patientStatus.diagClassB)
 
     def prescribe(self, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             return (CareTier.HOME, TreatmentProtocol.NORMAL)
-        if patientDiagnosis.diagClassA == DiagClassA.POORHEALTH:
-            return (CareTier.NURSING, TreatmentProtocol.NORMAL)
-        if patientDiagnosis.diagClassA == DiagClassA.REHAB:
+        if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
             return (CareTier.NURSING, TreatmentProtocol.REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
@@ -80,29 +85,88 @@ class Facility(pyrheabase.Facility):
     def diagnosisFromCareTier(self, careTier):
         """
         If I look at a patient under a given care tier, what would I expect their diagnostic class
-        to be?
+        to be?  This is used for patient initialization purposes.
         """
-        return {CareTier.HOME: PatientDiagnosis(DiagClassA.HEALTHY, DiagClassB.CLEAR),
-                CareTier.NURSING: PatientDiagnosis(DiagClassA.POORHEALTH, DiagClassB.CLEAR),
-                CareTier.HOSP: PatientDiagnosis(DiagClassA.SICK, DiagClassB.CLEAR),
-                CareTier.ICU: PatientDiagnosis(DiagClassA.VERYSICK, DiagClassB.CLEAR),
-                }[careTier]
+        if careTier == CareTier.HOME:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.HEALTHY, DiagClassB.CLEAR)
+        elif careTier == CareTier.NURSING:
+            return PatientDiagnosis(PatientOverallHealth.FRAIL,
+                                    DiagClassA.HEALTHY, DiagClassB.CLEAR)
+        elif careTier == CareTier.HOSP:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.SICK, DiagClassB.CLEAR)
+        elif careTier == CareTier.ICU:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.VERYSICK, DiagClassB.CLEAR)
+        else:
+            raise RuntimeError('Unknown care tier %s' % careTier)
 
-    def getStatusChangeCDF(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         """
-        Return a list of pairs of the form [(prob1, newStatus), (prob2, newStatus), ...]
-        where newStatus is a full patientStatus and prob is the probability of reaching
-        that status at the end of timeNow.  The sum of all the probs must equal 1.0.
-        """
-        return [(1.0, patientStatus)]
+        Return a Bayes tree the traversal of which yields a patientStatus.
 
+        Elements of the tree are either a terminal patientStatus value or a 3-tuple
+        of the form (k opt1 opt2), where opt1 and opt2 are likewise elements of the tree
+        and k is a float in the range 0 to 1. The tree is evaluated by generating a random
+        number each time a 3-tuple is encountered and choosing the first or second opt
+        if the random value is <= or > k respectively.  When a value is encountered which
+        is not a 3-tuple, that value is returned as the result of the traversal.
+        """
+        return patientStatus
+
+    @staticmethod
+    def foldPDF(linearPDF):
+        """
+        Given a linear PDF, return an equivalent PDF in Bayes Tree form
+
+        The input PDF is of the form:
+
+           [(p1, r1), (p2, r2), ...]
+
+        such that the sum of p1, p2, etc is 1.0 .  The output PDF is of the form:
+
+            pdf = (tp1 pdf1 pdf2)
+
+        or
+
+            pdf = r1
+
+        where tp1 is a float between 0 and 1, and the second form is equivalent to (1.0 r1 None)
+        """
+        tol = 0.00001
+        lPDF = len(linearPDF)
+        if lPDF == 1:
+            p, r = linearPDF[0]
+            assert fabs(p - 1.0) <= tol, 'PDF terms do not sum to 1 (%s)' % linearPDF
+            return r
+        elif lPDF == 2:
+            p1, r1 = linearPDF[0]
+            p2, r2 = linearPDF[1]
+            assert fabs(p1 + p2 - 1.0) <= tol, 'PDF terms do not sum to 1 (%s)' % linearPDF
+            if p2 >= p1:
+                return [p1, r1, r2]
+            else:
+                return [p2, r2, r1]
+        else:
+            linearPDF.sort()
+            part1 = linearPDF[:lPDF/2]
+            part2 = linearPDF[lPDF/2:]
+            pivot = part1[-1][0]
+            if pivot == 0.0:
+                return Facility.foldPDF(part2)
+            else:
+                w1 = sum([p for p, r in part1])
+                w2 = sum([p for p, r in part2])
+                return [pivot,
+                        Facility.foldPDF([(p / w1, r) for p, r in part1]),
+                        Facility.foldPDF([(p / w2, r) for p, r in part2])
+                        ]
 
 PatientState = enum('ATWARD', 'MOVING', 'JUSTARRIVED')
 
 
 class PatientAgent(patches.Agent):
-
-    diseaseTransitionPDFs = {}
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         patches.Agent.__init__(self, name, patch, debug=debug)
@@ -111,7 +175,8 @@ class PatientAgent(patches.Agent):
         self.newWardAddr = None
         self.fsmstate = PatientState.ATWARD
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier)
-        self._status = PatientStatus(self._diagnosis.diagClassA, 0,
+        self._status = PatientStatus(PatientOverallHealth.HEALTHY,
+                                     self._diagnosis.diagClassA, 0,
                                      self._diagnosis.diagClassB, 0)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)
@@ -123,23 +188,26 @@ class PatientAgent(patches.Agent):
         print '  diagnosis: %s' % str(self._diagnosis)
         print '  treatment: %s' % TreatmentProtocol.names[self._treatment]
 
+    @staticmethod
+    def _traverseBayesTree(tree):
+        # print 'walk tree: %s' % str(tree)
+        while True:
+            if isinstance(tree, types.ListType):
+                if random() <= tree[0]:
+                    tree = tree[1]
+                else:
+                    tree = tree[2]
+            else:
+                # print 'walk returning %s' % str(tree)
+                return tree
+
     def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            probOutcomes = self.ward.fac.getStatusChangeCDF(self._status, self.tier,
-                                                            self._treatment,
-                                                            self.lastUpdateTime, timeNow)
-            r = random()
-            for deltaProb, newStatus in probOutcomes:
-                r -= deltaProb
-                if r < 0.0:
-                    if self._status != newStatus:
-                        print '%s new status %s' % (self.name, newStatus)
-                    self._status = newStatus
-                    break
-            else:
-                raise RuntimeError('Facility %s produced an incomplete PDF' % self.ward.fac.name)
+            tree = self.ward.fac.getStatusChangeTree(self._status, self.tier, self._treatment,
+                                                     self.lastUpdateTime, timeNow)
+            self._status = self._traverseBayesTree(tree)
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)

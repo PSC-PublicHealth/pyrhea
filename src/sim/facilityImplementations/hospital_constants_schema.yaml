@@ -42,11 +42,12 @@
       'hospDischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
       'icuDischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
       'icuLOSLogNormSigma': {'$ref': '#/definitions/float'}
+      'fracOfDischargesRequiringRehab': {'$ref': '#/definitions/fraction'}
     'required':
       - 'bedsPerWard'
       - 'bedsPerICUWard'
       - 'hospDischargeViaDeathFrac'
       - 'icuLOSLogNormSigma'
       - 'icuDischargeViaDeathFrac'
-      
+      - 'fracOfDischargesRequiringRehab'
       
