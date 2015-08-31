@@ -20,6 +20,8 @@ _rhea_svn_id_ = "$Id$"
 import unittest
 import collections
 import types
+import yaml
+import jsonschema
 
 
 def enum(*sequential, **named):
@@ -69,6 +71,22 @@ def namedtuple(typename, field_names, verbose=False, rename=False, field_types=N
     globals()[newTp.__name__] = newTp  # So the pickle can find it later
 
     return newTp
+
+
+def importConstants(valuePath, schemaPath):
+    with open(valuePath, 'rU') as f:
+        cJSON = yaml.safe_load(f)
+    with open(schemaPath, 'rU') as f:
+        schemaJSON = yaml.safe_load(f)
+    validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+    nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
+    if nErrors:
+        for e in validator.iter_errors(cJSON):
+            print ('Schema violation: %s: %s' %
+                   (' '.join([str(word) for word in e.path]), e.message))
+        raise RuntimeError('%s does not satisfy the schema %s' %
+                           (valuePath, schemaPath))
+    return cJSON
 
 
 class TestUtilFuncs(unittest.TestCase):

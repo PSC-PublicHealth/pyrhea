@@ -25,9 +25,9 @@ from random import random
 import math
 from scipy.stats import lognorm, expon
 
-
+import pyrheautils
 from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
 
 category = 'NURSINGHOME'
@@ -48,40 +48,14 @@ class NursingHome(Facility):
         assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
 
-        self.frozenRehabPDF = self._calcRehabPDF(losModel['parms'][0], losModel['parms'][1])
-        self.rehabProbCache = {}
+        self.rehabCachedCDF = CachedCDFGenerator(lognorm(losModel['parms'][0],
+                                                         scale=math.exp(losModel['parms'][1])))
         self.rehabTreeCache = {}
-        self.frozenResidentPDF = self._calcResidentPDF(losModel['parms'][2])
-        self.residentProbCache = {}
+        self.residentCachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][2]))
         self.residentTreeCache = {}
 
         self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                           patch, CareTier.NURSING, nBeds))
-
-    def _calcRehabPDF(self, mu, sigma):
-        return lognorm(sigma, scale=math.exp(mu))
-
-    def _rehabChangeProb(self, startTime, timeNow):
-        key = (startTime, timeNow - startTime)
-        if key in self.rehabProbCache:
-            return self.rehabProbCache[key]
-        else:
-            changeProb = self.frozenRehabPDF.cdf(timeNow) - self.frozenRehabPDF.cdf(startTime)
-            self.rehabProbCache[key] = changeProb
-            return changeProb
-
-    def _calcResidentPDF(self, lmda):
-        return expon(scale=1.0/lmda)
-
-    def _residentChangeProb(self, startTime, timeNow):
-        key = (startTime, timeNow - startTime)
-        if key in self.residentProbCache:
-            return self.residentProbCache[key]
-        else:
-            changeProb = (self.frozenResidentPDF.cdf(timeNow)
-                          - self.frozenResidentPDF.cdf(startTime))
-            self.residentProbCache[key] = changeProb
-            return changeProb
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         assert careTier == CareTier.NURSING, \
@@ -91,14 +65,13 @@ class NursingHome(Facility):
             if key in self.rehabTreeCache:
                 return self.rehabTreeCache[key]
             else:
-                changeProb = self._rehabChangeProb(startTime - patientStatus.startDateA,
-                                                   timeNow - patientStatus.startDateA)
+                changeProb = self.rehabCachedCDF.intervalProb(*key)
                 adverseProb = (_constants['rehabDeathRate']['value']
                                + _constants['rehabSickRate']['value']
                                + _constants['rehabVerySickRate']['value'])
                 tree = [changeProb,
                         [adverseProb,
-                         Facility.foldPDF([(_constants['rehabDeathRate']['value'] / adverseProb,
+                         Facility.foldCDF([(_constants['rehabDeathRate']['value'] / adverseProb,
                                            patientStatus._replace(diagClassA=DiagClassA.DEATH,
                                                                   startDateA=timeNow)),
                                           (_constants['rehabSickRate']['value'] / adverseProb,
@@ -117,14 +90,13 @@ class NursingHome(Facility):
             if key in self.rehabTreeCache:
                 return self.rehabTreeCache[key]
             else:
-                changeProb = self._residentChangeProb(startTime - patientStatus.startDateA,
-                                                      timeNow - patientStatus.startDateA)
+                changeProb = self.residentCachedCDF.intervalProb(*key)
                 totRate = (_constants['residentDeathRate']['value']
                            + _constants['residentSickRate']['value']
                            + _constants['residentVerySickRate']['value']
                            + _constants['residentReturnToCommunityRate']['value'])
                 tree = [changeProb,
-                        Facility.foldPDF(
+                        Facility.foldCDF(
                             [(_constants['residentDeathRate']['value']/totRate,
                               patientStatus._replace(diagClassA=DiagClassA.DEATH,
                                                      startDateA=timeNow)),
@@ -207,24 +179,10 @@ def checkSchema(facilityDescr):
     return hospitalCheckSchema(facilityDescr)
 
 
-def _importConstants():
-    global _constants
-    if _constants is None:
-        with open(os.path.join(os.path.dirname(__file__), _constants_values), 'rU') as f:
-            cJSON = yaml.safe_load(f)
-        with open(os.path.join(os.path.dirname(__file__), _constants_schema), 'rU') as f:
-            schemaJSON = yaml.safe_load(f)
-        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
-        nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
-        if nErrors:
-            for e in validator.iter_errors(cJSON):
-                print ('Schema violation: %s: %s' %
-                       (' '.join([str(word) for word in e.path]), e.message))
-            raise RuntimeError('%s does not satisfy the schema %s' %
-                               (_constants_values, _constants_schema))
-        _constants = cJSON
-
 ###########
 # Initialize the module
 ###########
-_importConstants()
+_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
+                                                      _constants_values),
+                                         os.path.join(os.path.dirname(__file__),
+                                                      _constants_schema))

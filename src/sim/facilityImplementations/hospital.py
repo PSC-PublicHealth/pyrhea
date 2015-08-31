@@ -22,11 +22,11 @@ from itertools import cycle
 import jsonschema
 import yaml
 import math
-from random import random
 from scipy.stats import lognorm
 
+import pyrheautils
 from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 
 category = 'HOSPITAL'
 _schema = 'facilityfacts_schema.yaml'
@@ -72,13 +72,17 @@ class Hospital(Facility):
 
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        self.frozenHospPDF = self._calcHospPDF(descr['losModel']['parms'][0],
-                                               descr['losModel']['parms'][1])
-        self.hospProbCache = {}
+        self.hospCachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][0],
+                                                        scale=math.exp(descr['losModel']
+                                                                       ['parms'][1])))
         self.hospTreeCache = {}
-        self.frozenICUPDF = self._calcICUPDF(descr['meanLOSICU']['value'],
-                                             _constants['icuLOSLogNormSigma']['value'])
-        self.icuProbCache = {}
+        if descr['meanLOSICU']['value'] == 0.0:
+            self.icuCachedCDF = None
+        else:
+            mean = descr['meanLOSICU']['value']
+            sigma = _constants['icuLOSLogNormSigma']['value']
+            mu = math.log(mean) - (0.5 * sigma * sigma)
+            self.icuCachedCDF = CachedCDFGenerator(lognorm(sigma, scale=math.exp(mu)))
         self.icuTreeCache = {}
 
         for i in xrange(icuWards):
@@ -90,37 +94,6 @@ class Hospital(Facility):
                                (category, patch.name, descr['abbrev'], 'HOSP', i)),
                               patch, CareTier.HOSP, bedsPerWard))
 
-    def _calcHospPDF(self, mu, sigma):
-        return lognorm(sigma, scale=math.exp(mu))
-
-    def _calcICUPDF(self, mean, sigma):
-        if mean > 0.0:
-            mu = math.log(mean) - (0.5 * sigma * sigma)
-            return lognorm(sigma, scale=math.exp(mu))
-        else:
-            return None
-
-    def _hospChangeProb(self, startTime, timeNow):
-        key = (startTime, timeNow - startTime)
-        if key in self.hospProbCache:
-            return self.hospProbCache[key]
-        else:
-            changeProb = self.frozenHospPDF.cdf(timeNow) - self.frozenHospPDF.cdf(startTime)
-            self.hospProbCache[key] = changeProb
-            return changeProb
-
-    def _icuChangeProb(self, startTime, timeNow):
-        key = (startTime, timeNow - startTime)
-        if key in self.icuProbCache:
-            return self.icuProbCache[key]
-        else:
-            if not self.frozenICUPDF:
-                raise RuntimeError('ICU LOS distribution for %s is needed but unknown!'
-                                   % self.name)
-            changeProb = self.frozenICUPDF.cdf(timeNow) - self.frozenICUPDF.cdf(startTime)
-            self.icuProbCache[key] = changeProb
-            return changeProb
-
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         assert treatment == TreatmentProtocol.NORMAL, \
             "Hospitals only offer 'NORMAL' treatment; found %s" % treatment
@@ -129,9 +102,9 @@ class Hospital(Facility):
             if key in self.hospTreeCache:
                 return self.hospTreeCache[key]
             else:
-                changeProb = self._hospChangeProb(*key)
+                changeProb = self.hospCachedCDF.intervalProb(*key)
                 tree = [changeProb,
-                        Hospital.foldPDF([(self.hospDischargeViaDeathFrac,
+                        Hospital.foldCDF([(self.hospDischargeViaDeathFrac,
                                            patientStatus._replace(diagClassA=DiagClassA.DEATH,
                                                                   startDateA=timeNow)),
                                           ((self.fracTransferHosp + self.fracTransferLTAC),
@@ -152,10 +125,11 @@ class Hospital(Facility):
             if key in self.icuTreeCache:
                 return self.icuTreeCache[key]
             else:
-                changeProb = self._icuChangeProb(startTime - patientStatus.startDateA,
-                                                 timeNow - patientStatus.startDateA)
+                changeProb = self.icuCachedCDF.intervalProb(*key)
+#                 changeProb = self._icuChangeProb(startTime - patientStatus.startDateA,
+#                                                  timeNow - patientStatus.startDateA)
                 tree = [changeProb,
-                        Hospital.foldPDF([(self.icuDischargeViaDeathFrac,
+                        Hospital.foldCDF([(self.icuDischargeViaDeathFrac,
                                            patientStatus._replace(diagClassA=DiagClassA.DEATH,
                                                                   startDateA=timeNow)),
                                           ((1.0 - self.icuDischargeViaDeathFrac),
@@ -233,24 +207,10 @@ def checkSchema(facilityDescr):
     return nErrors
 
 
-def _importConstants():
-    global _constants
-    if _constants is None:
-        with open(os.path.join(os.path.dirname(__file__), _constants_values), 'rU') as f:
-            cJSON = yaml.safe_load(f)
-        with open(os.path.join(os.path.dirname(__file__), _constants_schema), 'rU') as f:
-            schemaJSON = yaml.safe_load(f)
-        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
-        nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
-        if nErrors:
-            for e in validator.iter_errors(cJSON):
-                print ('Schema violation: %s: %s' %
-                       (' '.join([str(word) for word in e.path]), e.message))
-            raise RuntimeError('%s does not satisfy the schema %s' %
-                               (_constants_values, _constants_schema))
-        _constants = cJSON
-
 ###########
 # Initialize the module
 ###########
-_importConstants()
+_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
+                                                      _constants_values),
+                                         os.path.join(os.path.dirname(__file__),
+                                                      _constants_schema))

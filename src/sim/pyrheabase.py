@@ -166,7 +166,7 @@ class BedRequest(patches.Agent):
     def run(self, startTime):
         timeNow = startTime
         while True:
-            print '?',
+            # print '?',
             if self.fsmstate == BedRequest.STATE_START:
                 if len(self.facilityOptions) == 0:
                     self.fsmstate = BedRequest.STATE_FAILED
@@ -182,7 +182,7 @@ class BedRequest(patches.Agent):
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
                 raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
-                print '!',
+                # print '!',
                 addr, final = self.patch.getPathTo(self.homeWardAddr)
                 if final:
                     oldWard = addr
@@ -198,7 +198,7 @@ class BedRequest(patches.Agent):
                     oldWard = addr
                     patientAgent = oldWard.fac.holdQueue.awaken(self.patientKey)
                     patientAgent.newWardAddr = None
-                    print '(',
+                    # print '(',
                     break
                 timeNow = addr.lock(self)
 

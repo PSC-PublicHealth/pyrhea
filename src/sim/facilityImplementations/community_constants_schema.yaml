@@ -1,0 +1,71 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/community_constants_schema.yaml'
+'title': 'community constants schema'
+'description': 'community constants schema'
+
+'$ref': '#/definitions/communityconstants'
+
+'definitions':
+    
+  'count':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'integer', 'minimum': 0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'fraction':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+      
+  'float':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number'}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'PDF':
+    'type': 'object'
+    'properties':
+      'prov':
+        'type': 'string'
+      'pdf':
+        'type': 'string'
+      'parms':
+        'type': 'array'
+        'items': {'type': 'number'}
+      'nsamp':
+        'type': 'integer'
+        'minimum': 1
+      'negLogLikPerSample':
+        'type': 'number'
+    'required':
+      - 'pdf'
+      - 'parms'
+      - 'prov'
+    
+
+  'communityconstants':
+    'type': 'object'
+    'properties':
+      'communityLOSModel': {'$ref': '#/definitions/PDF'}
+      'communityDeathRate': {'$ref': '#/definitions/fraction'}
+      'communityVerySickRate': {'$ref': '#/definitions/fraction'}
+      'communityPatientCheckInterval': {'$ref': '#/definitions/count'}
+    'required':
+      - 'communityLOSModel'
+      - 'communityDeathRate'
+      - 'communityVerySickRate'
+      - 'communityPatientCheckInterval'
+      
+      

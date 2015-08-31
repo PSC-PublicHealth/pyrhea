@@ -108,7 +108,7 @@
       - 'totalDischarges'
       - 'totalTransfersIn'
       - 'totalTransfersOut'
-#      - 'losModel'
+      - 'losModel'
 #      - 'nBeds'
 #      - 'meanPop'
 

@@ -52,6 +52,27 @@ PatientDiagnosis = namedtuple('PatientDiagnosis',
                               field_types=[PatientOverallHealth, DiagClassA, DiagClassB])
 
 
+class CachedCDFGenerator:
+    """
+    This supports a common operation performed by Facilities- given a treatment interval (relative
+    to a start date of zero), return a likelihood.  For example, this may be the likelihood that
+    the patient will be discharged.  Since the interval bounds are integers, caching of the
+    generated values is very effective.
+    """
+    def __init__(self, frozenPDF):
+        self.frozenPDF = frozenPDF
+        self.cache = {}
+
+    def intervalProb(self, start, end):
+        key = (start, end)
+        if key in self.cache:
+            return self.cache[key]
+        else:
+            cP = self.frozenPDF.cdf(end) - self.frozenPDF.cdf(start)
+            self.cache[key] = cP
+            return cP
+
+
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
         pyrheabase.Ward.__init__(self, name, patch, tier, nBeds)
@@ -116,15 +137,15 @@ class Facility(pyrheabase.Facility):
         return patientStatus
 
     @staticmethod
-    def foldPDF(linearPDF):
+    def foldCDF(linearCDF):
         """
-        Given a linear PDF, return an equivalent PDF in Bayes Tree form
+        Given a linear CDF, return an equivalent CDF in Bayes Tree form
 
-        The input PDF is of the form:
+        The input CDF is of the form:
 
            [(p1, r1), (p2, r2), ...]
 
-        such that the sum of p1, p2, etc is 1.0 .  The output PDF is of the form:
+        such that the sum of p1, p2, etc is 1.0 .  The output CDF is of the form:
 
             pdf = (tp1 pdf1 pdf2)
 
@@ -135,32 +156,32 @@ class Facility(pyrheabase.Facility):
         where tp1 is a float between 0 and 1, and the second form is equivalent to (1.0 r1 None)
         """
         tol = 0.00001
-        lPDF = len(linearPDF)
-        if lPDF == 1:
-            p, r = linearPDF[0]
-            assert fabs(p - 1.0) <= tol, 'PDF terms do not sum to 1 (%s)' % linearPDF
+        lCDF = len(linearCDF)
+        if lCDF == 1:
+            p, r = linearCDF[0]
+            assert fabs(p - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
             return r
-        elif lPDF == 2:
-            p1, r1 = linearPDF[0]
-            p2, r2 = linearPDF[1]
-            assert fabs(p1 + p2 - 1.0) <= tol, 'PDF terms do not sum to 1 (%s)' % linearPDF
+        elif lCDF == 2:
+            p1, r1 = linearCDF[0]
+            p2, r2 = linearCDF[1]
+            assert fabs(p1 + p2 - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
             if p2 >= p1:
                 return [p1, r1, r2]
             else:
                 return [p2, r2, r1]
         else:
-            linearPDF.sort()
-            part1 = linearPDF[:lPDF/2]
-            part2 = linearPDF[lPDF/2:]
+            linearCDF.sort()
+            part1 = linearCDF[:lCDF/2]
+            part2 = linearCDF[lCDF/2:]
             pivot = part1[-1][0]
             if pivot == 0.0:
-                return Facility.foldPDF(part2)
+                return Facility.foldCDF(part2)
             else:
                 w1 = sum([p for p, r in part1])
                 w2 = sum([p for p, r in part2])
                 return [pivot,
-                        Facility.foldPDF([(p / w1, r) for p, r in part1]),
-                        Facility.foldPDF([(p / w2, r) for p, r in part2])
+                        Facility.foldCDF([(p / w1, r) for p, r in part1]),
+                        Facility.foldCDF([(p / w2, r) for p, r in part2])
                         ]
 
 PatientState = enum('ATWARD', 'MOVING', 'JUSTARRIVED')

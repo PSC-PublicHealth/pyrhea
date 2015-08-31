@@ -21,29 +21,87 @@ import os.path
 from itertools import cycle
 import jsonschema
 import yaml
-import facilitybase
+from scipy.stats import expon
+
+import pyrheautils
+from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+
 
 category = 'COMMUNITY'
-schema = 'communityfacts_schema.yaml'
-validator = None
+_schema = 'communityfacts_schema.yaml'
+_validator = None
+_constants_values = 'community_constants.yaml'
+_constants_schema = 'community_constants_schema.yaml'
+_constants = None
 
 
-class CommunityWard(facilitybase.Ward):
+class CommunityWard(Ward):
     """This 'ward' type represents being out in the community"""
 
     def __init__(self, name, patch, nBeds):
-        facilitybase.Ward.__init__(self, name, patch, facilitybase.CareTier.HOME, nBeds)
-        self.checkInterval = 30  # check health monthly
-        #self.checkInterval = 1  # check health monthly
+        Ward.__init__(self, name, patch, CareTier.HOME, nBeds)
+        self.checkInterval = _constants['communityPatientCheckInterval']['value']
 
 
-class Community(facilitybase.Facility):
+class Community(Facility):
     def __init__(self, descr, patch):
-        facilitybase.Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
         meanPop = descr['meanPop']
         nBeds = int(round(1.3*meanPop))
+        losModel = _constants['communityLOSModel']
+        assert losModel['pdf'] == 'expon(lambda=$0)', \
+            "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
         self.addWard(CommunityWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                    patch, nBeds))
+        self.cachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][0]))
+        self.treeCache = {}
+
+    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+        assert careTier == CareTier.HOME, \
+            "Thecommunity only offer CareTier 'NURSING'; found %s" % careTier
+        assert treatment == TreatmentProtocol.NORMAL, \
+            "Thecommunity only offer treatment type 'NORMAL'; found %s" % careTier
+        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        if key in self.treeCache:
+            return self.treeCache[key]
+        else:
+            changeProb = self.cachedCDF.intervalProb(*key)
+            deathRate = _constants['communityDeathRate']['value']
+            verySickRate = _constants['communityVerySickRate']['value']
+            sickRate = 1.0 - (deathRate + verySickRate)
+            tree = [changeProb,
+                    Facility.foldCDF([(deathRate,
+                                       patientStatus._replace(diagClassA=DiagClassA.DEATH,
+                                                              startDateA=timeNow)),
+                                      (sickRate,
+                                       patientStatus._replace(diagClassA=DiagClassA.SICK,
+                                                              startDateA=timeNow)),
+                                      (verySickRate,
+                                       patientStatus._replace(diagClassA=DiagClassA.VERYSICK,
+                                                              startDateA=timeNow)),
+                                      ]),
+                    patientStatus]
+            self.treeCache[key] = tree
+            return tree
+
+    def prescribe(self, patientDiagnosis, patientTreatment):
+        """This returns a tuple (careTier, patientTreatment)"""
+        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
+            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
+                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
+                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
+            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
+            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
+            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
+            return (None, TreatmentProtocol.NORMAL)
+        else:
+            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
 
 def _populate(fac, descr, patch):
@@ -53,8 +111,8 @@ def _populate(fac, descr, patch):
     wards = fac.getWards()
     agentList = []
     for i, ward in zip(xrange(int(round(meanPop))), cycle(wards)):
-        a = facilitybase.PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i),
-                                      patch, ward)
+        a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i),
+                         patch, ward, debug=True)
         ward.lock(a)
         agentList.append(a)
     return agentList
@@ -67,19 +125,28 @@ def generateFull(facilityDescr, patch):
 
 def estimateWork(facRec):
     if 'meanPop' in facRec:
-        return facRec['meanPop']
+        return facRec['meanPop'] / _constants['communityPatientCheckInterval']['value']
     elif 'nBeds' in facRec:
-        return facRec['nBeds']
+        return facRec['nBeds'] / _constants['communityPatientCheckInterval']['value']
     else:
         print '####### Cannot estimate work for %(abbrev)s' % facRec
         return 0
 
 
 def checkSchema(facilityDescr):
-    global validator
-    if validator is None:
-        with open(os.path.join(os.path.dirname(__file__), schema), 'rU') as f:
+    global _validator
+    if _validator is None:
+        with open(os.path.join(os.path.dirname(__file__), _schema), 'rU') as f:
             schemaJSON = yaml.safe_load(f)
-        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
-    nErrors = sum([1 for e in validator.iter_errors(facilityDescr)])  # @UnusedVariable
+        _validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+    nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
+
+
+###########
+# Initialize the module
+###########
+_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
+                                                      _constants_values),
+                                         os.path.join(os.path.dirname(__file__),
+                                                      _constants_schema))

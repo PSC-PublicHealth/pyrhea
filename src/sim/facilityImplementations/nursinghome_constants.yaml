@@ -7,7 +7,7 @@
     - 5.93862260e-01
     - 1.73725154e-03
     pdf: $0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)
-    prov: nh_los_model_fit.py r51 applied to Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv
+    prov: Orange County aggregate from nh_los_model_fit.py r51 applied to Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv
   
 'rehabDeathRate':
   'value': 0.001
