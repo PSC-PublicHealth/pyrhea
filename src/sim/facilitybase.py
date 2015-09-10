@@ -250,7 +250,7 @@ class PatientAgent(patches.Agent):
                 if tier is None:
                     assert self._status.diagClassA == DiagClassA.DEATH, \
                         '%s is not dead?' % self.name
-                    print 'Alas poor %s! %s' % (self.name, timeNow)
+                    # print 'Alas poor %s! %s' % (self.name, timeNow)
                     self.patch.launch(pyrheabase.DepartureMsg(self.name + '_depMsg',
                                                               self.patch, self.ward.tier,
                                                               self.ward.getGblAddr(),
@@ -261,8 +261,8 @@ class PatientAgent(patches.Agent):
                 if self.ward.tier == tier:
                     timeNow = self.sleep(self.ward.checkInterval)
                 else:
-                    print ('%s wants a tier %s ward at %s' %
-                           (self.name, CareTier.names[tier], timeNow))
+                    # print ('%s wants a tier %s ward at %s' %
+                    #        (self.name, CareTier.names[tier], timeNow))
                     facAddrList = [tpl[1] for tpl in self.patch.serviceLookup('BedRequestQueue')]
                     shuffle(facAddrList)
                     key = self.ward.fac.holdQueue.getUniqueKey()
@@ -273,8 +273,8 @@ class PatientAgent(patches.Agent):
                     timeNow = self.ward.fac.holdQueue.lock(self, key=key)
                     if self.newWardAddr is None:
                         # Nowhere to go; try again tomorrow
-                        print ('%s is stuck at %s; going back to sleep at %s' %
-                               (self.name, self.ward, timeNow))
+                        # print ('%s is stuck at %s; going back to sleep at %s' %
+                        #        (self.name, self.ward, timeNow))
                         timeNow = self.sleep(1)
                         # state is unchanged
                     else:
@@ -293,7 +293,7 @@ class PatientAgent(patches.Agent):
                     self.fsmstate = PatientState.JUSTARRIVED
                     self.ward = addr
                     self.tier = self.ward.tier
-                    print '%s arrived at new ward %s at %s' % (self.name, addr._name, timeNow)
+                    # print '%s arrived at new ward %s at %s' % (self.name, addr._name, timeNow)
                 timeNow = addr.lock(self)
             elif self.fsmstate == PatientState.JUSTARRIVED:
                 self.fsmstate = PatientState.ATWARD

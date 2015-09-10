@@ -54,13 +54,13 @@ class Sequencer(object):
 
     def enqueue(self, agent, whenInfo=0):
         assert isinstance(whenInfo, types.IntType)
-        if whenInfo < self._timeNow:
-            raise RuntimeError('%s: Cannot go backwards in time from %d to %d' %
-                               (self._name, self._timeNow, whenInfo))
-        else:
-            if whenInfo not in self._timeQueues:
-                self._timeQueues[whenInfo] = []
-            self._timeQueues[whenInfo].append(agent)
+#         if whenInfo < self._timeNow:
+#             raise RuntimeError('%s: Cannot go backwards in time from %d to %d' %
+#                                (self._name, self._timeNow, whenInfo))
+#         else:
+        if whenInfo not in self._timeQueues:
+            self._timeQueues[whenInfo] = []
+        self._timeQueues[whenInfo].append(agent)
 
     def getTimeNow(self):
         return self._timeNow
@@ -70,6 +70,19 @@ class Sequencer(object):
             return len([a for a in self._timeQueues[self._timeNow] if not a.timeless])
         else:
             return 0
+
+    def getWaitingCensusNow(self):
+        if self._timeNow in self._timeQueues:
+            censusDict = {}
+            for a in self._timeQueues[self._timeNow]:
+                nm = type(a).__name__
+                if nm in censusDict:
+                    censusDict[nm] += 1
+                else:
+                    censusDict[nm] = 1
+            return censusDict
+        else:
+            return {}
 
     def getTimeRange(self):
         t = self._timeNow
@@ -97,7 +110,7 @@ class Sequencer(object):
         time forward by a day.
         """
         if self.doneWithToday():
-            # print '%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
+            print '######### %s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
             oldDay = self._timeQueues[self._timeNow]
             del self._timeQueues[self._timeNow]
             self._timeNow += 1
@@ -357,6 +370,16 @@ class MultiInteractant(Interactant):
         return self._nLocks - len(self._lockingAgentList)
 
 
+def _clockAgentBreakHook(clockAgent):
+    """
+    This routine exists so that software above this layer (e.g. 'patches') can substitute
+    different loop-breaking behavior in MainLoop.ClockAgent .
+
+    The default version yields the thread to the main loop.
+    """
+    return clockAgent.sleep(0)  # yield thread
+
+
 class MainLoop(greenlet):
     class ClockAgent(Agent):
         def __init__(self, ownerLoop):
@@ -367,7 +390,7 @@ class MainLoop(greenlet):
             while True:
                 if not self.ownerLoop.dateFrozen:
                     self.ownerLoop.sequencer.bumpIfAllTimeless()
-                newTimeNow = self.sleep(0)  # yield thread
+                newTimeNow = _clockAgentBreakHook(self)
                 for cb in self.ownerLoop.perTickCallbacks:
                     cb(self, timeNow, newTimeNow)
                 if newTimeNow != timeNow:
@@ -450,11 +473,20 @@ class MainLoop(greenlet):
         self.sequencer.enqueue(agent, self.sequencer.getTimeNow() + nDays)
         return self.switch('%s: %s sleep %d days' % (self.name, agent, nDays))
 
-    def printCensus(self):
-        print '%s: Census at time %s:' % (self.name, self.sequencer.getTimeNow())
+    def printCensus(self, tickNum=None):
+        if tickNum is None:
+            print '%s: Census at time %s:' % (self.name, self.sequencer.getTimeNow())
+        else:
+            print '%s: Census at tick %s date %s:' % (self.name, tickNum, self.sequencer.getTimeNow())
+        censusDict = {}
         for iact in Interactant.getLiveList():
-            print '    %s : %s' % (iact._name, iact.getWaitingDetails())
-        print '    main loop now : %d' % self.sequencer.getNWaitingNow()
+            for k, v in iact.getWaitingDetails().items():
+                if k in censusDict:
+                    censusDict[k] += v
+                else:
+                    censusDict[k] = v
+        print '    interactants contain: %s' % censusDict
+        print '    main loop live agents : %s' % self.sequencer.getWaitingCensusNow()
 
     def __str__(self):
         return '<%s>' % self.name

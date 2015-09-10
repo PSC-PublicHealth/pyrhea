@@ -29,15 +29,18 @@ def getCommWorld():
 
 
 class VectorClock(object):
-    def __init__(self, commSize, rank):
+    def __init__(self, commSize, rank, vec=None):
         self.rank = rank
-        self.vec = np.zeros(commSize, dtype=np.int32)
+        if vec is None:
+            self.vec = np.zeros(commSize, dtype=np.int32)
+        else:
+            self.vec = np.copy(vec)
 
     def incr(self):
         self.vec[self.rank] += 1
 
     def merge(self, foreignVec):
-        """ This operation does not include incrememting the local time """
+        """ This operation does not include incrementing the local time """
         self.vec = np.maximum(self.vec, foreignVec)
 
     def max(self):
@@ -46,6 +49,25 @@ class VectorClock(object):
     def min(self):
         return np.amin(self.vec)
 
+    def before(self, other):
+        """returns True if 'self' is less than the vector clock 'other' """
+        return (np.all(np.less_equal(self.vec, other.vec))
+                and np.any(np.less(self.vec, other.vec)))
+
+    def after(self, other):
+        """returns True if the vector clock 'other' is less than 'self' """
+        return (np.all(np.less_equal(other.vec, self.vec))
+                and np.any(np.less(other.vec, self.vec)))
+
+    def simultaneous(self, other):
+        """returns True if neither vector clock is before the other"""
+        return (not self.before(other) and not self.after(other))
+
+    def __str__(self):
+        return 'VClock(%s)' % str(self.vec)
+
+    def copy(self):
+        return VectorClock(self.vec.shape[0], self.rank, vec=np.copy(self.vec))
 
 _InnerGblAddr = namedtuple('_innerGblAddr', ['rank', 'lclId'])
 
@@ -60,6 +82,16 @@ class GblAddr(_InnerGblAddr):
             return GblAddr(self.rank, self.lclId[0])
         else:
             return GblAddr(self.rank, self.lclId)
+
+    @staticmethod
+    def tupleGetPatchAddr(tpl):
+        """For those awkward times when the argument is really an _InnerGblAddr"""
+        rank = tpl[0]
+        lclId = tpl[1]
+        if isinstance(lclId, types.TupleType):
+            return GblAddr(rank, lclId[0])
+        else:
+            return GblAddr(rank, lclId)
 
     def __str__(self):
         if isinstance(self.lclId, types.TupleType):
@@ -108,16 +140,35 @@ class NetworkInterface(object):
         self.clientIncomingCallbacks = {}
         self.sync = sync
         self.deterministic = deterministic
-        self.doneMsg = [False]
+        self.doneMsg = [(False, 0)]
         self.incomingLclMessages = []
         self.doneSignalSent = False
         self.doneSignalsSeen = 0
+        self.doneMaxCycle = 0
 
     def getGblAddr(self, lclId):
         return GblAddr(self.comm.rank, lclId)
 
     def isLocal(self, gblAddr):
         return gblAddr.rank == self.comm.rank
+
+    def rightRank(self, gblAddr):
+        """Return the global address 'to the right' of the given one.
+
+        If you traverse all the way to the right, you are guaranteed to
+        arrive back at the starting point, having visited all ranks.
+        """
+        newRank = (gblAddr.rank + 1) % self.comm.size
+        return GblAddr(newRank, gblAddr.lclId)
+
+    def leftRank(self, gblAddr):
+        """Return the global address 'to the left' of the given one.
+
+        If you traverse all the way to the left, you are guaranteed to
+        arrive back at the starting point, having visited all ranks.
+        """
+        newRank = (gblAddr.rank + self.comm.size - 1) % self.comm.size
+        return GblAddr(newRank, gblAddr.lclId)
 
     def barrier(self):
         self.comm.Barrier()
@@ -158,8 +209,6 @@ class NetworkInterface(object):
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
-        # print ('######## %s: got %d agents for %s, time=%s, vtime=%s' %
-        #        (self.name, len(agentList), destTag, tm, vtm))
         self.clientIncomingCallbacks[(srcTag.rank, srcTag.lclId, destTag.lclId)](msgType, partTpl)
 
     def finishRecv(self):
@@ -181,7 +230,7 @@ class NetworkInterface(object):
                                                                     MPI.ANY_TAG))
                 else:
                     doneMsg = msg.pop()
-                    if doneMsg:
+                    if doneMsg[0]:
                         self.doneSignalsSeen += 1
                 vtm = msg[0]
                 #
@@ -193,17 +242,20 @@ class NetworkInterface(object):
             elif self.sync:
                 s = MPI.Status()
                 idx, msg = MPI.Request.waitany(self.outstandingRecvReqs, s)
+                # print 'waitany returned for index %s: tag %s source %s' % (idx, s.Get_tag(),
+                #                                                            s.Get_source())
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
-                    print 'Rank %d: MORE from %s' % s.Get_source()
+                    # print 'Rank %d: MORE from %s' % s.Get_source()
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
                 else:
                     doneMsg = msg.pop()
-                    if doneMsg:
+                    if doneMsg[0]:
                         self.doneSignalsSeen += 1
+                        self.doneMaxCycle = max(self.doneMaxCycle, doneMsg[1])
                 vtm = msg[0]
                 #
                 # Handle vtime order issues here
@@ -217,7 +269,7 @@ class NetworkInterface(object):
                     self.outstandingRecvReqs.pop(idx)
                 if flag:
                     doneMsg = msg.pop()
-                    if doneMsg:
+                    if doneMsg[0]:
                         self.doneSignalsSeen += 1
                     vtm = msg[0]
                     #
@@ -280,15 +332,17 @@ class NetworkInterface(object):
                             req = self.comm.isend(bigCargo, destRank,
                                                   tag=NetworkInterface.MPI_TAG_END)
                         self.outstandingSendReqs.append(req)
-                    # print '######### %s sent %s to %s' % (self.name, len(bigCargo), destRank)
+                        # print ('######### NetworkInterface %d sent %s to %s req %s' %
+                        #        (self.comm.rank, len(bigCargo), destRank, req))
         self.outgoingDict.clear()
-        self.doneMsg = [False]  # to avoid accidental re-sends
+        self.doneMsg = [(False, 0)]  # to avoid accidental re-sends
 
     def finishSend(self):
-        # print ('######## %s entering send waitall on %d requests' %
-        #        (self.name, len(self.outstandingSendReqs)))
-        result = MPI.Request.waitall(self.outstandingSendReqs)  # @UnusedVariable
-        # print '######## %s finished send waitall; result was %s' % (self.name, result)
+        sList = []
+        for i in xrange(len(self.outstandingSendReqs)):  # @UnusedVariable
+            sList.append(MPI.Status())
+        print ('######## NetworkInterface on rank %d finished send waitall' % self.comm.rank)
+        MPI.Request.Waitall(self.outstandingSendReqs, statuses=sList)  # @UnusedVariable
 #         self.outstandingSendReqs = deque()
         self.outstandingSendReqs = []
 
@@ -304,9 +358,13 @@ class NetworkInterface(object):
         Once the 'done' signal has been sent, there is no way to return the NetworkInterface to the
         not-done state.
         """
+        cycleNow = self.vclock.vec[self.comm.rank]
         if self.doneSignalSent:
-            self.doneMsg = [False]
+            self.doneMsg = [(False, 0)]
         else:
-            self.doneMsg = [True]
+            self.doneMsg = [(True, cycleNow)]
             self.doneSignalSent = True
-        return (self.doneSignalsSeen == len(self.expectFrom))
+            self.doneMaxCycle = max(self.doneMaxCycle, cycleNow)
+        print ('doneMsg = %s, doneSignalSent = %s, n = %d, max cycle = %d'
+               % (self.doneMsg, self.doneSignalSent, self.doneSignalsSeen, self.doneMaxCycle))
+        return (self.doneSignalsSeen == len(self.expectFrom) and cycleNow >= self.doneMaxCycle + 1)

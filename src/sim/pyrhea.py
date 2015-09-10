@@ -150,6 +150,13 @@ def createPerDayCB(patchGroup, runDurationDays):
     return perDayCB
 
 
+def createPerTickCB(patchGroup, runDurationDays):
+    def perTickCB(thisAgent, timeLastTick, timeNow):
+        if timeNow > runDurationDays:
+            patchGroup.stop()
+    return perTickCB
+
+
 def main():
     global patchGroup
 
@@ -202,6 +209,7 @@ def main():
     # Only one patch per rank for now
     patch = patchGroup.addPatch(patches.Patch(patchGroup))
     patch.loop.addPerDayCallback(createPerDayCB(patchGroup, inputDict['runDurationDays']))
+    patch.loop.addPerTickCallback(createPerTickCB(patchGroup, inputDict['runDurationDays']))
 
     allIter = []
     allAgents = []

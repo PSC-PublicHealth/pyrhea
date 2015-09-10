@@ -19,9 +19,21 @@ _rhea_svn_id_ = "$Id$"
 
 from collections import defaultdict
 from greenlet import greenlet
-import agent
 import netinterface
 #from pympler import tracker
+
+import agent
+
+def _substituteClockAgentBreakHook(clockAgent):
+    """
+    This serves to monkey patch the clock agent's main loop in the 'agent' module so that
+    it does not yield its thread, as this module will register a callback for that loop
+    that will do so.
+    """
+    return clockAgent.ownerLoop.sequencer.getTimeNow()
+
+agent._clockAgentBreakHook = _substituteClockAgentBreakHook
+
 
 """
 To Do:
@@ -33,10 +45,10 @@ To Do:
 
 class MsgTypes():
     GATE = 0
-    ENDOFDAY = 1
-    ANTI_ENDOFDAY = 2
-    SINGLE_ENDOFDAY = 3
-    SINGLE_ANTI_ENDOFDAY = 4
+#     ENDOFDAY = 1
+#     ANTI_ENDOFDAY = 2
+#     SINGLE_ENDOFDAY = 3
+#     SINGLE_ANTI_ENDOFDAY = 4
 
 
 def getCommWorld():
@@ -183,7 +195,7 @@ class GateAgent(Agent):
 
 
 class GateEntrance(Interactant):
-    queueBlockSize = 4  # limits network packet size
+    queueBlockSize = 40  # limits network packet size
 
     def __init__(self, name, ownerPatch, destTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
@@ -194,16 +206,16 @@ class GateEntrance(Interactant):
     def cycleStart(self, timeNow):
         if self._debug:
             print '%s begins cycleStart; destTag is %s' % (self._name, self.destTag)
-        self.nInTransit = len(self._lockQueue)
+        self.nInTransit = len([a for a in self._lockQueue if not a.timeless])
         if self._lockQueue:
             q = self._lockQueue[:]
             while q:
                 self.patch.group.enqueue(MsgTypes.GATE, (timeNow, q[:GateEntrance.queueBlockSize]),
-                                         self.patch.tag, self.destTag)
+                                         self.patch.gblAddr, self.destTag)
                 q = q[GateEntrance.queueBlockSize:]
         else:
             self.patch.group.enqueue(MsgTypes.GATE, (timeNow, []),
-                                     self.patch.tag, self.destTag)
+                                     self.patch.gblAddr, self.destTag)
         self._oldLockQueue = self._lockQueue
         self._lockQueue = []
         self._nEnqueued = 0
@@ -224,6 +236,12 @@ class GateEntrance(Interactant):
     def getNWaiting(self):
         return self._nEnqueued + self.nInTransit
 
+    def getWaitingDetails(self):
+        """Returns a dict of typeName:nOfThisType entries"""
+        result = Interactant.getWaitingDetails(self)
+        result['_in_transit'] = self.nInTransit
+        return result
+
     def lock(self, lockingAgent):
         if self._lockingAgent is not None:
             #  This will get enqueued for sending
@@ -236,53 +254,180 @@ class GateExit(Interactant):
     def __init__(self, name, ownerPatch, srcTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.srcTag = srcTag
-        self.partnerEndOfDay = False
+#         self.partnerEndOfDay = False
         self.partnerMaxDay = 0
 
     def cycleStart(self, timeNow):
-        if self._debug:
-            print '%s begins cycleStart; tag is %s' % (self._name, self.srcTag)
-        self.patch.group.expect(self.srcTag, self.patch.tag, self.handleIncoming)
-        if self._debug:
-            print '%s ends cycleStart' % self._name
+        self.patch.group.expect(self.srcTag, self.patch.gblAddr, self.handleIncoming)
 
     def cycleFinish(self, timeNow):
-        if self._debug:
-            print '%s begins cycleFinish' % self._name
-
-        if self._debug:
-            print '%s ends cycleFinish' % self._name
+        pass
 
     def handleIncoming(self, msgType, incomingTuple):
         """ This is called by the messaging system to deliver incoming agents """
         if msgType == MsgTypes.GATE:
             senderTime, agentList = incomingTuple
-            # print '%s: got time=%s' % (self._name, senderTime)
-            # print '%s: agentList: %s' % (self._name, [str(a) for a in agentList])
+            if self._debug:
+                d = {}
+                for k in [a.__class__.__name__ for a in agentList]:
+                    if k not in d:
+                        d[k] = 0
+                    d[k] += 1
+                print '%s: got time=%s %s agents: %s' % (self._name, senderTime,
+                                                         self.patch.group.nI.vclock,
+                                                         d)
             timeNow = self._ownerLoop.sequencer.getTimeNow()
-            if timeNow > senderTime and agentList:
-                print '%s: MESSAGE FROM THE PAST' % self._name
-            senderTime = timeNow
             for a in agentList:
                 a.reHome(self.patch)
-                self._ownerLoop.sequencer.enqueue(a, senderTime)
+                if a.timeless:
+                    # Timeless agents always go the the 'current' time
+                    if timeNow > senderTime:
+                        print '%s jumps forward %d -> %d' % (a.name, senderTime, timeNow)
+                    elif timeNow < senderTime:
+                        print '%s jumps backward %d -> %d' % (a.name, senderTime, timeNow)
+                    self._ownerLoop.sequencer.enqueue(a, timeNow)
+                else:
+                    if timeNow > senderTime:
+                        print '%s: MESSAGE FROM THE PAST' % self._name
+                        self.patch.group.nI.comm.Abort()
+                    self._ownerLoop.sequencer.enqueue(a, senderTime)
                 if a.debug:
                     print '%s materializes at %s' % (a.name, self._name)
-        elif msgType == MsgTypes.SINGLE_ENDOFDAY:
-            srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-            # print ('%s got EOD %s from %s %s when partnerEOD = %s' %
-            #        (self._name, partnerDay, self.srcTag, srcAddr, self.partnerEndOfDay))
-            self.partnerMaxDay = partnerDay
-            self.partnerEndOfDay = True
-        elif msgType == MsgTypes.SINGLE_ANTI_ENDOFDAY:
-            srcAddr, partnerDay = incomingTuple  # @UnusedVariable
-            # print ('%s got Anti-EOD %d from %s when partnerEOD = %s' %
-            #         (self._name, partnerDay, self.srcTag, self.partnerEndOfDay))
-            self.partnerMaxDay = partnerDay
-            self.partnerEndOfDay = False
         else:
             raise RuntimeError('Unknown message type %s arrived at Gate %s' %
                                (msgType, self._name))
+
+
+class DateChangeQueue(Interactant):
+    pass
+
+
+class DateChangeMsg(Agent):
+    STATE_OUTGOING = 0
+    STATE_HOMEWARD = 1
+    STATE_TERMINATE = 2
+
+    def __init__(self, name, patch, homeQueueAddr, creationVTime,
+                 creationDate, debug=True):
+        Agent.__init__(self, name, patch, debug=debug)
+        self.homeQueueAddr = homeQueueAddr
+        self.creationVTime = creationVTime
+        self.creationDate = creationDate
+        self.fsmstate = DateChangeMsg.STATE_OUTGOING
+        self.dest = self.getNextDestination()
+        self.timeless = True
+
+    def getNextDestination(self):
+        rtPatch = self.patch.group.getRightwardPatch(self.patch.gblAddr)
+        return self.patch.serviceLookup('DateChangeQueue', patchAddr=rtPatch)[0][1]
+
+    def run(self, startTime):
+        timeNow = startTime  # @UnusedVariable
+        while True:
+            if self.fsmstate == DateChangeMsg.STATE_OUTGOING:
+                addr, final = self.patch.getPathTo(self.dest)
+                if final:
+                    self.fsmstate = DateChangeMsg.STATE_HOMEWARD
+                timeNow = addr.lock(self)  # @UnusedVariable
+            elif self.fsmstate == DateChangeMsg.STATE_HOMEWARD:
+                addr, final = self.patch.getPathTo(self.homeQueueAddr)
+                if final:
+                    self.fsmstate = DateChangeMsg.STATE_HOMEWARD
+                timeNow = addr.lock(self)  # @UnusedVariable
+            elif self.fsmstate == DateChangeMsg.STATE_TERMINATE:
+                break
+
+    def __getstate__(self):
+        d = Agent.__getstate__(self)
+        d['homeQueueAddr'] = self.homeQueueAddr
+        d['creationVTime'] = self.creationVTime.vec
+        d['creationVTimeRank'] = self.creationVTime.rank
+        d['creationDate'] = self.creationDate
+        d['fsmstate'] = self.fsmstate
+        d['dest'] = self.dest
+        return d
+
+    def __setstate__(self, stateDict):
+        Agent.__setstate__(self, stateDict)
+        self.homeQueueAddr = stateDict['homeQueueAddr']
+        vec = stateDict['creationVTime']
+        self.creationVTime = netinterface.VectorClock(vec.shape[0], stateDict['creationVTimeRank'],
+                                                      vec=vec)
+        self.creationDate = stateDict['creationDate']
+        self.fsmstate = stateDict['fsmstate']
+        self.dest = stateDict['dest']
+
+
+class DateChangeAgent(Agent):
+    def __init__(self, name, patch):
+        Agent.__init__(self, name, patch)
+        self.timeless = True
+        self.inputQueue = DateChangeQueue(name+'_rQ', patch)
+        self.inputQueue.lock(self)
+        self.counter = 0
+        self.mostRecentBusyVTime = None
+
+    def run(self, startTime):
+        timeNow = startTime
+        while True:
+            dWT = self.patch.group.doneWithToday()
+            bumpTime = False
+            # print '%s: dWT is %s; %d in queue' % (self.name, dWT, len(self.inputQueue._lockQueue))
+            if dWT:
+                newMsg = DateChangeMsg('%s_msg_%d' % (self.name, self.counter),
+                                       self.patch, self.inputQueue.getGblAddr(),
+                                       self.patch.group.nI.vclock.copy(),
+                                       timeNow)
+                self.counter += 1
+                self.patch.launch(newMsg, timeNow)
+                # print '%s spawned and launched %s' % (self.name, newMsg.name)
+            else:
+                self.mostRecentBusyVTime = self.patch.group.nI.vclock.copy()
+            while self.inputQueue._lockQueue:
+                msg = self.inputQueue._lockQueue[0]
+                # print '%s found %s in input queue' % (self.name, msg.name)
+                if isinstance(msg, DateChangeMsg):
+                    if msg.homeQueueAddr == self.inputQueue.getGblAddr():
+                        # print ('DateChangeMsg %s made it home! Started %s %s, now %s %s'
+                        #        % (msg.name, msg.creationVTime, msg.creationDate,
+                        #           self.patch.group.nI.vclock, timeNow))
+                        if dWT:
+                            # print '%s considering date change' % self.name
+                            if (msg.creationVTime.before(self.patch.group.nI.vclock)
+                                    and msg.creationDate == timeNow
+                                    and self.mostRecentBusyVTime.before(msg.creationVTime)):
+                                # print '%s will bump time' % self.name
+                                bumpTime = True
+                            else:
+                                # print ('%s: change rejected: %s %s %s' %
+                                #        (self.name,
+                                #         msg.creationVTime.before(self.patch.group.nI.vclock),
+                                #         msg.creationDate == timeNow,
+                                #         self.mostRecentBusyVTime.before(msg.creationVTime)))
+                                pass
+                            msg.fsmstate = DateChangeMsg.STATE_TERMINATE
+                            self.inputQueue.awaken(msg)
+                        else:
+                            # print '%s missed chance for date change' % self.name
+                            msg.fsmstate = DateChangeMsg.STATE_TERMINATE
+                            self.inputQueue.awaken(msg)
+                    else:
+                        if ((dWT and msg.creationDate == timeNow)
+                                or msg.creationDate < timeNow):
+                            # print '%s Passing %s forward' % (self.name, msg.name)
+                            msg.fsmstate = DateChangeMsg.STATE_HOMEWARD
+                            self.inputQueue.awaken(msg)
+                        else:
+                            # print '%s canceling %s' % (self.name, msg.name)
+                            msg.fsmstate = DateChangeMsg.STATE_TERMINATE
+                            self.inputQueue.awaken(msg)
+                else:
+                    raise RuntimeError("%s unexpectedly got the message %s" %
+                                       (self.name, msg.name))
+            if bumpTime:
+                print '%s BUMPING TIME' % self.name
+                self.patch.loop.sequencer.bumpIfAllTimeless()
+            timeNow = self.sleep(0)
 
 
 class Patch(object):
@@ -290,101 +435,48 @@ class Patch(object):
 
     def _createPerTickCB(self):
         def tickFun(thisAgent, timeLastTick, timeNow):
-            if self.endOfDay:
-                if self.loop.sequencer.doneWithToday():
-                    # Still waiting for partners
-                    pass
-                else:
-                    # Some incoming event has knocked us out of end-of-day
-                    self.endOfDay = False
-                    for g in self.outgoingGates:
-                        self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
-            else:
-                if self.loop.sequencer.doneWithToday():
-                    # Newly end-of-day
-                    self.endOfDay = True
-                    # print ('%s sending out endOfDay with timeNow %s at %s' %
-                    #        (self.name, timeNow, self.group.nI.vclock.vec))
-                    for g in self.outgoingGates:
-                        self.group.sendGateEOD(self.tag, g.destTag, timeNow)
-                else:
-                    # still not done with the day
-                    # print ('%s sequencer.doneWithToday is false at timeNow %s at %s' %
-                    #        (self.name, timeNow, self.group.nI.vclock.vec))
-                    pass
-            allPartnersEOD = all([g.partnerEndOfDay for g in self.incomingGates])
-            if len(self.incomingGates) > 0:
-                minPartnerDay = min([g.partnerMaxDay for g in self.incomingGates])
-                if (self.loop.sequencer.doneWithToday() and self.endOfDay
-                        and allPartnersEOD and minPartnerDay >= timeNow):
-                    if self.stillEndOfDay:
-                        # print '%s: bumping day!' % self.name
-                        self.loop.sequencer.bumpIfAllTimeless()
-                        timeNow += 1
-                        self.endOfDay = False
-                        # print '%s: stillEndOfDay -> False' % self.name
-                        self.stillEndOfDay = False
-                        for g in self.outgoingGates:
-                            self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
-                    else:
-                        # print '%s: stillEndOfDay -> True' % self.name
-                        self.stillEndOfDay = True
-                else:
-                    # print '%s: stillEndOfDay -> False' % self.name
-                    self.stillEndOfDay = False
-            else:
-                if (self.loop.sequencer.doneWithToday() and self.endOfDay
-                        and allPartnersEOD):
-                    if self.stillEndOfDay:
-                        # print '%s: bumping day!' % self.name
-                        self.loop.sequencer.bumpIfAllTimeless()
-                        timeNow += 1
-                        self.endOfDay = False
-                        # print '%s: stillEndOfDay -> False' % self.name
-                        self.stillEndOfDay = False
-                        for g in self.outgoingGates:
-                            self.group.sendGateAntiEOD(self.tag, g.destTag, timeNow)
-                    else:
-                        # print '%s: stillEndOfDay -> True' % self.name
-                        self.stillEndOfDay = True
-                else:
-                    # print '%s: stillEndOfDay -> False' % self.name
-                    self.stillEndOfDay = False
-            # And now we force the current patch to exit so that the next patch gets
+            # Force the current patch to exit so that the next patch gets
             # a time slice.
             thisAgent.ownerLoop.sequencer.enqueue(thisAgent, timeNow)
             self.group.switch(timeNow)
         return tickFun
 
-    def __init__(self, group, name=None):
-        self.patchId = Patch.counter
-        Patch.counter += 1
+    def __init__(self, group, name=None, patchId=None):
+        if patchId is None:
+            self.patchId = Patch.counter
+            Patch.counter += 1
+        else:
+            self.patchId = patchId
         self.group = group
-        self.tag = group.getGblAddr(self.patchId)
+        self.gblAddr = group.getGblAddr(self.patchId)
         if name is None:
-            self.name = "Patch_%s" % str(self.tag)
+            self.name = "Patch_%s" % str(self.gblAddr)
+        else:
+            self.name = name
         self.loop = agent.MainLoop(self.name + '.loop')
         self.gateAgent = GateAgent(self)
-        self.outgoingGates = []
-        self.incomingGates = []
-        self.interactants = []  # Does not include gates
+        self.dateChangeAgent = DateChangeAgent(self.name + '_DateChangeAgent', self)
+        self.outgoingGateDict = {}
+        self.incomingGateDict = {}
+        self.interactantDict = {}  # Does not include gates
         self.loop.addPerTickCallback(self._createPerTickCB())
-        self.loop.addAgents([self.gateAgent])
-        self.endOfDay = False
-        self.stillEndOfDay = False
+        self.addAgents([self.gateAgent, self.dateChangeAgent])
+        self.addInteractants([self.dateChangeAgent.inputQueue])
+#         self.endOfDay = False
+#         self.stillEndOfDay = False
 
     def addGateFrom(self, otherPatchTag):
         gateExit = GateExit(("%s.GateExit_%s" % (self.name, otherPatchTag)),
                             self, otherPatchTag, debug=False)
         self.gateAgent.addGate(gateExit)
-        self.incomingGates.append(gateExit)
+        self.incomingGateDict[otherPatchTag] = gateExit
         return gateExit
 
     def addGateTo(self, otherPatchTag):
         gateEntrance = GateEntrance(("%s.GateEntrance_%s" % (self.name, otherPatchTag)),
                                     self, otherPatchTag, debug=False)
         self.gateAgent.addGate(gateEntrance)
-        self.outgoingGates.append(gateEntrance)
+        self.outgoingGateDict[otherPatchTag] = gateEntrance
         return gateEntrance
 
     def addAgents(self, agentList):
@@ -393,13 +485,13 @@ class Patch(object):
     def addInteractants(self, interactantList):
         for iact in interactantList:
             if isinstance(iact, GateEntrance):
-                if iact not in self.outgoingGates:
-                    self.outgoingGates.append(iact)
+                if iact.destTag not in self.outgoingGateDict:
+                    self.outgoingGateDict[iact.destTag] = iact
             elif isinstance(iact, GateExit):
-                if iact not in self.incomingGates:
-                    self.incomingGates.append(iact)
+                if iact.srcTag not in self.incomingGateDict:
+                    self.incomingGateDict[iact.srcTag] = iact
             else:
-                self.interactants.append(iact)
+                self.interactantDict[iact.getGblAddr()] = iact
 
     def __str__(self):
         return '<%s>' % self.name
@@ -408,25 +500,30 @@ class Patch(object):
         agent.parent = self.loop
         self.loop.sequencer.enqueue(agent, startTime)
 
-    def serviceLookup(self, typeNameStr):
-        return self.group.worldInteractants[typeNameStr][:]
+    def serviceLookup(self, typeNameStr, patchAddr=None):
+        if patchAddr is None:
+            return self.group.worldInteractants[typeNameStr][:]
+        else:
+            return [(nm, addr)
+                    for nm, addr in self.group.worldInteractants[typeNameStr]
+                    if addr.getPatchAddr() == patchAddr]
 
     def isLocal(self, gblAddr):
         """Is the address local to this patch?"""
-        return (gblAddr.getPatchAddr() == self.tag)
+        return (netinterface.GblAddr.tupleGetPatchAddr(gblAddr) == self.gblAddr)
 
     def getPathTo(self, gblAddr):
-        if self.isLocal(gblAddr):
-            for itr in self.interactants:
-                if itr.getGblAddr() == gblAddr:
-                    return (itr, True)
-            raise RuntimeError("%s: Unknown supposedly-local address %s" % (self.name, gblAddr))
+        if gblAddr in self.interactantDict:
+            return (self.interactantDict[gblAddr], True)
         else:
-            patchAddr = gblAddr.getPatchAddr()
-            for g in self.outgoingGates:
-                if g.destTag == patchAddr:
-                    return (g, False)
-            raise RuntimeError("%s: No path to right patch for address %s" % (self.name, gblAddr))
+            assert not self.isLocal(gblAddr), \
+                "%s: Unknown supposedly-local address %s" % (self.name, gblAddr)
+            patchAddr = netinterface.GblAddr.tupleGetPatchAddr(gblAddr)
+            if patchAddr in self.outgoingGateDict:
+                return (self.outgoingGateDict[patchAddr], False)
+            else:
+                raise RuntimeError("%s: No path to right patch for address %s" % (self.name,
+                                                                                  gblAddr))
 
 
 def greenletTrace(event, args):
@@ -462,7 +559,8 @@ class PatchGroup(greenlet):
 
     def createPerEventCallback(self):
         def evtFun(mainLoop, scalarTimeNow):
-            self.nI.vclock.incr()
+            # self.nI.vclock.incr()
+            pass
         return evtFun
 
     def __init__(self, comm, name=None, sync=True, trace=False, deterministic=False):
@@ -482,7 +580,7 @@ class PatchGroup(greenlet):
         self.clientGateExits = {}
         self.sync = sync
         self.deterministic = deterministic
-        self.endOfDay = False
+#         self.endOfDay = False
         self.prevTraceCB = None
         self.stopNow = False
 
@@ -512,6 +610,20 @@ class PatchGroup(greenlet):
     def getGblAddr(self, lclId):
         return self.nI.getGblAddr(lclId)
 
+    def getRightwardPatch(self, patchAddr):
+        """Return the GblAddr of the next patch globally 'to the right' of the given patch GblAddr.
+
+        This is defined to mean the next patch in the current PatchGroup, or the first patch in
+        the PatchGroup with the next higher rank.
+        """
+        myIdx = patchAddr.lclId
+        assert self.patches[myIdx].patchId == myIdx, \
+            "%s: Patch list is out of order?" % self.name
+        if myIdx == len(self.patches) - 1:
+            return self.nI.rightRank(self.nI.getGblAddr(0))
+        else:
+            return self.patches[myIdx+1].gblAddr
+
     def addPatch(self, patch):
         patch.loop.parent = self
         self.patches.append(patch)
@@ -528,31 +640,21 @@ class PatchGroup(greenlet):
                 #     (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
                 #      p.loop.sequencer.getTimeNow())
                 reply = p.loop.switch()  # @UnusedVariable
-                # p.loop.printCensus()
-#                if p.loop.stopNow:
-#                     if reply:
-#                         print '%s stopped running: %s' % (p.name, reply)
-#                     else:
-#                         print '%s stopped running' % p.name
-#                    self.patches.remove(p)
-#                    self.setTrace()
+                p.loop.printCensus(tickNum=self.nI.vclock.vec[self.nI.comm.rank])
 
-            # print '######### %s: finish last recv' % self.name
+            print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
-            # print '######### %s: finish last send' % self.name
+            print '######### %s: finish last send' % self.name
             self.nI.finishSend()
-            # print ('######### %s: checking done; seen %d, unfinished patches = %d' %
-            #        (self.name, self.nI.doneSignalsSeen,
-            #         len([1 for p in self.patches if p.loop.stopNow])))
             if self.stopNow:
                 print '%s Sending done signal' % self.name
                 if self.nI.sendDoneSignal():
                     return '%s claims all done' % self.name
-            # print '######### %s: start recv' % self.name
+            print '######### %s: start recv' % self.name
             self.nI.startRecv()
-            # print '######### %s: start send' % self.name
+            print '######### %s: start send' % self.name
             self.nI.startSend()
-            # print '######### %s: finished networking' % self.name
+            print '######### %s: finished networking' % self.name
 
     def __str__(self):
         return '<%s>' % self.name
@@ -564,19 +666,19 @@ class PatchGroup(greenlet):
         """
         The handleIncoming is a callback with the signature
 
-            handleIncoming(incomingTuple)
+            handleIncoming(msgType, incomingTuple)
 
         There is no way to drop a rank from the expected source set because one can
         never be sure there is no straggler message from that rank
         """
         self.nI.expect(srcAddr, destAddr, handleIncoming)
 
-    def shareInteractantDirectories(self):
+    def shareInteractantDirectories(self, patchList):
         myInteractants = defaultdict(list)
-        for p in self.patches:
+        for p in patchList:
             pId = p.patchId
             myInteractants['_'].append(self.getGblAddr(pId))
-            for iact in p.interactants:
+            for iact in p.interactantDict.values():
                 nm = iact._name
                 classNm = iact.__class__.__name__
                 myInteractants[classNm].append((nm, self.getGblAddr((pId, iact.id))))
@@ -608,12 +710,12 @@ class PatchGroup(greenlet):
 
     def start(self):
         # Collect remote geometry information.  This includes an implicit barrier
-        self.worldInteractants, self.allPatches = self.shareInteractantDirectories()
+        self.worldInteractants, self.allPatches = self.shareInteractantDirectories(self.patches)
 
         # Build the global gate network
         for localP in self.patches:
             for friend in self.allPatches:
-                if localP.tag != friend:
+                if (localP.gblAddr != friend):
                     localP.addGateTo(friend)
                     localP.addGateFrom(friend)
 
@@ -626,8 +728,8 @@ class PatchGroup(greenlet):
     def doneWithToday(self):
         return all([p.loop.sequencer.doneWithToday() for p in self.patches])
 
-    def sendGateEOD(self, srcAddr, destAddr, currentDay):
-        self.enqueue(MsgTypes.SINGLE_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
-
-    def sendGateAntiEOD(self, srcAddr, destAddr, currentDay):
-        self.enqueue(MsgTypes.SINGLE_ANTI_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
+#     def sendGateEOD(self, srcAddr, destAddr, currentDay):
+#         self.enqueue(MsgTypes.SINGLE_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
+#
+#     def sendGateAntiEOD(self, srcAddr, destAddr, currentDay):
+#         self.enqueue(MsgTypes.SINGLE_ANTI_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
