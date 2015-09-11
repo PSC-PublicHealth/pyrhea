@@ -152,24 +152,6 @@ class NetworkInterface(object):
     def isLocal(self, gblAddr):
         return gblAddr.rank == self.comm.rank
 
-    def rightRank(self, gblAddr):
-        """Return the global address 'to the right' of the given one.
-
-        If you traverse all the way to the right, you are guaranteed to
-        arrive back at the starting point, having visited all ranks.
-        """
-        newRank = (gblAddr.rank + 1) % self.comm.size
-        return GblAddr(newRank, gblAddr.lclId)
-
-    def leftRank(self, gblAddr):
-        """Return the global address 'to the left' of the given one.
-
-        If you traverse all the way to the left, you are guaranteed to
-        arrive back at the starting point, having visited all ranks.
-        """
-        newRank = (gblAddr.rank + self.comm.size - 1) % self.comm.size
-        return GblAddr(newRank, gblAddr.lclId)
-
     def barrier(self):
         self.comm.Barrier()
 
@@ -341,7 +323,7 @@ class NetworkInterface(object):
         sList = []
         for i in xrange(len(self.outstandingSendReqs)):  # @UnusedVariable
             sList.append(MPI.Status())
-        print ('######## NetworkInterface on rank %d finished send waitall' % self.comm.rank)
+        # print ('######## NetworkInterface on rank %d finished send waitall' % self.comm.rank)
         MPI.Request.Waitall(self.outstandingSendReqs, statuses=sList)  # @UnusedVariable
 #         self.outstandingSendReqs = deque()
         self.outstandingSendReqs = []

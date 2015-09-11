@@ -288,7 +288,7 @@ class GateExit(Interactant):
                     self._ownerLoop.sequencer.enqueue(a, timeNow)
                 else:
                     if timeNow > senderTime:
-                        print '%s: MESSAGE FROM THE PAST' % self._name
+                        print '%s: MESSAGE FROM THE PAST: %s' % (self._name, a.name)
                         self.patch.group.nI.comm.Abort()
                     self._ownerLoop.sequencer.enqueue(a, senderTime)
                 if a.debug:
@@ -307,32 +307,28 @@ class DateChangeMsg(Agent):
     STATE_HOMEWARD = 1
     STATE_TERMINATE = 2
 
-    def __init__(self, name, patch, homeQueueAddr, creationVTime,
+    def __init__(self, name, patch, homeQueueAddr, destQueueAddr, creationVTime,
                  creationDate, debug=True):
         Agent.__init__(self, name, patch, debug=debug)
         self.homeQueueAddr = homeQueueAddr
+        self.destQueueAddr = destQueueAddr
         self.creationVTime = creationVTime
         self.creationDate = creationDate
         self.fsmstate = DateChangeMsg.STATE_OUTGOING
-        self.dest = self.getNextDestination()
         self.timeless = True
-
-    def getNextDestination(self):
-        rtPatch = self.patch.group.getRightwardPatch(self.patch.gblAddr)
-        return self.patch.serviceLookup('DateChangeQueue', patchAddr=rtPatch)[0][1]
 
     def run(self, startTime):
         timeNow = startTime  # @UnusedVariable
         while True:
             if self.fsmstate == DateChangeMsg.STATE_OUTGOING:
-                addr, final = self.patch.getPathTo(self.dest)
+                addr, final = self.patch.getPathTo(self.destQueueAddr)
                 if final:
                     self.fsmstate = DateChangeMsg.STATE_HOMEWARD
                 timeNow = addr.lock(self)  # @UnusedVariable
             elif self.fsmstate == DateChangeMsg.STATE_HOMEWARD:
                 addr, final = self.patch.getPathTo(self.homeQueueAddr)
                 if final:
-                    self.fsmstate = DateChangeMsg.STATE_HOMEWARD
+                    self.fsmstate = DateChangeMsg.STATE_TERMINATE
                 timeNow = addr.lock(self)  # @UnusedVariable
             elif self.fsmstate == DateChangeMsg.STATE_TERMINATE:
                 break
@@ -340,22 +336,22 @@ class DateChangeMsg(Agent):
     def __getstate__(self):
         d = Agent.__getstate__(self)
         d['homeQueueAddr'] = self.homeQueueAddr
+        d['destQueueAddr'] = self.destQueueAddr
         d['creationVTime'] = self.creationVTime.vec
         d['creationVTimeRank'] = self.creationVTime.rank
         d['creationDate'] = self.creationDate
         d['fsmstate'] = self.fsmstate
-        d['dest'] = self.dest
         return d
 
     def __setstate__(self, stateDict):
         Agent.__setstate__(self, stateDict)
         self.homeQueueAddr = stateDict['homeQueueAddr']
+        self.destQueueAddr = stateDict['destQueueAddr']
         vec = stateDict['creationVTime']
         self.creationVTime = netinterface.VectorClock(vec.shape[0], stateDict['creationVTimeRank'],
                                                       vec=vec)
         self.creationDate = stateDict['creationDate']
         self.fsmstate = stateDict['fsmstate']
-        self.dest = stateDict['dest']
 
 
 class DateChangeAgent(Agent):
@@ -366,6 +362,7 @@ class DateChangeAgent(Agent):
         self.inputQueue.lock(self)
         self.counter = 0
         self.mostRecentBusyVTime = None
+        self.msgDict = {}
 
     def run(self, startTime):
         timeNow = startTime
@@ -374,13 +371,22 @@ class DateChangeAgent(Agent):
             bumpTime = False
             # print '%s: dWT is %s; %d in queue' % (self.name, dWT, len(self.inputQueue._lockQueue))
             if dWT:
-                newMsg = DateChangeMsg('%s_msg_%d' % (self.name, self.counter),
-                                       self.patch, self.inputQueue.getGblAddr(),
-                                       self.patch.group.nI.vclock.copy(),
-                                       timeNow)
-                self.counter += 1
-                self.patch.launch(newMsg, timeNow)
-                # print '%s spawned and launched %s' % (self.name, newMsg.name)
+                nInGroup = 0
+                for nm, destAddr in self.patch.serviceLookup('DateChangeQueue'):
+                    if not self.patch.isLocal(destAddr):
+                        newMsg = DateChangeMsg('%s_msg_%s_%d' % (self.name, nm, self.counter),
+                                               self.patch, self.inputQueue.getGblAddr(),
+                                               destAddr, self.patch.group.nI.vclock.copy(),
+                                               timeNow)
+                        self.counter += 1
+                        nInGroup += 1
+                        self.patch.launch(newMsg, timeNow)
+                if nInGroup > 0:
+                    tickNow = self.patch.group.nI.vclock.vec[self.patch.group.nI.comm.rank]
+                    self.msgDict[tickNow] = (nInGroup, 0)
+                    print '%s spawned and launched %d' % (self.name, nInGroup)
+                else:
+                    bumpTime = True  # we are alone, so just change date
             else:
                 self.mostRecentBusyVTime = self.patch.group.nI.vclock.copy()
             while self.inputQueue._lockQueue:
@@ -391,20 +397,29 @@ class DateChangeAgent(Agent):
                         # print ('DateChangeMsg %s made it home! Started %s %s, now %s %s'
                         #        % (msg.name, msg.creationVTime, msg.creationDate,
                         #           self.patch.group.nI.vclock, timeNow))
-                        if dWT:
+                        msgTick = msg.creationVTime.vec[self.patch.group.nI.comm.rank]
+                        if dWT and msgTick in self.msgDict:
+                            nSent, nSeen = self.msgDict[msgTick]
                             # print '%s considering date change' % self.name
                             if (msg.creationVTime.before(self.patch.group.nI.vclock)
                                     and msg.creationDate == timeNow
                                     and self.mostRecentBusyVTime.before(msg.creationVTime)):
-                                # print '%s will bump time' % self.name
-                                bumpTime = True
+                                nSeen += 1
+                                print ('%s counted date change msg %d of %d for tick %s' %
+                                       (self.name, nSeen, nSent, msgTick))
+                                if nSeen >= nSent:
+                                    print '%s will bump time' % self.name
+                                    bumpTime = True
+                                    self.msgDict = {}
+                                else:
+                                    self.msgDict[msgTick] = (nSent, nSeen)
                             else:
                                 # print ('%s: change rejected: %s %s %s' %
                                 #        (self.name,
                                 #         msg.creationVTime.before(self.patch.group.nI.vclock),
                                 #         msg.creationDate == timeNow,
                                 #         self.mostRecentBusyVTime.before(msg.creationVTime)))
-                                pass
+                                del self.msgDict[msgTick]
                             msg.fsmstate = DateChangeMsg.STATE_TERMINATE
                             self.inputQueue.awaken(msg)
                         else:
@@ -462,8 +477,6 @@ class Patch(object):
         self.loop.addPerTickCallback(self._createPerTickCB())
         self.addAgents([self.gateAgent, self.dateChangeAgent])
         self.addInteractants([self.dateChangeAgent.inputQueue])
-#         self.endOfDay = False
-#         self.stillEndOfDay = False
 
     def addGateFrom(self, otherPatchTag):
         gateExit = GateExit(("%s.GateExit_%s" % (self.name, otherPatchTag)),
@@ -522,8 +535,8 @@ class Patch(object):
             if patchAddr in self.outgoingGateDict:
                 return (self.outgoingGateDict[patchAddr], False)
             else:
-                raise RuntimeError("%s: No path to right patch for address %s" % (self.name,
-                                                                                  gblAddr))
+                raise RuntimeError("%s: No path to correct patch for address %s" % (self.name,
+                                                                                    gblAddr))
 
 
 def greenletTrace(event, args):
@@ -610,20 +623,6 @@ class PatchGroup(greenlet):
     def getGblAddr(self, lclId):
         return self.nI.getGblAddr(lclId)
 
-    def getRightwardPatch(self, patchAddr):
-        """Return the GblAddr of the next patch globally 'to the right' of the given patch GblAddr.
-
-        This is defined to mean the next patch in the current PatchGroup, or the first patch in
-        the PatchGroup with the next higher rank.
-        """
-        myIdx = patchAddr.lclId
-        assert self.patches[myIdx].patchId == myIdx, \
-            "%s: Patch list is out of order?" % self.name
-        if myIdx == len(self.patches) - 1:
-            return self.nI.rightRank(self.nI.getGblAddr(0))
-        else:
-            return self.patches[myIdx+1].gblAddr
-
     def addPatch(self, patch):
         patch.loop.parent = self
         self.patches.append(patch)
@@ -642,19 +641,19 @@ class PatchGroup(greenlet):
                 reply = p.loop.switch()  # @UnusedVariable
                 p.loop.printCensus(tickNum=self.nI.vclock.vec[self.nI.comm.rank])
 
-            print '######### %s: finish last recv' % self.name
+            # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
-            print '######### %s: finish last send' % self.name
+            # print '######### %s: finish last send' % self.name
             self.nI.finishSend()
             if self.stopNow:
                 print '%s Sending done signal' % self.name
                 if self.nI.sendDoneSignal():
                     return '%s claims all done' % self.name
-            print '######### %s: start recv' % self.name
+            # print '######### %s: start recv' % self.name
             self.nI.startRecv()
-            print '######### %s: start send' % self.name
+            # print '######### %s: start send' % self.name
             self.nI.startSend()
-            print '######### %s: finished networking' % self.name
+            # print '######### %s: finished networking' % self.name
 
     def __str__(self):
         return '<%s>' % self.name
