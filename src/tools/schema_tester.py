@@ -78,7 +78,7 @@ def main(myargv=None):
             try:
                 nErrors = 0
                 for error in validator.iter_errors(fileToJSON(args[1])):
-                    print error.message
+                    print '%s: %s' % (' '.join([str(word) for word in error.path]), error.message)
                     nErrors += 1
                 if nErrors:
                     print 'FAIL: %s: %d errors' % (args[1], nErrors)
