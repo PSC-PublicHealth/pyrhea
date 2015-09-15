@@ -175,12 +175,18 @@ def main():
                           help="enable greenlet thread tracing")
         parser.add_option("-D", "--deterministic", action="store_true",
                           help="deterministic mode")
+        parser.add_option("-p", "--patches", action="store", type="int",
+                          help="Patches per MPI rank (default 1)", default=1)
+        parser.add_option("-C", "--census", action="store_true",
+                          help="print census for each rank every tick")
 
         opts, args = parser.parse_args()
         clData = {'verbose': opts.verbose,
                   'debug': opts.debug,
                   'trace': opts.trace,
-                  'deterministic': opts.deterministic
+                  'deterministic': opts.deterministic,
+                  'patches': opts.patches,
+                  'printCensus': opts.census
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0], inputSchema, comm)
@@ -205,15 +211,17 @@ def main():
     myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
     print 'Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList])
 
-    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic)
-    # Only one patch per rank for now
-    patch = patchGroup.addPatch(patches.Patch(patchGroup))
-    patch.loop.addPerDayCallback(createPerDayCB(patchGroup, inputDict['runDurationDays']))
-#     patch.loop.addPerTickCallback(createPerTickCB(patchGroup, inputDict['runDurationDays']))
+    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
+                                    printCensus=clData['printCensus'])
+    patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
+                 for i in xrange(clData['patches'])]  # @UnusedVariable
+    for patch in patchList:
+        patch.loop.addPerDayCallback(createPerDayCB(patchGroup, inputDict['runDurationDays']))
+    tupleList = [(patch, [], []) for patch in patchList]
 
-    allIter = []
-    allAgents = []
+    offset = 0
     for facDescription in myFacList:
+        patch, allIter, allAgents = tupleList[offset]
         if facDescription['category'] in facImplDict:
             facilities, wards, patients = \
                 facImplDict[facDescription['category']].generateFull(facDescription, patch)
@@ -225,10 +233,13 @@ def main():
         else:
             raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %
                                facDescription)
+        offset = (offset + 1) % len(tupleList)
 
-    patch.addInteractants(allIter)
-    patch.addAgents(allAgents)
-    print 'Rank %d: %d interactants, %d agents' % (comm.rank, len(allIter), len(allAgents))
+    for patch, allIter, allAgents in tupleList:
+        patch.addInteractants(allIter)
+        patch.addAgents(allAgents)
+        print 'Rank %d patch %s: %d interactants, %d agents' % (comm.rank, patch.name,
+                                                                len(allIter), len(allAgents))
 
     exitMsg = patchGroup.start()
     print '%s all done (from main); %s' % (patchGroup.name, exitMsg)

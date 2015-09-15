@@ -39,16 +39,11 @@ agent._clockAgentBreakHook = _substituteClockAgentBreakHook
 To Do:
 -Add rollback chain support
 -Implement rollback
--Add day management logic
 """
 
 
 class MsgTypes():
     GATE = 0
-#     ENDOFDAY = 1
-#     ANTI_ENDOFDAY = 2
-#     SINGLE_ENDOFDAY = 3
-#     SINGLE_ANTI_ENDOFDAY = 4
 
 
 def getCommWorld():
@@ -254,7 +249,6 @@ class GateExit(Interactant):
     def __init__(self, name, ownerPatch, srcTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.srcTag = srcTag
-#         self.partnerEndOfDay = False
         self.partnerMaxDay = 0
 
     def cycleStart(self, timeNow):
@@ -281,10 +275,10 @@ class GateExit(Interactant):
                 a.reHome(self.patch)
                 if a.timeless:
                     # Timeless agents always go the the 'current' time
-                    if timeNow > senderTime:
-                        print '%s jumps forward %d -> %d' % (a.name, senderTime, timeNow)
-                    elif timeNow < senderTime:
-                        print '%s jumps backward %d -> %d' % (a.name, senderTime, timeNow)
+                    # if timeNow > senderTime:
+                    #     print '%s jumps forward %d -> %d' % (a.name, senderTime, timeNow)
+                    # elif timeNow < senderTime:
+                    #     print '%s jumps backward %d -> %d' % (a.name, senderTime, timeNow)
                     self._ownerLoop.sequencer.enqueue(a, timeNow)
                 else:
                     if timeNow > senderTime:
@@ -367,7 +361,7 @@ class DateChangeAgent(Agent):
     def run(self, startTime):
         timeNow = startTime
         while True:
-            dWT = self.patch.group.doneWithToday()
+            dWT = self.patch.doneWithToday()
             bumpTime = False
             # print '%s: dWT is %s; %d in queue' % (self.name, dWT, len(self.inputQueue._lockQueue))
             if dWT:
@@ -384,7 +378,7 @@ class DateChangeAgent(Agent):
                 if nInGroup > 0:
                     tickNow = self.patch.group.nI.vclock.vec[self.patch.group.nI.comm.rank]
                     self.msgDict[tickNow] = (nInGroup, 0)
-                    print '%s spawned and launched %d' % (self.name, nInGroup)
+                    # print '%s spawned and launched %d' % (self.name, nInGroup)
                 else:
                     bumpTime = True  # we are alone, so just change date
             else:
@@ -398,6 +392,7 @@ class DateChangeAgent(Agent):
                         #        % (msg.name, msg.creationVTime, msg.creationDate,
                         #           self.patch.group.nI.vclock, timeNow))
                         msgTick = msg.creationVTime.vec[self.patch.group.nI.comm.rank]
+                        # print '%s: dWT = %s, msgDict %s' % (self.name, dWT, self.msgDict)
                         if dWT and msgTick in self.msgDict:
                             nSent, nSeen = self.msgDict[msgTick]
                             # print '%s considering date change' % self.name
@@ -405,10 +400,10 @@ class DateChangeAgent(Agent):
                                     and msg.creationDate == timeNow
                                     and self.mostRecentBusyVTime.before(msg.creationVTime)):
                                 nSeen += 1
-                                print ('%s counted date change msg %d of %d for tick %s' %
-                                       (self.name, nSeen, nSent, msgTick))
+                                # print ('%s counted date change msg %d of %d for tick %s' %
+                                #        (self.name, nSeen, nSent, msgTick))
                                 if nSeen >= nSent:
-                                    print '%s will bump time' % self.name
+                                    # print '%s will bump time' % self.name
                                     bumpTime = True
                                     self.msgDict = {}
                                 else:
@@ -433,7 +428,8 @@ class DateChangeAgent(Agent):
                             msg.fsmstate = DateChangeMsg.STATE_HOMEWARD
                             self.inputQueue.awaken(msg)
                         else:
-                            # print '%s canceling %s' % (self.name, msg.name)
+                            # print '%s canceling %s: %s %d %d' % (self.name, msg.name, dWT,
+                            #                                      msg.creationDate, timeNow)
                             msg.fsmstate = DateChangeMsg.STATE_TERMINATE
                             self.inputQueue.awaken(msg)
                 else:
@@ -441,7 +437,7 @@ class DateChangeAgent(Agent):
                                        (self.name, msg.name))
             if bumpTime:
                 print '%s BUMPING TIME' % self.name
-                self.patch.loop.sequencer.bumpIfAllTimeless()
+                self.patch.loop.sequencer.bumpTime()
             timeNow = self.sleep(0)
 
 
@@ -477,6 +473,23 @@ class Patch(object):
         self.loop.addPerTickCallback(self._createPerTickCB())
         self.addAgents([self.gateAgent, self.dateChangeAgent])
         self.addInteractants([self.dateChangeAgent.inputQueue])
+
+    def doneWithToday(self):
+        """
+        If the only agents still in today's sequencer loop are marked 'timeless', this
+        will return True; otherwise False.  Note that this condition can be reversed if
+        a new agent is inserted into today's loop.
+        """
+        for iact in (self.outgoingGateDict.values() + self.incomingGateDict.values()
+                     + self.interactantDict.values()):
+            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
+                    and iact.getNWaiting()):
+                # print ('doneWithToday is false because %s has %d waiting: %s' %
+                #        (iact, iact.getNWaiting(), iact.getWaitingDetails()))
+                return False
+        # Gates are not in interactantDict so we have not checked them, but they are timeless
+        # by definition.
+        return all([a.timeless for a in self.loop.sequencer._timeQueues[self.loop.sequencer._timeNow]])
 
     def addGateFrom(self, otherPatchTag):
         gateExit = GateExit(("%s.GateExit_%s" % (self.name, otherPatchTag)),
@@ -576,7 +589,8 @@ class PatchGroup(greenlet):
             pass
         return evtFun
 
-    def __init__(self, comm, name=None, sync=True, trace=False, deterministic=False):
+    def __init__(self, comm, name=None, sync=True, trace=False, deterministic=False,
+                 printCensus=False):
         if trace:
             greenlet.settrace(greenletTrace)
 
@@ -593,7 +607,7 @@ class PatchGroup(greenlet):
         self.clientGateExits = {}
         self.sync = sync
         self.deterministic = deterministic
-#         self.endOfDay = False
+        self.printCensus = printCensus
         self.prevTraceCB = None
         self.stopNow = False
 
@@ -639,7 +653,8 @@ class PatchGroup(greenlet):
                 #     (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
                 #      p.loop.sequencer.getTimeNow())
                 reply = p.loop.switch()  # @UnusedVariable
-                p.loop.printCensus(tickNum=self.nI.vclock.vec[self.nI.comm.rank])
+                if self.printCensus:
+                    p.loop.printCensus(tickNum=self.nI.vclock.vec[self.nI.comm.rank])
 
             # print '######### %s: finish last recv' % self.name
             self.nI.finishRecv()
@@ -725,10 +740,4 @@ class PatchGroup(greenlet):
         self.stopNow = True
 
     def doneWithToday(self):
-        return all([p.loop.sequencer.doneWithToday() for p in self.patches])
-
-#     def sendGateEOD(self, srcAddr, destAddr, currentDay):
-#         self.enqueue(MsgTypes.SINGLE_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
-#
-#     def sendGateAntiEOD(self, srcAddr, destAddr, currentDay):
-#         self.enqueue(MsgTypes.SINGLE_ANTI_ENDOFDAY, (srcAddr, currentDay), srcAddr, destAddr)
+        return all([p.doneWithToday() for p in self.patches])

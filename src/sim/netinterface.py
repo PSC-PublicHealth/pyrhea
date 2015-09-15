@@ -136,7 +136,7 @@ class NetworkInterface(object):
 #         self.outstandingRecvReqs = deque()
         self.outstandingSendReqs = []
         self.outstandingRecvReqs = []
-        self.expectFrom = set()
+        self.expectFrom = set()  # Other ranks sending to us directly
         self.clientIncomingCallbacks = {}
         self.sync = sync
         self.deterministic = deterministic
@@ -170,7 +170,8 @@ class NetworkInterface(object):
         There is no way to drop a rank from the expected source set because one can
         never be sure there is no straggler message from that rank
         """
-        self.expectFrom.add(srcAddr.rank)
+        if srcAddr.rank != self.comm.rank:
+            self.expectFrom.add(srcAddr.rank)
         assert destAddr.rank == self.comm.rank, "Cannot deliver to foreign object %s" % destAddr
         self.clientIncomingCallbacks[(srcAddr.rank, srcAddr.lclId,
                                       destAddr.lclId)] = handleIncoming
@@ -180,14 +181,12 @@ class NetworkInterface(object):
             l = [a for a in self.expectFrom]
             l.sort()
             for srcRank in l:
-                if srcRank != self.comm.rank:
-                    buf = bytearray(NetworkInterface.irecvBufferSize)
-                    self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
+                buf = bytearray(NetworkInterface.irecvBufferSize)
+                self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
         else:
             for srcRank in self.expectFrom:
-                if srcRank != self.comm.rank:
-                    buf = bytearray(NetworkInterface.irecvBufferSize)
-                    self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
+                buf = bytearray(NetworkInterface.irecvBufferSize)
+                self.outstandingRecvReqs.append(self.comm.irecv(buf, srcRank, MPI.ANY_TAG))
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
@@ -347,6 +346,7 @@ class NetworkInterface(object):
             self.doneMsg = [(True, cycleNow)]
             self.doneSignalSent = True
             self.doneMaxCycle = max(self.doneMaxCycle, cycleNow)
-        print ('doneMsg = %s, doneSignalSent = %s, n = %d, max cycle = %d'
-               % (self.doneMsg, self.doneSignalSent, self.doneSignalsSeen, self.doneMaxCycle))
+        print ('doneMsg = %s, doneSignalSent = %s, seen = %d of %d, max cycle = %d'
+               % (self.doneMsg, self.doneSignalSent, self.doneSignalsSeen, len(self.expectFrom),
+                  self.doneMaxCycle))
         return (self.doneSignalsSeen == len(self.expectFrom) and cycleNow >= self.doneMaxCycle + 1)

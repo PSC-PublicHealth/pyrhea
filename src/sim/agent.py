@@ -84,39 +84,20 @@ class Sequencer(object):
         else:
             return {}
 
-    def getTimeRange(self):
-        t = self._timeNow
-        tMax = max(self._timeQueues.keys())
-        tMin = None
-        for iact in Interactant.getLiveList():
-            if (iact._lockingAgent is not None and iact._lockingAgent.timeless
-                    and iact.getNWaiting()):
-                tMin = t
-                # print '%s has %d waiting' % (iact, iact.getNWaiting())
-                break
-        while tMin is None:
-            if self._timeQueues[t]:
-                for a in self._timeQueues[t]:
-                    if not a.timeless:
-                        tMin = t
-                        break
-            assert t <= tMax, "Lost in time"
-            t += 1
-        return (tMin, tMax)
+    def bumpTime(self):
+        """
+        Move time forward by a day, shifting all agents from the old 'today' queue to the new one.
 
-    def bumpIfAllTimeless(self):
+        Normally, all of the remaining agents in the 'today' queue will be timeless when this
+        method is called.
         """
-        If all the agents for 'today' are marked timeless, shift them to 'tomorrow' and move
-        time forward by a day.
-        """
-        if self.doneWithToday():
-            print '######### %s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
-            oldDay = self._timeQueues[self._timeNow]
-            del self._timeQueues[self._timeNow]
-            self._timeNow += 1
-            if self._timeNow not in self._timeQueues:
-                self._timeQueues[self._timeNow] = []
-            self._timeQueues[self._timeNow].extend(oldDay)
+        print '######### %s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
+        oldDay = self._timeQueues[self._timeNow]
+        del self._timeQueues[self._timeNow]
+        self._timeNow += 1
+        if self._timeNow not in self._timeQueues:
+            self._timeQueues[self._timeNow] = []
+        self._timeQueues[self._timeNow].extend(oldDay)
 
     def doneWithToday(self):
         """
@@ -389,7 +370,8 @@ class MainLoop(greenlet):
         def run(self, timeNow):
             while True:
                 if not self.ownerLoop.dateFrozen:
-                    self.ownerLoop.sequencer.bumpIfAllTimeless()
+                    if self.ownerLoop.sequencer.doneWithToday():
+                        self.ownerLoop.sequencer.bumpTime()
                 newTimeNow = _clockAgentBreakHook(self)
                 for cb in self.ownerLoop.perTickCallbacks:
                     cb(self, timeNow, newTimeNow)
