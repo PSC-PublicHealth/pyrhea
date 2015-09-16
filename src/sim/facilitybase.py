@@ -321,3 +321,7 @@ class PatientAgent(patches.Agent):
         self._diagnosis = d['diagnosis']
         self._treatment = d['treatment']
         self.lastUpdateTime = d['lastUpdateTime']
+
+    @classmethod
+    def generateReport(cls):
+        return {'patientReport': 7}

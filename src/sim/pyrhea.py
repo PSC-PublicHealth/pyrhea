@@ -110,6 +110,36 @@ def distributeFacilities(comm, facDirs, facImplDict):
     return myFacList
 
 
+def localCollectResults():
+    d = {}
+    for cl in patches.Agent.__subclasses__():
+        if hasattr(cl, 'generateReport'):
+            d.update(cl.generateReport())
+    for cl in patches.Interactant.__subclasses__():
+        if hasattr(cl, 'generateReport'):
+            d.update(cl.generateReport())
+
+    return d
+
+
+def collectResults(comm):
+    if comm.rank == 0:
+        resultDict = localCollectResults()
+        for targetRank in xrange(comm.size):
+            if targetRank != comm.rank:
+                d = comm.recv(source=targetRank)
+                for k, v in d.items():
+                    if k in resultDict:
+                        resultDict[k] += v
+                    else:
+                        resultDict[k] = v
+        return resultDict
+    else:
+        d = localCollectResults()
+        comm.send(d, dest=0)
+        return None
+
+
 class TweakedOptParser(optparse.OptionParser):
     def setComm(self, comm):
         self.comm = comm
@@ -244,6 +274,12 @@ def main():
     exitMsg = patchGroup.start()
     print '%s all done (from main); %s' % (patchGroup.name, exitMsg)
 
+    resultDict = collectResults(comm)
+    if comm.rank == 0:
+        print '-' * 40
+        print 'Collected Results:'
+        for k, v in resultDict.items():
+            print '%s: %s' % (k, v)
 
 ############
 # Main hook

@@ -150,7 +150,7 @@ class Agent(greenlet):
         self.throw()
 
 
-class Interactant():
+class Interactant(object):
     counter = 0
     _liveInstances = weaklist.WeakList()
 
