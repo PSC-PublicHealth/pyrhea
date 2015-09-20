@@ -25,6 +25,8 @@ import jsonschema
 from random import seed
 from collections import defaultdict
 import optparse
+import logging
+import logging.config
 
 import patches
 import yaml_tools
@@ -32,10 +34,11 @@ import yaml_tools
 inputSchema = 'rhea_input_schema.yaml'
 
 patchGroup = None
+logger = None
 
 
 def loadFacilityImplementations(implementationDir):
-    print 'Loading facility implementations'
+    logger.info('Loading facility implementations')
     implDict = {}
     sys.path.append(implementationDir)
     for fname in os.listdir(implementationDir):
@@ -50,11 +53,11 @@ def loadFacilityImplementations(implementationDir):
             assert newMod.category not in implDict, \
                 "Redundant definitions for category %s" % newMod.category
             implDict[newMod.category] = newMod
-            print 'Loaded %s implementing %s' % (fname, newMod.category)
+            logger.info('Loaded %s implementing %s' % (fname, newMod.category))
         elif ext.startswith('.py'):
             pass  # .pyc files for example
         else:
-            print 'Skipping non-python file %s' % fname
+            logger.info('Skipping non-python file %s' % fname)
     sys.path.pop()  # drop implementaionDir
     return implDict
 
@@ -63,7 +66,7 @@ def loadFacilityDescriptions(dirList, facImplDict):
     """
     This loads facilities, including communities, checking them against a schema.
     """
-    print 'Parsing facilities descriptions'
+    logger.info('Parsing facilities descriptions')
     allKeySet = set()
     rawRecs = []
     for d in dirList:
@@ -77,7 +80,7 @@ def loadFacilityDescriptions(dirList, facImplDict):
             "Facility description for %(abbrev) has no 'category' field" % rec
         nErrors = facImplDict[rec['category']].checkSchema(rec)
         if nErrors:
-            print 'dropping %s; %d schema violations' % (rec['abbrev'], nErrors)
+            logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
         else:
             facRecs.append(rec)
     return facRecs
@@ -97,7 +100,7 @@ def distributeFacilities(comm, facDirs, facImplDict):
             leastWork, leastBusy = min([(v, k) for k, v in tots.items()])  # @UnusedVariable
             assignments[leastBusy].append(rec)
             tots[leastBusy] += newWork
-        print 'Estimated work by rank: %s' % tots
+        logger.info('Estimated work by rank: %s' % tots)
         for targetRank in xrange(comm.size):
             if targetRank == comm.rank:
                 myFacList = assignments[targetRank]
@@ -106,7 +109,7 @@ def distributeFacilities(comm, facDirs, facImplDict):
     else:
         myFacList = comm.recv(source=0)
     if comm.rank == 0:
-        print 'Finished distributing facilities'
+        logger.info('Finished distributing facilities')
     return myFacList
 
 
@@ -144,9 +147,15 @@ class TweakedOptParser(optparse.OptionParser):
     def setComm(self, comm):
         self.comm = comm
 
-    def exit(self, code, msg):
+    def exit(self, code=None, msg=None):
+        # print 'Here is your message: %s' % msg
+        if code is None:
+            code = -1
+        if msg is None:
+            msg = ""
         print msg
-        if hasattr(self, 'comm'):
+        # logger.critical(msg)
+        if hasattr(self, 'comm') and self.comm.size > 1:
             self.comm.Abort(code)
         else:
             sys.exit(code)
@@ -161,15 +170,15 @@ def checkInputFileSchema(fname, schemaFname, comm):
         validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
         nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
         if nErrors:
-            print 'Input file violates schema:'
+            logger.error('Input file violates schema:')
             for e in validator.iter_errors(inputJSON):
-                print ('Schema violation: %s: %s' %
-                       (' '.join([str(word) for word in e.path]), e.message))
+                logger.error('Schema violation: %s: %s' %
+                               (' '.join([str(word) for word in e.path]), e.message))
             comm.Abort(2)
         else:
             return inputJSON
     except Exception, e:
-        print 'Error checking input against its schema: %s' % e
+        logger.error('Error checking input against its schema: %s' % e)
         comm.Abort(2)
 
 
@@ -180,21 +189,51 @@ def createPerDayCB(patchGroup, runDurationDays):
     return perDayCB
 
 
-# def createPerTickCB(patchGroup, runDurationDays):
-#     def perTickCB(thisAgent, timeLastTick, timeNow):
-#         if timeNow > runDurationDays:
-#             patchGroup.stop()
-#     return perTickCB
+def getLoggerConfig():
+    """
+    This routine reads and parses logger_cfg.yaml in the current directory and returns the
+    result as a dict.
+    """
+    cfgFname = 'log_cfg.yaml'
+    try:
+        with open(cfgFname, 'rU') as f:
+            cfgDict = yaml.safe_load(f)
+    except IOError:
+        print 'Cannot find %s - using default logging' % cfgFname
+        cfgDict = {'version': 1}
+    except Exception, e:
+        print 'Failed to read or parse %s: %s' % (cfgFname, e)
+        cfgDict = {'version': 1}
+    return cfgDict
+
+
+def configureLogging(cfgDict, cfgExtra):
+    global logger
+    logging.config.dictConfig(cfgDict)
+    if cfgExtra is not None:
+        logging.getLogger('root').setLevel(cfgExtra)
+    logger = logging.getLogger(__name__)
+
+
+class RankLoggingFilter(logging.Filter):
+    def __init__(self, **kwargs):
+        logging.Filter.__init__(self)
+        self.rank = patches.getCommWorld().rank
+
+    def filter(self, record):
+        record.rank = self.rank
+        return True
 
 
 def main():
     global patchGroup
 
     comm = patches.getCommWorld()
+    logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank)
 
     if comm.rank == 0:
         parser = TweakedOptParser(usage="""
-        %prog [-v][-d][-t][-D] input.yaml
+        %prog [-v][-d][-t][-D][-p=npatch][-C][-L=loglevel] input.yaml
         """)
         parser.setComm(comm)
         parser.add_option("-v", "--verbose", action="store_true",
@@ -209,14 +248,26 @@ def main():
                           help="Patches per MPI rank (default 1)", default=1)
         parser.add_option("-C", "--census", action="store_true",
                           help="print census for each rank every tick")
+        parser.add_option("-L", "--log", action="store", type="string",
+                          help=("Set logging level "
+                                "('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')"),
+                          default=None)
 
         opts, args = parser.parse_args()
+        if opts.log is not None:
+            numLogLevel = getattr(logging, opts.log.upper(), None)
+            if not isinstance(numLogLevel, int):
+                parser.error("Invalid log level: %s" % opts.log)
+        else:
+            numLogLevel = None
         clData = {'verbose': opts.verbose,
                   'debug': opts.debug,
                   'trace': opts.trace,
                   'deterministic': opts.deterministic,
                   'patches': opts.patches,
-                  'printCensus': opts.census
+                  'printCensus': opts.census,
+                  'logCfgDict': getLoggerConfig(),
+                  'loggingExtra': numLogLevel
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0], inputSchema, comm)
@@ -226,6 +277,12 @@ def main():
     else:
         clData = None
     clData = comm.bcast(clData, root=0)
+
+    # logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank,
+    #                     level=clData['logging'])
+    # logger.basicConfig(level=clData['logging'])
+    # logging.basicConfig()
+    configureLogging(clData['logCfgDict'], clData['loggingExtra'])
 
     verbose = clData['verbose']  # @UnusedVariable
     debug = clData['debug']  # @UnusedVariable
@@ -239,7 +296,7 @@ def main():
     facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
 
     myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
-    print 'Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList])
+    logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
 
     patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
                                     printCensus=clData['printCensus'])
@@ -268,11 +325,12 @@ def main():
     for patch, allIter, allAgents in tupleList:
         patch.addInteractants(allIter)
         patch.addAgents(allAgents)
-        print 'Rank %d patch %s: %d interactants, %d agents' % (comm.rank, patch.name,
-                                                                len(allIter), len(allAgents))
+        logger.info('Rank %d patch %s: %d interactants, %d agents' % (comm.rank, patch.name,
+                                                                      len(allIter),
+                                                                      len(allAgents)))
 
     exitMsg = patchGroup.start()
-    print '%s all done (from main); %s' % (patchGroup.name, exitMsg)
+    logger.info('%s all done (from main); %s' % (patchGroup.name, exitMsg))
 
     resultDict = collectResults(comm)
     if comm.rank == 0:

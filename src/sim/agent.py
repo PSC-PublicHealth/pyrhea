@@ -21,15 +21,18 @@ import sys
 import types
 from greenlet import greenlet
 from random import randint
+import logging
 import weaklist
+
+logger = logging.getLogger(__name__)
 
 try:
     import faulthandler
     faulthandler.enable()
     if sys.excepthook != sys.__excepthook__:
-        print("Warning: 3rd party exception hook is active")
+        logger.warning("Warning: 3rd party exception hook is active")
         if sys.excepthook.__name__ == 'apport_excepthook':
-            print("         killing Ubuntu's Apport hook")
+            logger.warning("         killing Ubuntu's Apport hook")
             sys.excepthook = sys.__excepthook__
 except:
     pass
@@ -41,6 +44,7 @@ class Sequencer(object):
         self._timeQueues = {}
         self._timeNow = 0
         self._name = name
+        self._logger = logging.getLogger(__name__ + '.Sequencer')
 
     def __iter__(self):
         while self._timeQueues:
@@ -53,11 +57,8 @@ class Sequencer(object):
                 self._timeNow += 1
 
     def enqueue(self, agent, whenInfo=0):
-        assert isinstance(whenInfo, types.IntType)
-#         if whenInfo < self._timeNow:
-#             raise RuntimeError('%s: Cannot go backwards in time from %d to %d' %
-#                                (self._name, self._timeNow, whenInfo))
-#         else:
+        assert isinstance(whenInfo, types.IntType), '%s: time must be an integer' % self._name
+        assert whenInfo >= self._timeNow, '%s: cannot schedule things in the past' % self._name
         if whenInfo not in self._timeQueues:
             self._timeQueues[whenInfo] = []
         self._timeQueues[whenInfo].append(agent)
@@ -91,7 +92,7 @@ class Sequencer(object):
         Normally, all of the remaining agents in the 'today' queue will be timeless when this
         method is called.
         """
-        print '######### %s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1)
+        self._logger.info('%s: bump time %s -> %s' % (self._name, self._timeNow, self._timeNow+1))
         oldDay = self._timeQueues[self._timeNow]
         del self._timeQueues[self._timeNow]
         self._timeNow += 1
@@ -108,8 +109,8 @@ class Sequencer(object):
         for iact in Interactant.getLiveList():
             if (iact._lockingAgent is not None and iact._lockingAgent.timeless
                     and iact.getNWaiting()):
-                # print ('doneWithToday is false because %s has %d waiting: %s' %
-                #        (iact, iact.getNWaiting(), iact.getWaitingDetails()))
+                self._logger.debug('doneWithToday is false because %s has %d waiting: %s' %
+                                   (iact, iact.getNWaiting(), iact.getWaitingDetails()))
                 return False
         return all([a.timeless for a in self._timeQueues[self._timeNow]])
 
@@ -200,17 +201,16 @@ class Interactant(object):
         if ((self._lockingAgent is None and not self._lockQueue)
                 or self._lockingAgent == lockingAgent):
             self._lockingAgent = lockingAgent
-            if debug and self._debug and lockingAgent.debug:
-                print '%s fast lock of %s' % (lockingAgent, self._name)
+            if self._debug or lockingAgent.debug:
+                logger.debug('%s fast lock of %s' % (lockingAgent, self._name))
             return timeNow
         else:
             self._lockQueue.append(lockingAgent)
             if not lockingAgent.timeless:
                 self._nEnqueued += 1
-            # print '%s locked %s; nEnqueued = %d' % (self, lockingAgent, self._nEnqueued)
-            if debug and self._debug and lockingAgent.debug:
-                print '%s slow lock of %s (%d in queue)' % \
-                    (lockingAgent, self._name, self._nEnqueued)
+            if self._debug or lockingAgent.debug:
+                logger.debug('%s slow lock of %s (%d in queue)' %
+                             (lockingAgent, self._name, self._nEnqueued))
             timeNow = self._ownerLoop.switch('%s is %d in %s queue' %
                                              (lockingAgent, len(self._lockQueue), self._name))
             return timeNow
@@ -229,15 +229,15 @@ class Interactant(object):
             if not newAgent.timeless:
                 self._nEnqueued -= 1
             if self._debug:
-                print '%s unlock of %s awakens %s (%d still in queue)' % \
-                    (self._name, oldLockingAgent, newAgent, self._nEnqueued)
+                logger.debug('%s unlock of %s awakens %s (%d still in queue)' %
+                             (self._name, oldLockingAgent, newAgent, self._nEnqueued))
             self._lockingAgent = newAgent
             self._ownerLoop.sequencer.enqueue(newAgent, timeNow)
             self._ownerLoop.sequencer.enqueue(oldLockingAgent, timeNow)
             timeNow = self._ownerLoop.switch("%s and %s enqueued" % (newAgent, oldLockingAgent))
         else:
             if self._debug:
-                print '%s fast unlock of %s' % (self._name, oldLockingAgent)
+                logger.debug('%s fast unlock of %s' % (self._name, oldLockingAgent))
             self._lockingAgent = None
         return timeNow
 
@@ -256,14 +256,12 @@ class Interactant(object):
         if agent not in self._lockQueue:
             raise RuntimeError("%s does not hold %s in its lock queue; cannot awaken" %
                                (self._name, agent.name))
-        # print 'Interactant %s removes %s' % (self, agent)
         self._lockQueue.remove(agent)
         if not agent.timeless:
             self._nEnqueued -= 1
-        # print 'Interactant %s nEnqueued %d' % (self, self._nEnqueued)
         if self._debug:
-            print ('%s removes %s from lock queue and awakens it (%d still in queue)' %
-                   (self._name, agent.name, self._nEnqueued))
+            logger.debug('%s removes %s from lock queue and awakens it (%d still in queue)' %
+                         (self._name, agent.name, self._nEnqueued))
         self._ownerLoop.sequencer.enqueue(agent, timeNow)
         return agent
 
@@ -300,21 +298,21 @@ class MultiInteractant(Interactant):
         """
         timeNow = self._ownerLoop.sequencer.getTimeNow()
         if lockingAgent in self._lockingAgentList:
-            if debug and self._debug and lockingAgent.debug:
-                print '%s already locked by %s' % (self._name, lockingAgent)
+            if self._debug or lockingAgent.debug:
+                logger.debug('%s already locked by %s' % (self._name, lockingAgent))
             return timeNow
         elif len(self._lockingAgentList) < self._nLocks:
             self._lockingAgentList.append(lockingAgent)
-            if debug and self._debug and lockingAgent.debug:
-                print '%s fast locked by %s' % (self._name, lockingAgent)
+            if self._debug or lockingAgent.debug:
+                logger.debug('%s fast locked by %s' % (self._name, lockingAgent))
             return timeNow
         else:
             self._lockQueue.append(lockingAgent)
             if not lockingAgent.timeless:
                 self._nEnqueued += 1
-            if debug and self._debug and lockingAgent.debug:
-                print '%s slow lock by %s (%d in queue)' % \
-                    (self._name, lockingAgent, self._nEnqueued)
+            if self._debug or lockingAgent.debug:
+                logger.debug('%s slow lock by %s (%d in queue)' %
+                             (self._name, lockingAgent, self._nEnqueued))
             timeNow = self._ownerLoop.switch('%s is %d in %s queue' %
                                              (lockingAgent, len(self._lockQueue), self._name))
             return timeNow
@@ -329,15 +327,15 @@ class MultiInteractant(Interactant):
             if not newAgent.timeless:
                 self._nEnqueued -= 1
             if self._debug:
-                print '%s unlock of %s awakens %s (%d still in queue)' % \
-                    (self._name, oldLockingAgent, newAgent, self._nEnqueued)
+                logger.debug('%s unlock of %s awakens %s (%d still in queue)' %
+                             (self._name, oldLockingAgent, newAgent, self._nEnqueued))
             self._lockingAgentList.append(newAgent)
             self._ownerLoop.sequencer.enqueue(newAgent, timeNow)
             self._ownerLoop.sequencer.enqueue(oldLockingAgent, timeNow)
             timeNow = self._ownerLoop.switch("%s and %s enqueued" % (newAgent, oldLockingAgent))
         else:
             if self._debug:
-                print '%s fast unlock of %s' % (self._name, oldLockingAgent)
+                logger.debug('%s fast unlock of %s' % (self._name, oldLockingAgent))
         return timeNow
 
     def isLocked(self, agent):
@@ -384,13 +382,13 @@ class MainLoop(greenlet):
     def everyEventCB(loop, timeNow):
         loop.counter += 1
         if loop.counter > loop.safety:
-            print '%s: safety exit' % loop.name
+            loop.logger.info('%s: safety exit' % loop.name)
             loop.parent.switch(loop.counter)
             loop.counter = 0
 
     @staticmethod
     def everyDayCB(loop, timeNow):
-        print '###### %s: time is now %s' % (loop.name, timeNow)
+        loop.logger.info('%s: time is now %s' % (loop.name, timeNow))
 
     def __init__(self, name=None, safety=None):
         self.newAgents = [MainLoop.ClockAgent(self)]
@@ -410,6 +408,7 @@ class MainLoop(greenlet):
         if self.safety is not None:
             self.addPerEventCallback(MainLoop.everyEventCB)
         self.stopNow = False
+        self.logger = logging.getLogger(__name__ + '.MainLoop')
 
     def stopRunning(self):
         self.stopNow = True
@@ -439,12 +438,15 @@ class MainLoop(greenlet):
             a.parent = self  # so dead agents return here
             self.sequencer.enqueue(a)
         self.newAgents = []
+        logDebug = self.logger.isEnabledFor(logging.DEBUG)
         for agent, timeNow in self.sequencer:
-            # print '%s Stepping %s at %d' % (self.name, agent, timeNow)
+            if logDebug:
+                self.debug('%s Stepping %s at %d' % (self.name, agent, timeNow))
             for cb in self.perEventCallbacks:
                 cb(self, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
-            # print 'Stepped %s at %d; reply was %s' % (agent, timeNow, reply)
+            if logDebug:
+                self.logger.debug('Stepped %s at %d; reply was %s' % (agent, timeNow, reply))
             if self.stopNow:
                 break
         return '%s exiting' % self.name

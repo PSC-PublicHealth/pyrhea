@@ -18,11 +18,15 @@
 _rhea_svn_id_ = "$Id$"
 
 from collections import defaultdict
+import logging
 from greenlet import greenlet
-import netinterface
-#from pympler import tracker
 
+import netinterface
+# from pympler import tracker
 import agent
+
+logger = logging.getLogger(__name__)
+
 
 def _substituteClockAgentBreakHook(clockAgent):
     """
@@ -197,10 +201,10 @@ class GateEntrance(Interactant):
         self.destTag = destTag
         self.nInTransit = 0
         self._oldLockQueue = []
+        self.logger = logging.getLogger(__name__ + '.GateEntrance')
 
     def cycleStart(self, timeNow):
-        if self._debug:
-            print '%s begins cycleStart; destTag is %s' % (self._name, self.destTag)
+        logger.debug('%s begins cycleStart; destTag is %s' % (self._name, self.destTag))
         self.nInTransit = len([a for a in self._lockQueue if not a.timeless])
         if self._lockQueue:
             q = self._lockQueue[:]
@@ -214,19 +218,18 @@ class GateEntrance(Interactant):
         self._oldLockQueue = self._lockQueue
         self._lockQueue = []
         self._nEnqueued = 0
-        if self._debug:
-            print '%s ends cycleStart' % self._name
+        logger.debug('%s ends cycleStart' % self._name)
 
     def cycleFinish(self, timeNow):
         if self._debug:
-            print '%s begins cycleFinish' % self._name
+            self.logger.debug('%s begins cycleFinish' % self._name)
         self.nInTransit = 0
         if not self.patch.group.isLocal(self.destTag):
             for a in self._oldLockQueue:
                 a.kill()
         self._oldLockQueue = []
         if self._debug:
-            print '%s ends cycleFinish' % self._name
+            self.logger.debug('%s ends cycleFinish' % self._name)
 
     def getNWaiting(self):
         return self._nEnqueued + self.nInTransit
@@ -241,7 +244,7 @@ class GateEntrance(Interactant):
         if self._lockingAgent is not None:
             #  This will get enqueued for sending
             if lockingAgent.debug:
-                print '%s bound  to gate %s' % (lockingAgent.name, self._name)
+                self.logger.debug('%s bound  to gate %s' % (lockingAgent.name, self._name))
         agent.Interactant.lock(self, lockingAgent, debug=False)
 
 
@@ -250,6 +253,7 @@ class GateExit(Interactant):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.srcTag = srcTag
         self.partnerMaxDay = 0
+        self.logger = logging.getLogger(__name__ + '.GateExit')
 
     def cycleStart(self, timeNow):
         self.patch.group.expect(self.srcTag, self.patch.gblAddr, self.handleIncoming)
@@ -267,26 +271,29 @@ class GateExit(Interactant):
                     if k not in d:
                         d[k] = 0
                     d[k] += 1
-                print '%s: got time=%s %s agents: %s' % (self._name, senderTime,
-                                                         self.patch.group.nI.vclock,
-                                                         d)
+                self.logger.debug('%s: got time=%s %s agents: %s' % (self._name, senderTime,
+                                                                     self.patch.group.nI.vclock,
+                                                                     d))
             timeNow = self._ownerLoop.sequencer.getTimeNow()
             for a in agentList:
                 a.reHome(self.patch)
                 if a.timeless:
                     # Timeless agents always go the the 'current' time
-                    # if timeNow > senderTime:
-                    #     print '%s jumps forward %d -> %d' % (a.name, senderTime, timeNow)
-                    # elif timeNow < senderTime:
-                    #     print '%s jumps backward %d -> %d' % (a.name, senderTime, timeNow)
+                    if timeNow > senderTime:
+                        self.logger.debug('%s jumps forward %d -> %d' %
+                                          (a.name, senderTime, timeNow))
+                    elif timeNow < senderTime:
+                        self.logger.debug('%s jumps backward %d -> %d' %
+                                          (a.name, senderTime, timeNow))
                     self._ownerLoop.sequencer.enqueue(a, timeNow)
                 else:
                     if timeNow > senderTime:
-                        print '%s: MESSAGE FROM THE PAST: %s' % (self._name, a.name)
+                        self.logger.critical('%s: MESSAGE FROM THE PAST: %s' %
+                                             (self._name, a.name))
                         self.patch.group.nI.comm.Abort()
                     self._ownerLoop.sequencer.enqueue(a, senderTime)
                 if a.debug:
-                    print '%s materializes at %s' % (a.name, self._name)
+                    self.logger.debug('%s materializes at %s' % (a.name, self._name))
         else:
             raise RuntimeError('Unknown message type %s arrived at Gate %s' %
                                (msgType, self._name))
@@ -357,13 +364,17 @@ class DateChangeAgent(Agent):
         self.counter = 0
         self.mostRecentBusyVTime = None
         self.msgDict = {}
+        self.logger = logging.getLogger(__name__ + '.DateChangeAgent')
 
     def run(self, startTime):
         timeNow = startTime
+        logDebug = self.logger.isEnabledFor(logging.DEBUG)
         while True:
             dWT = self.patch.doneWithToday()
             bumpTime = False
-            # print '%s: dWT is %s; %d in queue' % (self.name, dWT, len(self.inputQueue._lockQueue))
+            if logDebug:
+                self.logger.debug('%s: dWT is %s; %d in queue' %
+                                  (self.name, dWT, len(self.inputQueue._lockQueue)))
             if dWT:
                 nInGroup = 0
                 for nm, destAddr in self.patch.serviceLookup('DateChangeQueue'):
@@ -378,65 +389,82 @@ class DateChangeAgent(Agent):
                 if nInGroup > 0:
                     tickNow = self.patch.group.nI.vclock.vec[self.patch.group.nI.comm.rank]
                     self.msgDict[tickNow] = (nInGroup, 0)
-                    # print '%s spawned and launched %d' % (self.name, nInGroup)
+                    if logDebug:
+                        self.logger.debug('%s spawned and launched %d' % (self.name, nInGroup))
                 else:
                     bumpTime = True  # we are alone, so just change date
             else:
                 self.mostRecentBusyVTime = self.patch.group.nI.vclock.copy()
             while self.inputQueue._lockQueue:
                 msg = self.inputQueue._lockQueue[0]
-                # print '%s found %s in input queue' % (self.name, msg.name)
+                if logDebug:
+                    self.logger.debug('%s found %s in input queue' % (self.name, msg.name))
                 if isinstance(msg, DateChangeMsg):
                     if msg.homeQueueAddr == self.inputQueue.getGblAddr():
-                        # print ('DateChangeMsg %s made it home! Started %s %s, now %s %s'
-                        #        % (msg.name, msg.creationVTime, msg.creationDate,
-                        #           self.patch.group.nI.vclock, timeNow))
+                        if logDebug:
+                            self.logger.debug('DateChangeMsg %s made it home!'
+                                              ' Started %s %s, now %s %s'
+                                              % (msg.name, msg.creationVTime, msg.creationDate,
+                                                 self.patch.group.nI.vclock, timeNow))
                         msgTick = msg.creationVTime.vec[self.patch.group.nI.comm.rank]
-                        # print '%s: dWT = %s, msgDict %s' % (self.name, dWT, self.msgDict)
+                        if logDebug:
+                            self.logger.debug('%s: dWT = %s, msgDict %s' %
+                                              (self.name, dWT, self.msgDict))
                         if dWT and msgTick in self.msgDict:
                             nSent, nSeen = self.msgDict[msgTick]
-                            # print '%s considering date change' % self.name
+                            if logDebug:
+                                self.logger.debug('%s considering date change' % self.name)
                             if (msg.creationVTime.before(self.patch.group.nI.vclock)
                                     and msg.creationDate == timeNow
                                     and self.mostRecentBusyVTime.before(msg.creationVTime)):
                                 nSeen += 1
-                                # print ('%s counted date change msg %d of %d for tick %s' %
-                                #        (self.name, nSeen, nSent, msgTick))
+                                if logDebug:
+                                    self.logger.debug('%s counted date change '
+                                                      'msg %d of %d for tick %s' %
+                                                      (self.name, nSeen, nSent, msgTick))
                                 if nSeen >= nSent:
-                                    # print '%s will bump time' % self.name
+                                    if logDebug:
+                                        self.logger.debug('%s will bump time' % self.name)
                                     bumpTime = True
                                     self.msgDict = {}
                                 else:
                                     self.msgDict[msgTick] = (nSent, nSeen)
                             else:
-                                # print ('%s: change rejected: %s %s %s' %
-                                #        (self.name,
-                                #         msg.creationVTime.before(self.patch.group.nI.vclock),
-                                #         msg.creationDate == timeNow,
-                                #         self.mostRecentBusyVTime.before(msg.creationVTime)))
+                                if logDebug:
+                                    self.logger.debug('%s: change rejected: %s %s %s' %
+                                                      (self.name,
+                                                       msg.creationVTime.before(self.patch.group
+                                                                                .nI.vclock),
+                                                       msg.creationDate == timeNow,
+                                                       self.mostRecentBusyVTime
+                                                       .before(msg.creationVTime)))
                                 del self.msgDict[msgTick]
                             msg.fsmstate = DateChangeMsg.STATE_TERMINATE
                             self.inputQueue.awaken(msg)
                         else:
-                            # print '%s missed chance for date change' % self.name
+                            if logDebug:
+                                self.logger.debug('%s missed chance for date change' % self.name)
                             msg.fsmstate = DateChangeMsg.STATE_TERMINATE
                             self.inputQueue.awaken(msg)
                     else:
                         if ((dWT and msg.creationDate == timeNow)
                                 or msg.creationDate < timeNow):
-                            # print '%s Passing %s forward' % (self.name, msg.name)
+                            if logDebug:
+                                self.logger.debug('%s Passing %s forward' % (self.name, msg.name))
                             msg.fsmstate = DateChangeMsg.STATE_HOMEWARD
                             self.inputQueue.awaken(msg)
                         else:
-                            # print '%s canceling %s: %s %d %d' % (self.name, msg.name, dWT,
-                            #                                      msg.creationDate, timeNow)
+                            if logDebug:
+                                self.logger.debug('%s canceling %s: %s %d %d' %
+                                                  (self.name, msg.name, dWT, msg.creationDate,
+                                                   timeNow))
                             msg.fsmstate = DateChangeMsg.STATE_TERMINATE
                             self.inputQueue.awaken(msg)
                 else:
                     raise RuntimeError("%s unexpectedly got the message %s" %
                                        (self.name, msg.name))
             if bumpTime:
-                print '%s BUMPING TIME' % self.name
+                self.logger.info('%s BUMPING TIME' % self.name)
                 self.patch.loop.sequencer.bumpTime()
             timeNow = self.sleep(0)
 
@@ -464,6 +492,7 @@ class Patch(object):
             self.name = "Patch_%s" % str(self.gblAddr)
         else:
             self.name = name
+        self.logger = logging.getLogger(__name__ + '.Patch')
         self.loop = agent.MainLoop(self.name + '.loop')
         self.gateAgent = GateAgent(self)
         self.dateChangeAgent = DateChangeAgent(self.name + '_DateChangeAgent', self)
@@ -484,12 +513,13 @@ class Patch(object):
                      + self.interactantDict.values()):
             if (iact._lockingAgent is not None and iact._lockingAgent.timeless
                     and iact.getNWaiting()):
-                # print ('doneWithToday is false because %s has %d waiting: %s' %
-                #        (iact, iact.getNWaiting(), iact.getWaitingDetails()))
+                self.logger.debug('doneWithToday is false because %s has %d waiting: %s' %
+                                  (iact, iact.getNWaiting(), iact.getWaitingDetails()))
                 return False
         # Gates are not in interactantDict so we have not checked them, but they are timeless
         # by definition.
-        return all([a.timeless for a in self.loop.sequencer._timeQueues[self.loop.sequencer._timeNow]])
+        return all([a.timeless for a in
+                    self.loop.sequencer._timeQueues[self.loop.sequencer._timeNow]])
 
     def addGateFrom(self, otherPatchTag):
         gateExit = GateExit(("%s.GateExit_%s" % (self.name, otherPatchTag)),
@@ -610,6 +640,7 @@ class PatchGroup(greenlet):
         self.printCensus = printCensus
         self.prevTraceCB = None
         self.stopNow = False
+        self.logger = logging.getLogger(__name__ + '.PatchGroup')
 
     def setTrace(self):
         self.prevTraceCB = greenlet.gettrace()
@@ -646,29 +677,38 @@ class PatchGroup(greenlet):
 
     def run(self):
         # tr = tracker.SummaryTracker()
+        logDebug = self.logger.isEnabledFor(logging.DEBUG)
         while True:
-            # print '######## %s: new pass of run' % (self.name)
+            if logDebug:
+                self.logger.debug('%s: new pass of run' % (self.name))
             for p in self.patches[:]:
-                # print '######## %s: running patch %s: %s agents at time %s' % \
-                #     (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
-                #      p.loop.sequencer.getTimeNow())
+                if logDebug:
+                    self.logger.debug('%s: running patch %s: %s agents at time %s' %
+                                      (self.name, p.name, p.loop.sequencer.getNWaitingNow(),
+                                       p.loop.sequencer.getTimeNow()))
                 reply = p.loop.switch()  # @UnusedVariable
                 if self.printCensus:
                     p.loop.printCensus(tickNum=self.nI.vclock.vec[self.nI.comm.rank])
 
-            # print '######### %s: finish last recv' % self.name
+            if logDebug:
+                self.logger.debug('%s: finish last recv' % self.name)
             self.nI.finishRecv()
-            # print '######### %s: finish last send' % self.name
+            if logDebug:
+                self.logger.debug('%s: finish last send' % self.name)
             self.nI.finishSend()
             if self.stopNow:
-                print '%s Sending done signal' % self.name
+                logger.debug('%s Sending done signal' % self.name)
                 if self.nI.sendDoneSignal():
+                    logger.debug('%s: everyone is done' % self.name)
                     return '%s claims all done' % self.name
-            # print '######### %s: start recv' % self.name
+            if logDebug:
+                self.logger.debug('%s: start recv' % self.name)
             self.nI.startRecv()
-            # print '######### %s: start send' % self.name
+            if logDebug:
+                self.logger.debug('%s: start send' % self.name)
             self.nI.startSend()
-            # print '######### %s: finished networking' % self.name
+            if logDebug:
+                self.logger.debug('%s: finished networking' % self.name)
 
     def __str__(self):
         return '<%s>' % self.name
