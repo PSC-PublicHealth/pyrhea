@@ -1,14 +1,17 @@
 version: 1
 formatters:
   simple:
-    format: '[%(rank)s] s%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format: '[%(rank)s] %(levelname)s - %(message)s'
+#    format: '[%(rank)s] s%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 filters:
   addRank:
     '()': 'pyrhea.RankLoggingFilter'
 handlers:
+  rabbitmq:
+    '()': 'pyrhea.PikaLogHandler'
   console:
     class: logging.StreamHandler
-    level: DEBUG
+    level: WARNING
     formatter: simple
     stream: ext://sys.stdout
     filters: ['addRank']
@@ -16,11 +19,13 @@ loggers:
   __main__:
     handlers: []
   patches:
-    level: DEBUG
-    handlers: []
-  agent:
     level: INFO
     handlers: []
+  agent:
+    level: WARNING
+    handlers: []
+  netinterface:
+    level: WARNING
 root:
   level: WARNING
-  handlers: [console]
+  handlers: [console, rabbitmq]

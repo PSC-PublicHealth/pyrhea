@@ -18,7 +18,10 @@
 _rhea_svn_id_ = "$Id$"
 
 from itertools import chain
+import logging
 import patches
+
+logger = logging.getLogger(__name__)
 
 
 class Ward(patches.MultiInteractant):
@@ -64,9 +67,11 @@ class FacilityManager(patches.Agent):
         patches.Agent.__init__(self, name, patch)
         self.fac = facility
         self.timeless = True
+        self.logger = logger.getChild('FacilityManager')
 
     def run(self, startTime):
         timeNow = startTime  # @UnusedVariable
+        logDebug = self.logger.isEnabledFor(logging.DEBUG)
         while True:
             while self.fac.reqQueue._lockQueue:
                 req = self.fac.reqQueue._lockQueue[0]
@@ -81,10 +86,13 @@ class FacilityManager(patches.Agent):
                             self.fac.wardDict[tier].append((w, n-1))
                             ward = w
                     if ward is None:
-                        # print '%s: no beds available for %s' % (self.name, req.name)
+                        if logDebug:
+                            self.logger.debug('%s: no beds available for %s' %
+                                              (self.name, req.name))
                         req.fsmstate = BedRequest.STATE_DENIEDWARD
                     else:
-                        # print '%s: found a bed for %s' % (self.name, req.name)
+                        if logDebug:
+                            self.logger.debug('%s: found a bed for %s' % (self.name, req.name))
                         req.bedWard = ward.getGblAddr()
                         req.fsmstate = BedRequest.STATE_GOTWARD
                     self.fac.reqQueue.awaken(req)
@@ -99,8 +107,8 @@ class FacilityManager(patches.Agent):
                         raise RuntimeError("%s: I do not own the ward at %s" %
                                            self.name, self.wardAddr)
                     else:
-                        # print '%s: incremented ward %s' % (self.name, ward._name)
-                        pass
+                        if logDebug:
+                            self.logger.debug('%s: incremented ward %s' % (self.name, ward._name))
                     self.fac.reqQueue.awaken(req)
                 else:
                     raise RuntimeError("%s unexpectedly got the message %s" %
@@ -145,8 +153,6 @@ class BedRequest(patches.Agent):
     STATE_GOTWARD = 3
     STATE_FAILED = 5
     STATE_MOVING = 6
-#     brCount = 0
-#     hook = None
 
     def __init__(self, name, patch, tier, homeWardAddr, patientKey,
                  facilityOptions, debug=False):
@@ -158,15 +164,10 @@ class BedRequest(patches.Agent):
         self.bedWard = None
         self.fsmstate = BedRequest.STATE_START
         self.dest = None
-        #print 'BR %d'%BedRequest.brCount
-#         BedRequest.brCount += 1
-#         if BedRequest.brCount == 234:
-#             BedRequest.hook = self
 
     def run(self, startTime):
         timeNow = startTime
         while True:
-            # print '?',
             if self.fsmstate == BedRequest.STATE_START:
                 if len(self.facilityOptions) == 0:
                     self.fsmstate = BedRequest.STATE_FAILED
@@ -182,7 +183,6 @@ class BedRequest(patches.Agent):
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
                 raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
-                # print '!',
                 addr, final = self.patch.getPathTo(self.homeWardAddr)
                 if final:
                     oldWard = addr
@@ -198,7 +198,6 @@ class BedRequest(patches.Agent):
                     oldWard = addr
                     patientAgent = oldWard.fac.holdQueue.awaken(self.patientKey)
                     patientAgent.newWardAddr = None
-                    # print '(',
                     break
                 timeNow = addr.lock(self)
 

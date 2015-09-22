@@ -22,6 +22,9 @@ import collections
 import types
 import yaml
 import jsonschema
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def enum(*sequential, **named):
@@ -82,8 +85,8 @@ def importConstants(valuePath, schemaPath):
     nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
     if nErrors:
         for e in validator.iter_errors(cJSON):
-            print ('Schema violation: %s: %s' %
-                   (' '.join([str(word) for word in e.path]), e.message))
+            logger.error('Schema violation: %s: %s' %
+                         (' '.join([str(word) for word in e.path]), e.message))
         raise RuntimeError('%s does not satisfy the schema %s' %
                            (valuePath, schemaPath))
     return cJSON

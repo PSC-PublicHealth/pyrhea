@@ -22,11 +22,13 @@ from itertools import cycle
 import jsonschema
 import yaml
 from scipy.stats import expon
+import logging
 
 import pyrheautils
 from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 
+logger = logging.getLogger(__name__)
 
 category = 'COMMUNITY'
 _schema = 'communityfacts_schema.yaml'
@@ -129,7 +131,7 @@ def estimateWork(facRec):
     elif 'nBeds' in facRec:
         return facRec['nBeds'] / _constants['communityPatientCheckInterval']['value']
     else:
-        print '####### Cannot estimate work for %(abbrev)s' % facRec
+        logger.warning('Cannot estimate work for %(abbrev)s' % facRec)
         return 0
 
 

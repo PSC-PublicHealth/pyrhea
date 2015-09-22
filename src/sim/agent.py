@@ -25,6 +25,7 @@ import logging
 import weaklist
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 try:
     import faulthandler

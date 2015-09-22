@@ -21,6 +21,9 @@ from mpi4py import MPI
 import numpy as np
 import types
 from collections import namedtuple, deque
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def getCommWorld():
@@ -223,12 +226,13 @@ class NetworkInterface(object):
             elif self.sync:
                 s = MPI.Status()
                 idx, msg = MPI.Request.waitany(self.outstandingRecvReqs, s)
-                # print 'waitany returned for index %s: tag %s source %s' % (idx, s.Get_tag(),
-                #                                                            s.Get_source())
+                logger.debug('netInterface rank %d: waitany returned for index %s: tag %s source %s' 
+                             % (self.comm.rank, idx, s.Get_tag(), s.Get_source()))
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
-                    # print 'Rank %d: MORE from %s' % s.Get_source()
+                    logger.debug('netInterface rank %d: MORE from %s' %
+                                 (self.comm.rank, s.Get_source()))
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
@@ -260,7 +264,7 @@ class NetworkInterface(object):
                     for tpl in msg[1:]:
                         self._innerRecv(tpl)
                 else:
-                    # print '######## %s empty recv queue' % self.name
+                    logger.debug('netInterface rank %d empty recv queue' % self.comm.rank)
                     break
 #         self.outstandingRecvReqs = deque()
         self.outstandingRecvReqs = []
@@ -313,8 +317,8 @@ class NetworkInterface(object):
                             req = self.comm.isend(bigCargo, destRank,
                                                   tag=NetworkInterface.MPI_TAG_END)
                         self.outstandingSendReqs.append(req)
-                        # print ('######### NetworkInterface %d sent %s to %s req %s' %
-                        #        (self.comm.rank, len(bigCargo), destRank, req))
+                        logger.debug('netInterface rank %d sent %s to %s req %s' %
+                                     (self.comm.rank, len(bigCargo), destRank, req))
         self.outgoingDict.clear()
         self.doneMsg = [(False, 0)]  # to avoid accidental re-sends
 
@@ -322,7 +326,7 @@ class NetworkInterface(object):
         sList = []
         for i in xrange(len(self.outstandingSendReqs)):  # @UnusedVariable
             sList.append(MPI.Status())
-        # print ('######## NetworkInterface on rank %d finished send waitall' % self.comm.rank)
+        logger.debug('netInterface rank %d enters send waitall' % self.comm.rank)
         MPI.Request.Waitall(self.outstandingSendReqs, statuses=sList)  # @UnusedVariable
 #         self.outstandingSendReqs = deque()
         self.outstandingSendReqs = []
@@ -346,7 +350,4 @@ class NetworkInterface(object):
             self.doneMsg = [(True, cycleNow)]
             self.doneSignalSent = True
             self.doneMaxCycle = max(self.doneMaxCycle, cycleNow)
-        print ('doneMsg = %s, doneSignalSent = %s, seen = %d of %d, max cycle = %d'
-               % (self.doneMsg, self.doneSignalSent, self.doneSignalsSeen, len(self.expectFrom),
-                  self.doneMaxCycle))
         return (self.doneSignalsSeen == len(self.expectFrom) and cycleNow >= self.doneMaxCycle + 1)

@@ -23,6 +23,7 @@ import jsonschema
 import yaml
 import math
 from scipy.stats import lognorm
+import logging
 
 import pyrheautils
 from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
@@ -34,6 +35,8 @@ _constants_values = 'hospital_constants.yaml'
 _constants_schema = 'hospital_constants_schema.yaml'
 _validator = None
 _constants = None
+
+logger = logging.getLogger(__name__)
 
 
 class Hospital(Facility):
@@ -193,7 +196,7 @@ def estimateWork(facRec):
     elif 'nBeds' in facRec:
         return facRec['nBeds']
     else:
-        print '####### Cannot estimate work for %(abbrev)s' % facRec
+        logger.warn('Cannot estimate work for %(abbrev)s' % facRec)
         return 0
 
 

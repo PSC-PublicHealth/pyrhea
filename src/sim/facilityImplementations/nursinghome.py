@@ -24,11 +24,14 @@ import jsonschema
 from random import random
 import math
 from scipy.stats import lognorm, expon
+import logging
 
 import pyrheautils
 from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
+
+logger = logging.getLogger(__name__)
 
 category = 'NURSINGHOME'
 _constants_values = 'nursinghome_constants.yaml'
@@ -140,8 +143,8 @@ def _populate(fac, descr, patch):
         "Nursing home description %(abbrev)s is missing the expected field 'meanPop'" % descr
     meanPop = descr['meanPop']
     if meanPop > descr['nBeds']:
-        print ('####### Nursing Home %(abbrev)s meanPop %(meanPop)s > nBeds %(nBeds)s #########'
-               % descr)
+        logger.warning('Nursing Home %(abbrev)s meanPop %(meanPop)s > nBeds %(nBeds)s'
+                       % descr)
         meanPop = descr['nBeds']
     if 'losModel' in descr:
         losModel = descr['losModel']

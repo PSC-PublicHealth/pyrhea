@@ -173,7 +173,7 @@ def checkInputFileSchema(fname, schemaFname, comm):
             logger.error('Input file violates schema:')
             for e in validator.iter_errors(inputJSON):
                 logger.error('Schema violation: %s: %s' %
-                               (' '.join([str(word) for word in e.path]), e.message))
+                             (' '.join([str(word) for word in e.path]), e.message))
             comm.Abort(2)
         else:
             return inputJSON
@@ -223,6 +223,33 @@ class RankLoggingFilter(logging.Filter):
     def filter(self, record):
         record.rank = self.rank
         return True
+
+import pika
+import pickle
+
+class PikaLogHandler(logging.Handler):
+
+    class Producer(object):
+        def __init__(self):
+            conn = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+            self.ch = conn.channel()
+            self.ch.queue_declare(queue='pyrhea_logger')
+
+        def message(self, message):
+            self.ch.basic_publish(exchange='', routing_key='pyrhea_logger',
+                                  body=pickle.dumps(message))
+
+    def __init__(self):
+        logging.Handler.__init__(self)
+        self.broadcaster = PikaLogHandler.Producer()
+        self.machine = os.uname()[1]
+
+    def emit(self, record):
+        message = {'source': 'logger', 'machine': self.machine,
+                   'message': (record.msg % record.args), 'level': record.levelname,
+                   'pathname': record.pathname, 'lineno': record.lineno,
+                   'exception': record.exc_info}
+        self.broadcaster.message(message)
 
 
 def main():
@@ -338,6 +365,8 @@ def main():
         print 'Collected Results:'
         for k, v in resultDict.items():
             print '%s: %s' % (k, v)
+
+    logging.shutdown()
 
 ############
 # Main hook
