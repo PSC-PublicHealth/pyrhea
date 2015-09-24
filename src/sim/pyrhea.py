@@ -246,9 +246,9 @@ class PikaLogHandler(logging.Handler):
 
     def emit(self, record):
         message = {'source': 'logger', 'machine': self.machine,
-                   'message': (record.msg % record.args), 'level': record.levelname,
+                   'message': self.format(record), 'level': record.levelname,
                    'pathname': record.pathname, 'lineno': record.lineno,
-                   'exception': record.exc_info}
+                   'exception': record.exc_info, 'rank': record.rank}
         self.broadcaster.message(message)
 
 
@@ -305,10 +305,6 @@ def main():
         clData = None
     clData = comm.bcast(clData, root=0)
 
-    # logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank,
-    #                     level=clData['logging'])
-    # logger.basicConfig(level=clData['logging'])
-    # logging.basicConfig()
     configureLogging(clData['logCfgDict'], clData['loggingExtra'])
 
     verbose = clData['verbose']  # @UnusedVariable

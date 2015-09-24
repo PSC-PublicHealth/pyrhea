@@ -389,7 +389,7 @@ class MainLoop(greenlet):
 
     @staticmethod
     def everyDayCB(loop, timeNow):
-        loop.logger.info('%s: time is now %s' % (loop.name, timeNow))
+        loop.logger.debug('%s: time is now %s' % (loop.name, timeNow))
 
     def __init__(self, name=None, safety=None):
         self.newAgents = [MainLoop.ClockAgent(self)]

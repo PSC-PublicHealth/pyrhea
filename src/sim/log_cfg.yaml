@@ -3,12 +3,16 @@ formatters:
   simple:
     format: '[%(rank)s] %(levelname)s - %(message)s'
 #    format: '[%(rank)s] s%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  raw:
+    format: '%(message)s'
 filters:
   addRank:
     '()': 'pyrhea.RankLoggingFilter'
 handlers:
   rabbitmq:
     '()': 'pyrhea.PikaLogHandler'
+    formatter: raw
+    filters: ['addRank']
   console:
     class: logging.StreamHandler
     level: WARNING
@@ -19,10 +23,10 @@ loggers:
   __main__:
     handlers: []
   patches:
-    level: INFO
+    level: WARNING
     handlers: []
   agent:
-    level: WARNING
+    level: INFO
     handlers: []
   netinterface:
     level: WARNING

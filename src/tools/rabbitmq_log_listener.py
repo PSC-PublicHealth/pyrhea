@@ -8,16 +8,18 @@ logger = logging.getLogger(__name__)
 
 
 def callback(ch, method, properties, pickledBody):
+    global fmtSet
     bodyDict = pickle.loads(pickledBody)
-    # print bodyDict
     numLevel = getattr(logging, bodyDict['level'])
     extras = {newNm: bodyDict[oldNm] for oldNm, newNm in [('level', 'srclevel'),
                                                           ('pathname', 'srcpathname'),
-                                                          ('lineno', 'srclineno')]}
+                                                          ('lineno', 'srclineno'),
+                                                          ('rank', 'rank')]}
     logger.log(numLevel, bodyDict['message'], extra=extras)
 
 
 def main():
+    global fmt
     parser = OptionParser(usage="""
     %prog [-v][-d]
     """)
@@ -39,16 +41,20 @@ def main():
     else:
         logLevel = 'WARNING'
     if opts.line:
-        fmt = "%(levelname)s: %(srcpathname)s:%(srclineno)s: %(message)s"
+        fmt = "[%(rank)s] %(levelname)s: %(srcpathname)s:%(srclineno)s: %(message)s"
     else:
-        fmt = "%(levelname)s %(message)s"
+        fmt = "[%(rank)s] %(levelname)s: %(message)s"
     parser.destroy()
 
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     channel = connection.channel()
-
     channel.queue_declare(queue='pyrhea_logger')
-    logging.basicConfig(level=logLevel, format=fmt)
+
+    logger.setLevel(logLevel)
+    lChan = logging.StreamHandler()
+    logger.addHandler(lChan)
+    formatter = logging.Formatter(fmt)
+    lChan.setFormatter(formatter)
 
     print 'Waiting for messages. To exit press CTRL+C'
     channel.basic_consume(callback, queue='pyrhea_logger', no_ack=True)
