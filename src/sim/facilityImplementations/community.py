@@ -25,8 +25,9 @@ from scipy.stats import expon
 import logging
 
 import pyrheautils
-from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+from hospital import createClassASetter, createOverallHealthSetter, createCopier
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class Community(Facility):
     def __init__(self, descr, patch):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
         meanPop = descr['meanPop']
-        nBeds = int(round(1.3*meanPop))
+        nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
         assert losModel['pdf'] == 'expon(lambda=$0)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
@@ -74,16 +75,13 @@ class Community(Facility):
             sickRate = 1.0 - (deathRate + verySickRate)
             tree = [changeProb,
                     Facility.foldCDF([(deathRate,
-                                       patientStatus._replace(diagClassA=DiagClassA.DEATH,
-                                                              startDateA=timeNow)),
+                                       createClassASetter(DiagClassA.DEATH)),
                                       (sickRate,
-                                       patientStatus._replace(diagClassA=DiagClassA.SICK,
-                                                              startDateA=timeNow)),
+                                       createClassASetter(DiagClassA.SICK)),
                                       (verySickRate,
-                                       patientStatus._replace(diagClassA=DiagClassA.VERYSICK,
-                                                              startDateA=timeNow)),
+                                       createClassASetter(DiagClassA.VERYSICK)),
                                       ]),
-                    patientStatus]
+                    createCopier()]
             self.treeCache[key] = tree
             return tree
 
@@ -110,12 +108,13 @@ def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Hospital description %(abbrev)s is missing the expected field 'meanPop'" % descr
     meanPop = float(descr['meanPop'])
-    wards = fac.getWards()
     agentList = []
-    for i, ward in zip(xrange(int(round(meanPop))), cycle(wards)):
-        a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i),
-                         patch, ward, debug=True)
+    for i in xrange(int(round(meanPop))):
+        ward = fac.manager.findAvailableBed(CareTier.HOME)
+        assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
+        a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
         agentList.append(a)
     return agentList
 
