@@ -111,7 +111,7 @@ class Agent(agent.Agent):
     underlying greenlet is not serializable.
     """
     def __init__(self, name, patch, debug=False):
-        agent.Agent.__init__(self, name, patch.loop, debug=False)
+        agent.Agent.__init__(self, name, patch.loop, debug=debug)
         self.patch = patch
 
     def reHome(self, newPatch):
@@ -204,7 +204,7 @@ class GateEntrance(Interactant):
         self.logger = logging.getLogger(__name__ + '.GateEntrance')
 
     def cycleStart(self, timeNow):
-        logger.debug('%s begins cycleStart; destTag is %s' % (self._name, self.destTag))
+        self.logger.debug('%s begins cycleStart; destTag is %s' % (self._name, self.destTag))
         self.nInTransit = len([a for a in self._lockQueue if not a.timeless])
         if self._lockQueue:
             q = self._lockQueue[:]
@@ -218,7 +218,7 @@ class GateEntrance(Interactant):
         self._oldLockQueue = self._lockQueue
         self._lockQueue = []
         self._nEnqueued = 0
-        logger.debug('%s ends cycleStart' % self._name)
+        self.logger.debug('%s ends cycleStart' % self._name)
 
     def cycleFinish(self, timeNow):
         if self._debug:
@@ -549,6 +549,13 @@ class Patch(object):
             else:
                 self.interactantDict[iact.getGblAddr()] = iact
 
+    def getAllLocalInteractants(self):
+        """
+        Returns a generator providing links to everything added with self.addInteractants,
+        except for Gates.
+        """
+        return self.interactantDict.itervalues()
+
     def __str__(self):
         return '<%s>' % self.name
 
@@ -697,9 +704,9 @@ class PatchGroup(greenlet):
                 self.logger.debug('%s: finish last send' % self.name)
             self.nI.finishSend()
             if self.stopNow:
-                logger.debug('%s Sending done signal' % self.name)
+                self.logger.debug('%s Sending done signal' % self.name)
                 if self.nI.sendDoneSignal():
-                    logger.debug('%s: everyone is done' % self.name)
+                    self.logger.debug('%s: everyone is done' % self.name)
                     return '%s claims all done' % self.name
             if logDebug:
                 self.logger.debug('%s: start recv' % self.name)
