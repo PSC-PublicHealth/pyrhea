@@ -27,13 +27,21 @@ from collections import defaultdict
 import optparse
 import logging
 import logging.config
+import pika
+import pickle
+
+import phacsl.utils.formats.csv_tools as csv_tools
+# import csv_tools
 
 import patches
-import yaml_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
+# import yaml_tools
+import phacsl.utils.notes.noteholder as noteholder
+# import noteholder
+import pyrheabase
 
 inputSchema = 'rhea_input_schema.yaml'
 
-patchGroup = None
 logger = None
 
 
@@ -113,34 +121,19 @@ def distributeFacilities(comm, facDirs, facImplDict):
     return myFacList
 
 
-def localCollectResults():
-    d = {}
-    for cl in patches.Agent.__subclasses__():
-        if hasattr(cl, 'generateReport'):
-            d.update(cl.generateReport())
-    for cl in patches.Interactant.__subclasses__():
-        if hasattr(cl, 'generateReport'):
-            d.update(cl.generateReport())
-
-    return d
-
-
-def collectResults(comm):
+def collectNotes(nhGroup, comm):
+    allNotesGroup = noteholder.NoteHolderGroup()
+    nhList = [allNotesGroup.copyNoteHolder(nh.getDict()) for nh in nhGroup.getnotes()]
     if comm.rank == 0:
-        resultDict = localCollectResults()
         for targetRank in xrange(comm.size):
             if targetRank != comm.rank:
-                d = comm.recv(source=targetRank)
-                for k, v in d.items():
-                    if k in resultDict:
-                        resultDict[k] += v
-                    else:
-                        resultDict[k] = v
-        return resultDict
+                dictList = comm.recv(source=targetRank)
+                nhList.extend([allNotesGroup.copyNoteHolder(d) for d in dictList])
+        return (allNotesGroup, nhList)
     else:
-        d = localCollectResults()
-        comm.send(d, dest=0)
-        return None
+        dictList = [nh.getDict() for nh in nhList]
+        comm.send(dictList, dest=0)
+        return (None, None)
 
 
 class TweakedOptParser(optparse.OptionParser):
@@ -162,6 +155,10 @@ class TweakedOptParser(optparse.OptionParser):
 
 
 def checkInputFileSchema(fname, schemaFname, comm):
+    if logger is None:
+        myLogger = logging.getLogger(__name__)
+    else:
+        myLogger = logger
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
@@ -170,22 +167,46 @@ def checkInputFileSchema(fname, schemaFname, comm):
         validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
         nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
         if nErrors:
-            logger.error('Input file violates schema:')
+            myLogger.error('Input file violates schema:')
             for e in validator.iter_errors(inputJSON):
-                logger.error('Schema violation: %s: %s' %
-                             (' '.join([str(word) for word in e.path]), e.message))
+                myLogger.error('Schema violation: %s: %s' %
+                               (' '.join([str(word) for word in e.path]), e.message))
             comm.Abort(2)
         else:
             return inputJSON
     except Exception, e:
-        logger.error('Error checking input against its schema: %s' % e)
+        myLogger.error('Error checking input against its schema: %s' % e)
         comm.Abort(2)
 
 
-def createPerDayCB(patchGroup, runDurationDays):
+def buildFacOccupancyDict(patch, timeNow):
+    facTypeDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        tpName = type(fac).__name__
+        if tpName not in facTypeDict:
+            facTypeDict[tpName] = 0
+            facTypeDict[tpName + '_all'] = 0
+        if hasattr(fac, 'patientDataDict'):
+            patientCount = 0
+            allCount = 0
+            for rec in fac.patientDataDict.values():
+                allCount += 1 + rec.prevVisits
+                if rec.departureDate is None:
+                    patientCount += 1
+            facTypeDict[tpName] += patientCount
+            facTypeDict[tpName + '_all'] += allCount
+    return facTypeDict
+
+
+def createPerDayCB(patch, noteHolder, runDurationDays):
     def perDayCB(loop, timeNow):
+#         for p in patchGroup.patches:
+#             p.loop.printCensus()
+        d = buildFacOccupancyDict(patch, timeNow)
+        noteHolder.addNote({'occupancy': [d]})
         if timeNow > runDurationDays:
-            patchGroup.stop()
+            patch.group.stop()
     return perDayCB
 
 
@@ -224,8 +245,6 @@ class RankLoggingFilter(logging.Filter):
         record.rank = self.rank
         return True
 
-import pika
-import pickle
 
 class PikaLogHandler(logging.Handler):
 
@@ -252,8 +271,20 @@ class PikaLogHandler(logging.Handler):
         self.broadcaster.message(message)
 
 
+class BurnInAgent(patches.Agent):
+    def __init__(self, name, patch, burnInDays, noteHolderGroup):
+        patches.Agent.__init__(self, name, patch)
+        self.burnInDays = burnInDays
+        self.noteHolderGroup = noteHolderGroup
+
+    def run(self, startTime):
+        timeNow = self.sleep(self.burnInDays)  # @UnusedVariable
+        logger.info('burnInAgent is running')
+        self.noteHolderGroup.clearAll(keepRegex='.*(([Nn]ame)|([Tt]ype)|([Cc]ode)|(_vol)|(occupancy))')
+        # and now the agent exits
+
+
 def main():
-    global patchGroup
 
     comm = patches.getCommWorld()
     logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank)
@@ -323,44 +354,65 @@ def main():
 
     patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
                                     printCensus=clData['printCensus'])
+    noteHolderGroup = noteholder.NoteHolderGroup()
     patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
                  for i in xrange(clData['patches'])]  # @UnusedVariable
-    for patch in patchList:
-        patch.loop.addPerDayCallback(createPerDayCB(patchGroup, inputDict['runDurationDays']))
-    tupleList = [(patch, [], []) for patch in patchList]
+    totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
 
+    # Add some things for which we need only one instance
+    patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
+                                        inputDict['burnInDays'], noteHolderGroup)])
+
+    # Share the facilities out over the patches
     offset = 0
+    tupleList = [(p, [], [], []) for p in patchList]
     for facDescription in myFacList:
-        patch, allIter, allAgents = tupleList[offset]
+        patch, allIter, allAgents, allFacilities = tupleList[offset]
         if facDescription['category'] in facImplDict:
             facilities, wards, patients = \
                 facImplDict[facDescription['category']].generateFull(facDescription, patch)
+            for fac in facilities:
+                nh = noteHolderGroup.createNoteHolder()
+                nh.addNote({'rank': comm.rank})
+                fac.setNoteHolder(nh)
             allIter.extend([fac.reqQueue for fac in facilities])
             allIter.extend([fac.holdQueue for fac in facilities])
             allIter.extend(wards)
             allAgents.extend([fac.manager for fac in facilities])
             allAgents.extend(patients)
+            allFacilities.extend(facilities)
         else:
             raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %
                                facDescription)
         offset = (offset + 1) % len(tupleList)
 
-    for patch, allIter, allAgents in tupleList:
+    for patch, allIter, allAgents, allFacilities in tupleList:
         patch.addInteractants(allIter)
         patch.addAgents(allAgents)
-        logger.info('Rank %d patch %s: %d interactants, %d agents' % (comm.rank, patch.name,
-                                                                      len(allIter),
-                                                                      len(allAgents)))
+        patch.allFacilities = allFacilities
+        logger.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
+                    (comm.rank, patch.name, len(allIter), len(allAgents), len(allFacilities)))
+        patchNH = noteHolderGroup.createNoteHolder()
+        patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays))
+        patchNH.addNote({'name': patch.name,
+                         'occupancy': [buildFacOccupancyDict(patch, 0)],
+                         'rank': comm.rank})
 
+    logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     exitMsg = patchGroup.start()
-    logger.info('%s all done (from main); %s' % (patchGroup.name, exitMsg))
+    logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
 
-    resultDict = collectResults(comm)
+    allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
     if comm.rank == 0:
-        print '-' * 40
-        print 'Collected Results:'
-        for k, v in resultDict.items():
-            print '%s: %s' % (k, v)
+        d = {}
+        for nh in allNotesGroup.getnotes():
+            d[nh['name']] = nh.getDict()
+            if 'occupancy' in nh:
+                recs = nh['occupancy']
+                with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
+                    csv_tools.writeCSV(f, recs[1].keys(), recs)
+        with open('notes.pkl', 'w') as f:
+            pickle.dump(d, f)
 
     logging.shutdown()
 
