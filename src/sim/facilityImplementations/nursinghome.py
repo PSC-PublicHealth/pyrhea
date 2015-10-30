@@ -27,9 +27,10 @@ from scipy.stats import lognorm, expon
 import logging
 
 import pyrheautils
-from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
+from hospital import createClassASetter, createOverallHealthSetter, createCopier
 
 logger = logging.getLogger(__name__)
 
@@ -64,29 +65,26 @@ class NursingHome(Facility):
         assert careTier == CareTier.NURSING, \
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        _c = _constants
         if treatment == TreatmentProtocol.REHAB:
             if key in self.rehabTreeCache:
                 return self.rehabTreeCache[key]
             else:
                 changeProb = self.rehabCachedCDF.intervalProb(*key)
-                adverseProb = (_constants['rehabDeathRate']['value']
-                               + _constants['rehabSickRate']['value']
-                               + _constants['rehabVerySickRate']['value'])
+                adverseProb = (_c['rehabDeathRate']['value']
+                               + _c['rehabSickRate']['value']
+                               + _c['rehabVerySickRate']['value'])
                 tree = [changeProb,
                         [adverseProb,
-                         Facility.foldCDF([(_constants['rehabDeathRate']['value'] / adverseProb,
-                                           patientStatus._replace(diagClassA=DiagClassA.DEATH,
-                                                                  startDateA=timeNow)),
-                                          (_constants['rehabSickRate']['value'] / adverseProb,
-                                           patientStatus._replace(diagClassA=DiagClassA.SICK,
-                                                                  startDateA=timeNow)),
-                                          (_constants['rehabVerySickRate']['value'] / adverseProb,
-                                           patientStatus._replace(diagClassA=DiagClassA.VERYSICK,
-                                                                  startDateA=timeNow)),
+                         Facility.foldCDF([(_c['rehabDeathRate']['value'] / adverseProb,
+                                            createClassASetter(DiagClassA.DEATH)),
+                                          (_c['rehabSickRate']['value'] / adverseProb,
+                                           createClassASetter(DiagClassA.SICK)),
+                                          (_c['rehabVerySickRate']['value'] / adverseProb,
+                                           createClassASetter(DiagClassA.VERYSICK)),
                                            ]),
-                         patientStatus._replace(diagClassA=DiagClassA.HEALTHY,
-                                                startDateA=timeNow)],
-                        patientStatus]
+                         createClassASetter(DiagClassA.HEALTHY)],
+                        createCopier()]
                 self.rehabTreeCache[key] = tree
                 return tree
         elif treatment == TreatmentProtocol.NORMAL:
@@ -94,26 +92,22 @@ class NursingHome(Facility):
                 return self.rehabTreeCache[key]
             else:
                 changeProb = self.residentCachedCDF.intervalProb(*key)
-                totRate = (_constants['residentDeathRate']['value']
-                           + _constants['residentSickRate']['value']
-                           + _constants['residentVerySickRate']['value']
-                           + _constants['residentReturnToCommunityRate']['value'])
+                totRate = (_c['residentDeathRate']['value']
+                           + _c['residentSickRate']['value']
+                           + _c['residentVerySickRate']['value']
+                           + _c['residentReturnToCommunityRate']['value'])
                 tree = [changeProb,
                         Facility.foldCDF(
-                            [(_constants['residentDeathRate']['value']/totRate,
-                              patientStatus._replace(diagClassA=DiagClassA.DEATH,
-                                                     startDateA=timeNow)),
-                             (_constants['residentSickRate']['value']/totRate,
-                              patientStatus._replace(diagClassA=DiagClassA.SICK,
-                                                     startDateA=timeNow)),
-                             (_constants['residentVerySickRate']['value']/totRate,
-                              patientStatus._replace(diagClassA=DiagClassA.VERYSICK,
-                                                     startDateA=timeNow)),
-                             (_constants['residentReturnToCommunityRate']['value']/totRate,
-                              patientStatus._replace(overall=PatientOverallHealth.HEALTHY,
-                                                     startDateA=timeNow)),
+                            [(_c['residentDeathRate']['value']/totRate,
+                              createClassASetter(DiagClassA.DEATH)),
+                             (_c['residentSickRate']['value']/totRate,
+                              createClassASetter(DiagClassA.SICK)),
+                             (_c['residentVerySickRate']['value']/totRate,
+                              createClassASetter(DiagClassA.VERYSICK)),
+                             (_c['residentReturnToCommunityRate']['value']/totRate,
+                              createOverallHealthSetter(PatientOverallHealth.HEALTHY)),
                              ]),
-                        patientStatus]
+                        createCopier()]
                 self.residentTreeCache[key] = tree
                 return tree
         else:
@@ -154,17 +148,18 @@ def _populate(fac, descr, patch):
         "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
     # The following is approximate, but adequate...
     residentFrac = (1.0 - losModel['parms'][0])
-    rehabFrac = losModel['parms'][0]
-    wards = fac.getWards()
     agentList = []
-    for i, ward in zip(xrange(int(round(meanPop))), cycle(wards)):
+    for i in xrange(int(round(meanPop))):
+        ward = fac.manager.findAvailableBed(CareTier.NURSING)
+        assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         if random() <= residentFrac:
             a._status = a._status._replace(overall=PatientOverallHealth.FRAIL)
-        if random() <= rehabFrac:
+        else:  # They must be here for rehab
             a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
             a._treatment = TreatmentProtocol.REHAB
         ward.lock(a)
+        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
         agentList.append(a)
     return agentList
 
