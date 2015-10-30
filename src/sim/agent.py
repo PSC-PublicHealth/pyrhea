@@ -73,10 +73,12 @@ class Sequencer(object):
         else:
             return 0
 
-    def getWaitingCensusNow(self):
-        if self._timeNow in self._timeQueues:
+    def getWaitingCensus(self, time=None):
+        if time is None:
+            time = self._timeNow
+        if time in self._timeQueues:
             censusDict = {}
-            for a in self._timeQueues[self._timeNow]:
+            for a in self._timeQueues[time]:
                 nm = type(a).__name__
                 if nm in censusDict:
                     censusDict[nm] += 1
@@ -189,7 +191,7 @@ class Interactant(object):
     def __str__(self):
         return '<%s>' % self._name
 
-    def lock(self, lockingAgent, debug=True):
+    def lock(self, lockingAgent, debug=False):
         """
         Agents always lock interactants before modifying their state.  This can be thought of as
         'docking with' the interactant.  Only one agent can hold a lock for a normal interactant
@@ -292,7 +294,7 @@ class MultiInteractant(Interactant):
         self._lockingAgentList = []
         self._debug = debug
 
-    def lock(self, lockingAgent, debug=False):
+    def lock(self, lockingAgent):
         """
         Works like the lock() method of a standard Interactant, except that the first
         'count' agents to lock the interactant remain active.
@@ -442,7 +444,7 @@ class MainLoop(greenlet):
         logDebug = self.logger.isEnabledFor(logging.DEBUG)
         for agent, timeNow in self.sequencer:
             if logDebug:
-                self.debug('%s Stepping %s at %d' % (self.name, agent, timeNow))
+                self.logger.debug('%s Stepping %s at %d' % (self.name, agent, timeNow))
             for cb in self.perEventCallbacks:
                 cb(self, timeNow)
             reply = agent.switch(timeNow)  # @UnusedVariable
@@ -462,7 +464,8 @@ class MainLoop(greenlet):
         if tickNum is None:
             print '%s: Census at time %s:' % (self.name, self.sequencer.getTimeNow())
         else:
-            print '%s: Census at tick %s date %s:' % (self.name, tickNum, self.sequencer.getTimeNow())
+            print ('%s: Census at tick %s date %s:' %
+                   (self.name, tickNum, self.sequencer.getTimeNow()))
         censusDict = {}
         for iact in Interactant.getLiveList():
             for k, v in iact.getWaitingDetails().items():
@@ -471,7 +474,9 @@ class MainLoop(greenlet):
                 else:
                     censusDict[k] = v
         print '    interactants contain: %s' % censusDict
-        print '    main loop live agents : %s' % self.sequencer.getWaitingCensusNow()
+        print '    main loop live agents: %s' % self.sequencer.getWaitingCensus()
+        print ('    main loop tomorrow: %s' %
+               self.sequencer.getWaitingCensus(self.sequencer.getTimeNow() + 1))
 
     def __str__(self):
         return '<%s>' % self.name
