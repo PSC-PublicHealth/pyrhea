@@ -18,7 +18,6 @@
 _rhea_svn_id_ = "$Id$"
 
 import os.path
-from itertools import cycle
 import jsonschema
 import yaml
 import math
@@ -26,8 +25,9 @@ from scipy.stats import lognorm
 import logging
 
 import pyrheautils
-from facilitybase import DiagClassA, PatientStatus, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol, PatientStatus
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+from facilitybase import PatientStatusSetter
 
 category = 'HOSPITAL'
 _schema = 'facilityfacts_schema.yaml'
@@ -37,6 +37,41 @@ _validator = None
 _constants = None
 
 logger = logging.getLogger(__name__)
+
+
+class ClassASetter(PatientStatusSetter):
+    def __init__(self, newClassA):
+        self.newClassA = newClassA
+
+    def set(self, patientStatus, timeNow):
+        return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
+
+    def __str__(self):
+        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+
+
+class OverallHealthSetter(PatientStatusSetter):
+    def __init__(self, newOverallHealth):
+        self.newOverallHealth = newOverallHealth
+
+    def set(self, patientStatus, timeNow):
+        return patientStatus._replace(overall=self.newOverallHealth, startDateA=timeNow)
+
+    def __str__(self):
+        return ('PatientStatusSetter(overallHealth <- %s)'
+                % PatientOverallHealth.names[self.newOverallHealth])
+
+
+def createClassASetter(diagClassA):
+    return ClassASetter(diagClassA)
+
+
+def createOverallHealthSetter(patientOverallHealth):
+    return OverallHealthSetter(patientOverallHealth)
+
+
+def createCopier():
+    return PatientStatusSetter()
 
 
 class Hospital(Facility):
@@ -101,6 +136,7 @@ class Hospital(Facility):
         assert treatment == TreatmentProtocol.NORMAL, \
             "Hospitals only offer 'NORMAL' treatment; found %s" % treatment
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        _c = _constants
         if careTier == CareTier.HOSP:
             if key in self.hospTreeCache:
                 return self.hospTreeCache[key]
@@ -108,20 +144,16 @@ class Hospital(Facility):
                 changeProb = self.hospCachedCDF.intervalProb(*key)
                 tree = [changeProb,
                         Hospital.foldCDF([(self.hospDischargeViaDeathFrac,
-                                           patientStatus._replace(diagClassA=DiagClassA.DEATH,
-                                                                  startDateA=timeNow)),
+                                           createClassASetter(DiagClassA.DEATH)),
                                           ((self.fracTransferHosp + self.fracTransferLTAC),
-                                           patientStatus._replace(diagClassA=DiagClassA.SICK,
-                                                                  startDateA=timeNow)),
+                                           createClassASetter(DiagClassA.SICK)),
                                           (((self.fracTransferNH + self.fracDischargeHealthy)
-                                            * _constants['fracOfDischargesRequiringRehab']['value']),
-                                           patientStatus._replace(diagClassA=DiagClassA.NEEDSREHAB,
-                                                                  startDateA=timeNow)),
+                                            * _c['fracOfDischargesRequiringRehab']['value']),
+                                           createClassASetter(DiagClassA.NEEDSREHAB)),
                                           (((self.fracTransferNH + self.fracDischargeHealthy)
-                                            * (1.0 - _constants['fracOfDischargesRequiringRehab']['value'])),
-                                           patientStatus._replace(diagClassA=DiagClassA.HEALTHY,
-                                                                  startDateA=timeNow))]),
-                        patientStatus]
+                                            * (1.0 - _c['fracOfDischargesRequiringRehab']['value'])),
+                                           createClassASetter(DiagClassA.HEALTHY))]),
+                        createCopier()]
                 self.hospTreeCache[key] = tree
                 return tree
         elif careTier == CareTier.ICU:
@@ -133,12 +165,10 @@ class Hospital(Facility):
 #                                                  timeNow - patientStatus.startDateA)
                 tree = [changeProb,
                         Hospital.foldCDF([(self.icuDischargeViaDeathFrac,
-                                           patientStatus._replace(diagClassA=DiagClassA.DEATH,
-                                                                  startDateA=timeNow)),
+                                           createClassASetter(DiagClassA.DEATH)),
                                           ((1.0 - self.icuDischargeViaDeathFrac),
-                                           patientStatus._replace(diagClassA=DiagClassA.SICK,
-                                                                  startDateA=timeNow))]),
-                        patientStatus]
+                                           createClassASetter(DiagClassA.SICK))]),
+                        createCopier()]
                 self.icuTreeCache[key] = tree
                 return tree
         else:
@@ -169,18 +199,20 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop'])
     meanICUPop = meanPop * descr['fracAdultPatientDaysICU']
     meanHospPop = meanPop - meanICUPop
-    icuWards = fac.getWards(CareTier.ICU)
-    hospWards = fac.getWards(CareTier.HOSP)
     agentList = []
-    for i, ward in zip(xrange(int(round(meanICUPop))), cycle(icuWards)):
-        a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i),
-                         patch, ward)
+    for i in xrange(int(round(meanICUPop))):
+        ward = fac.manager.findAvailableBed(CareTier.ICU)
+        assert ward is not None, 'Ran out of ICU beds populating %(abbrev)s!' % descr
+        a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
         agentList.append(a)
-    for i, ward in zip(xrange(int(round(meanHospPop))), cycle(hospWards)):
-        a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i),
-                         patch, ward)
+    for i in xrange(int(round(meanHospPop))):
+        ward = fac.manager.findAvailableBed(CareTier.HOSP)
+        assert ward is not None, 'Ran out of HOSP beds populating %(abbrev)s!' % descr
+        a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
         agentList.append(a)
     return agentList
 
