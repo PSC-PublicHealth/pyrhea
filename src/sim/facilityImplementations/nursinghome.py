@@ -88,8 +88,8 @@ class NursingHome(Facility):
                 self.rehabTreeCache[key] = tree
                 return tree
         elif treatment == TreatmentProtocol.NORMAL:
-            if key in self.rehabTreeCache:
-                return self.rehabTreeCache[key]
+            if key in self.residentTreeCache:
+                return self.residentTreeCache[key]
             else:
                 changeProb = self.residentCachedCDF.intervalProb(*key)
                 totRate = (_c['residentDeathRate']['value']

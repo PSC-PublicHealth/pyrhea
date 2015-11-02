@@ -205,7 +205,12 @@ class Facility(pyrheabase.Facility):
     def prescribe(self, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            return (CareTier.HOME, TreatmentProtocol.NORMAL)
+            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
+                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
+                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+            else:
+                raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
         if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
             return (CareTier.NURSING, TreatmentProtocol.REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
