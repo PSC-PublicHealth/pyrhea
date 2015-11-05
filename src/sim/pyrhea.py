@@ -375,7 +375,8 @@ def main():
                 nh = noteHolderGroup.createNoteHolder()
                 nh.addNote({'rank': comm.rank})
                 fac.setNoteHolder(nh)
-            allIter.extend([fac.reqQueue for fac in facilities])
+            for rQList in [fac.reqQueues for fac in facilities]:
+                allIter.extend(rQList)
             allIter.extend([fac.holdQueue for fac in facilities])
             allIter.extend(wards)
             allAgents.extend([fac.manager for fac in facilities])
