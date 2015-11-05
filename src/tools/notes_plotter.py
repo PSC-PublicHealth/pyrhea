@@ -25,6 +25,7 @@ import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 from phacsl.utils.notes.statval import HistoVal
+import sys
 import math
 import pickle
 import types
@@ -40,8 +41,12 @@ def importNotes(fname):
         stuff = pickle.load(f)
     return stuff
 
+if len(sys.argv) > 1:
+    notesFName = sys.argv[1]
+else:
+    notesFName = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
 
-notesDict = importNotes('/home/welling/workspace/pyRHEA/src/sim/notes.pkl')
+notesDict = importNotes(notesFName)
 categoryDict = {}
 specialDict = {}
 for nm, d in notesDict.items():
@@ -72,7 +77,16 @@ nameMap = {'NURSINGHOME': 'NURSING',
 careTiers = ['HOME', 'NURSING', 'HOSP', 'ICU']
 
 for offset, cat in enumerate(catNames):
-    print '%s: %s' % (cat, allOfCategoryDict[cat].keys())
+    # print '%s: %s' % (cat, allOfCategoryDict[cat].keys())
+    if 'death' in allOfCategoryDict[cat]:
+        nDeaths = allOfCategoryDict[cat]['death']
+    else:
+        nDeaths = 0
+    if 'births' in allOfCategoryDict[cat]:
+        nBirths = allOfCategoryDict[cat]['births']
+    else:
+        nBirths = 0
+    print '%s: %d births, %d deaths' % (cat, nBirths, nDeaths)
     bins = []
     counts = []
     for tier in careTiers:
