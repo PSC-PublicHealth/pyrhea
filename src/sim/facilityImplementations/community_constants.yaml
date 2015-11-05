@@ -1,8 +1,8 @@
 'communityLOSModel':
     parms:
-    - 1.0e-4
+    - 1.0e-2
     pdf: 'expon(lambda=$0)'
-    prov: 'DEBUGGING ONLY - the average community member requires hospitalization about once per 30 years'
+    prov: 'DEBUGGING ONLY - the average community member requires hospitalization about once per 0.3 years'
   
 'communityDeathRate':
   'value': 0.01
@@ -13,7 +13,7 @@
   'prov': 'DEBUGGING ONLY'
   
 'communityPatientCheckInterval':
-  'value': 30
+  'value': 1
   'prov': 'arbitrary'
   
   

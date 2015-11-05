@@ -24,8 +24,9 @@ import yaml
 from scipy.stats import expon
 import logging
 
+import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 from hospital import createClassASetter, createOverallHealthSetter, createCopier
 
@@ -49,7 +50,8 @@ class CommunityWard(Ward):
 
 class Community(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+                          reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue])
         meanPop = descr['meanPop']
         nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
@@ -110,11 +112,13 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop'])
     agentList = []
     for i in xrange(int(round(meanPop))):
-        ward = fac.manager.findAvailableBed(CareTier.HOME)
+        ward = fac.manager.allocateAvailableBed(CareTier.HOME)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
-        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
+        fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
+                              fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                              0)
         agentList.append(a)
     return agentList
 

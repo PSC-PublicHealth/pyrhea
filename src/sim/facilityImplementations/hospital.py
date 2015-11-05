@@ -23,11 +23,13 @@ import yaml
 import math
 from scipy.stats import lognorm
 import logging
+from random import shuffle
 
+import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, PatientStatus
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
-from facilitybase import PatientStatusSetter
+from facilitybase import PatientStatusSetter, HOSPQueue, ICUQueue, tierToQueueMap
 
 category = 'HOSPITAL'
 _schema = 'facilityfacts_schema.yaml'
@@ -76,7 +78,8 @@ def createCopier():
 
 class Hospital(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+                          reqQueueClasses=[HOSPQueue, ICUQueue])
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
         self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
@@ -131,6 +134,18 @@ class Hospital(Facility):
             self.addWard(Ward(('%s_%s_%s_%s_%d' %
                                (category, patch.name, descr['abbrev'], 'HOSP', i)),
                               patch, CareTier.HOSP, bedsPerWard))
+
+    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+        """Specialized to restrict transfers to being between our own HOSP and ICU"""
+        queueClass = tierToQueueMap[newTier]
+        if ((oldTier == CareTier.ICU and newTier == CareTier.HOSP)
+                or (oldTier == CareTier.HOSP and newTier == CareTier.ICU)):
+            qList = [rQ for rQ in self.reqQueues if isinstance(rQ, queueClass)]
+            return [q.getGblAddr() for q in qList]
+        else:
+            facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
+            shuffle(facAddrList)
+        return facAddrList
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         assert treatment == TreatmentProtocol.NORMAL, \
@@ -201,18 +216,22 @@ def _populate(fac, descr, patch):
     meanHospPop = meanPop - meanICUPop
     agentList = []
     for i in xrange(int(round(meanICUPop))):
-        ward = fac.manager.findAvailableBed(CareTier.ICU)
+        ward = fac.manager.allocateAvailableBed(CareTier.ICU)
         assert ward is not None, 'Ran out of ICU beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
-        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
+        fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
+                              fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                              0)
         agentList.append(a)
     for i in xrange(int(round(meanHospPop))):
-        ward = fac.manager.findAvailableBed(CareTier.HOSP)
+        ward = fac.manager.allocateAvailableBed(CareTier.HOSP)
         assert ward is not None, 'Ran out of HOSP beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
-        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
+        fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
+                              fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                              0)
         agentList.append(a)
     return agentList
 

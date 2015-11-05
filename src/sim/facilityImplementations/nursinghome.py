@@ -26,8 +26,9 @@ import math
 from scipy.stats import lognorm, expon
 import logging
 
+import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
 from hospital import createClassASetter, createOverallHealthSetter, createCopier
@@ -42,7 +43,8 @@ _constants = None
 
 class NursingHome(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch)
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+                          reqQueueClasses=[NURSINGQueue])
         assert 'nBeds' in descr, 'Nursing home %(abbrev) description is missing nBeds' % descr
         nBeds = int(descr['nBeds'])
         if 'losModel' in descr:
@@ -150,7 +152,7 @@ def _populate(fac, descr, patch):
     residentFrac = (1.0 - losModel['parms'][0])
     agentList = []
     for i in xrange(int(round(meanPop))):
-        ward = fac.manager.findAvailableBed(CareTier.NURSING)
+        ward = fac.manager.allocateAvailableBed(CareTier.NURSING)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         if random() <= residentFrac:
@@ -159,7 +161,9 @@ def _populate(fac, descr, patch):
             a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
             a._treatment = TreatmentProtocol.REHAB
         ward.lock(a)
-        fac.handleWardArrival(ward, fac.getArrivalMsgPayload(a), 0)
+        fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
+                              fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                              0)
         agentList.append(a)
     return agentList
 
