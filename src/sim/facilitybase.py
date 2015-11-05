@@ -18,7 +18,7 @@
 _rhea_svn_id_ = "$Id$"
 
 import types
-from random import randint, random
+from random import randint, random, shuffle, choice
 import pyrheabase
 from pyrheautils import enum, namedtuple
 from math import fabs
@@ -99,16 +99,47 @@ class FacilityManager(pyrheabase.FacilityManager):
     pass
 
 
+class BirthQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
+class BirthMsg(pyrheabase.SimpleMsg):
+    pass
+
+
+class ICUQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
+class HOSPQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
+class NURSINGQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
+class HOMEQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
+tierToQueueMap = {CareTier.HOME: HOMEQueue,
+                  CareTier.NURSING: NURSINGQueue,
+                  CareTier.HOSP: HOSPQueue,
+                  CareTier.ICU: ICUQueue}
+
+
 class Facility(pyrheabase.Facility):
     class PatientRecord(object):
-        def __init__(self, ward, patientID, arrivalDate):
+        def __init__(self, patientID, arrivalDate):
             self.patientID = patientID
             self.arrivalDate = arrivalDate
             self.departureDate = None
             self.prevVisits = 0
 
-    def __init__(self, name, patch):
-        pyrheabase.Facility.__init__(self, name, patch, managerClass=FacilityManager)
+    def __init__(self, name, patch, reqQueueClasses=None):
+        pyrheabase.Facility.__init__(self, name, patch, managerClass=FacilityManager,
+                                     reqQueueClasses=reqQueueClasses)
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}
@@ -120,47 +151,69 @@ class Facility(pyrheabase.Facility):
     def getNoteHolder(self):
         return self.noteHolder
 
-    def getArrivalMsgPayload(self, patientAgent):
-        return patientAgent.id
+    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+        queueClass = tierToQueueMap[newTier]
+        facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
+        shuffle(facAddrList)
+        return facAddrList
 
-    def handleWardArrival(self, ward, payload, timeNow):
-        """
-        The locking agent should be an arriving patient.  This allows a sort of 'check-in' for
-        record-keeping purposes.
-        """
-        patientID = payload
-        if patientID in self.patientDataDict:
-            logger.warning('Patient %s has returned to %s' % (patientID, self.name))
-            patientRec = self.patientDataDict[patientID]
-            patientRec.prevVisits += 1
-            patientRec.arrivalDate = timeNow
-            patientRec.departureDate = None
+    def getMsgPayload(self, msgType, patientAgent):
+        if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
+            innerPayload = super(Facility, self).getMsgPayload(msgType, patientAgent)
+            return ((patientAgent.id, patientAgent.ward.tier), innerPayload)
+        elif issubclass(msgType, BirthMsg):
+            return patientAgent._status.overall
         else:
-            patientRec = Facility.PatientRecord(ward, patientID, timeNow)
-            self.patientDataDict[patientID] = patientRec
-        nh = self.getNoteHolder()
-        if nh:
-            nh.addNote({(CareTier.names[ward.tier] + '_arrivals'): 1})
+            raise RuntimeError('%s: payload request for unknown message type %s'
+                               % (self.name, msgType.__name__))
 
-    def getDepartureMsgPayload(self, patientAgent):
-        return patientAgent.id
-
-    def handleWardDeparture(self, ward, payload, timeNow):
-        """
-        This routine is called in the time slice of the Facility Manager when the manager
-        learns of the patient's departure.
-        """
-        patientID = payload
-        if patientID not in self.patientDataDict:
-            logger.error('%s has no record of patient %s' % (self.name, patientID))
-        patientRec = self.patientDataDict[patientID]
-        patientRec.departureDate = timeNow
-        lengthOfStay = timeNow - patientRec.arrivalDate
-        losKey = (CareTier.names[ward.tier] + '_LOS')
-        nh = self.getNoteHolder()
-        if losKey not in nh:
-            nh.addNote({losKey: HistoVal([])})
-        nh.addNote({(CareTier.names[ward.tier] + '_departures'): 1, losKey: lengthOfStay})
+    def handleIncomingMsg(self, msgType, payload, timeNow):
+        if issubclass(msgType, pyrheabase.ArrivalMsg):
+            myPayload, innerPayload = payload
+            timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
+            patientID, tier = myPayload
+            if patientID in self.patientDataDict:
+                logger.info('Patient %s has returned to %s' % (patientID, self.name))
+                patientRec = self.patientDataDict[patientID]
+                patientRec.prevVisits += 1
+                patientRec.arrivalDate = timeNow
+                patientRec.departureDate = None
+            else:
+                patientRec = Facility.PatientRecord(patientID, timeNow)
+                self.patientDataDict[patientID] = patientRec
+            nh = self.getNoteHolder()
+            if nh:
+                nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
+        elif issubclass(msgType, pyrheabase.DepartureMsg):
+            myPayload, innerPayload = payload
+            timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
+            patientID, tier = myPayload
+            if patientID not in self.patientDataDict:
+                logger.error('%s has no record of patient %s' % (self.name, patientID))
+            patientRec = self.patientDataDict[patientID]
+            patientRec.departureDate = timeNow
+            lengthOfStay = timeNow - patientRec.arrivalDate
+            losKey = (CareTier.names[tier] + '_LOS')
+            nh = self.getNoteHolder()
+            if losKey not in nh:
+                nh.addNote({losKey: HistoVal([])})
+            nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
+        elif issubclass(msgType, BirthMsg):
+            ward = self.manager.allocateAvailableBed(CareTier.HOME)
+            assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
+            a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
+            a._status = a._status._replace(overall=payload)
+            ward.lock(a)
+            self.handleIncomingMsg(pyrheabase.ArrivalMsg,
+                                   self.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                                   timeNow)
+            self.manager.patch.launch(a, timeNow)
+            nh = self.getNoteHolder()
+            nh.addNote({'births': 1})
+        else:
+            raise RuntimeError('%s: got unknown message type %s' % (self.name,
+                                                                    msgType .__name__))
+        return timeNow
 
     def getBedRequestPayload(self, patientAgent, desiredTier):
         return (0, desiredTier)  # number of bounces and tier
@@ -385,6 +438,15 @@ class PatientAgent(pyrheabase.PatientAgent):
         self.ward.fac.noteHolder.addNote({"death": 1})
         if self.debug:
             self.logger.debug('Alas poor %s! %s' % (self.name, timeNow))
+        facAddr = choice([tpl[1] for tpl in self.patch.serviceLookup('BirthQueue')])
+        self.patch.launch(BirthMsg(self.name + '_birthMsg',
+                                   self.patch,
+                                   self.ward.fac.getMsgPayload(BirthMsg, self),
+                                   facAddr),
+                          timeNow)
+
+    def getCandidateFacilityList(self, timeNow, newTier):
+        return self.ward.fac.getOrderedCandidateFacList(self.ward.tier, newTier, timeNow)
 
     def __getstate__(self):
         d = pyrheabase.PatientAgent.__getstate__(self)
