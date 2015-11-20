@@ -113,9 +113,9 @@ class Hospital(Facility):
 
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        self.hospCachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][0],
+        self.hospCachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][1],
                                                         scale=math.exp(descr['losModel']
-                                                                       ['parms'][1])))
+                                                                       ['parms'][0])))
         self.hospTreeCache = {}
         if descr['meanLOSICU']['value'] == 0.0:
             self.icuCachedCDF = None

@@ -17,10 +17,16 @@
       'facilityImplementationDir':
         'type': 'string'
       'runDurationDays':
+        'description': 'Total days simulated is the sum of this and burnInDays'
         'type': integer
         'min': 1
+      'burnInDays':
+        'description': 'Total days simulated is the sum of this and runDurationDays'
+        'type': integer
+        'min': 0
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'
       - 'runDurationDays'
+      - 'burnInDays'
 

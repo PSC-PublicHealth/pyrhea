@@ -169,7 +169,7 @@ def main():
         csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp',
                                'nsamples'],
                            tblRecs)
-        
+
     for losList in losListDict.values():
         for v in losList:
             aggregateLosList.append(v)

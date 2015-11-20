@@ -54,10 +54,10 @@ class NursingHome(Facility):
         assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
 
-        self.rehabCachedCDF = CachedCDFGenerator(lognorm(losModel['parms'][0],
+        self.rehabCachedCDF = CachedCDFGenerator(lognorm(losModel['parms'][2],
                                                          scale=math.exp(losModel['parms'][1])))
         self.rehabTreeCache = {}
-        self.residentCachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][2]))
+        self.residentCachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][3]))
         self.residentTreeCache = {}
 
         self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
