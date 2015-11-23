@@ -131,11 +131,18 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
 
 class Facility(pyrheabase.Facility):
     class PatientRecord(object):
-        def __init__(self, patientID, arrivalDate):
+        def __init__(self, patientID, arrivalDate, isFrail):
             self.patientID = patientID
             self.arrivalDate = arrivalDate
             self.departureDate = None
             self.prevVisits = 0
+            self.isFrail = isFrail
+
+        def __str__(self):
+            return '<patient %s, %s -> %s, %s>' % (self.patientID,
+                                                   self.arrivalDate,
+                                                   self.departureDate,
+                                                   'Frail' if self.isFrail else 'Healthy')
 
     def __init__(self, name, patch, reqQueueClasses=None):
         pyrheabase.Facility.__init__(self, name, patch, managerClass=FacilityManager,
@@ -160,7 +167,9 @@ class Facility(pyrheabase.Facility):
     def getMsgPayload(self, msgType, patientAgent):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
             innerPayload = super(Facility, self).getMsgPayload(msgType, patientAgent)
-            return ((patientAgent.id, patientAgent.ward.tier), innerPayload)
+            return ((patientAgent.id, patientAgent.ward.tier,
+                     patientAgent._status.overall == PatientOverallHealth.FRAIL),
+                    innerPayload)
         elif issubclass(msgType, BirthMsg):
             return patientAgent._status.overall
         else:
@@ -171,7 +180,7 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier = myPayload
+            patientID, tier, isFrail = myPayload
             if patientID in self.patientDataDict:
                 logger.info('Patient %s has returned to %s' % (patientID, self.name))
                 patientRec = self.patientDataDict[patientID]
@@ -179,7 +188,7 @@ class Facility(pyrheabase.Facility):
                 patientRec.arrivalDate = timeNow
                 patientRec.departureDate = None
             else:
-                patientRec = Facility.PatientRecord(patientID, timeNow)
+                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
                 self.patientDataDict[patientID] = patientRec
             nh = self.getNoteHolder()
             if nh:
@@ -187,7 +196,7 @@ class Facility(pyrheabase.Facility):
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier = myPayload
+            patientID, tier, isFrail = myPayload
             if patientID not in self.patientDataDict:
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
             patientRec = self.patientDataDict[patientID]

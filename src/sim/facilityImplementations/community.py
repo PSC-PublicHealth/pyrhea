@@ -64,9 +64,9 @@ class Community(Facility):
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         assert careTier == CareTier.HOME, \
-            "Thecommunity only offer CareTier 'NURSING'; found %s" % careTier
+            "The community only offers CareTier 'NURSING'; found %s" % careTier
         assert treatment == TreatmentProtocol.NORMAL, \
-            "Thecommunity only offer treatment type 'NORMAL'; found %s" % careTier
+            "The community only offers treatment type 'NORMAL'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         if key in self.treeCache:
             return self.treeCache[key]

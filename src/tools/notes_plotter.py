@@ -39,6 +39,11 @@ nameMap = {'NURSINGHOME': 'NURSING',
            'COMMUNITY': 'HOME',
            'LTAC': 'HOSP'}
 
+constantFileNameMap = {'NURSINGHOME': 'nursinghome',
+                       'HOSPITAL': 'hospital',
+                       'COMMUNITY': 'community',
+                       'LTAC': 'hospital'}
+
 careTiers = ['HOME', 'NURSING', 'HOSP', 'ICU']
 
 
@@ -50,37 +55,44 @@ defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementation
 
 def fullPDFFromMeanLOS(fitParms):
     def losFun(xVec):
-        xArr = np.asarray(xVec, np.float64)
+        xArr = np.asarray(xVec, np.float64) - 0.5
         mean = fitParms[0]
         sigma = fitParms[1]
         mu = math.log(mean) - (0.5 * sigma * sigma)
-        print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
+        # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
         pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
         return pVec
     return losFun
 
 
 def fullPDFFromLOSModel(losModel):
+    """
+    Returns a function of the signature: pscore = losFun([x0, x1, x2, ...]) for use
+    in plotting analytic PDFs.  The curve is shifted right by 0.5 because the bar
+    chart it must overlay centers the bar for integer N at x=N, but that bar really
+    represents the integral of the PDF from (N-1) to N and so should be centered at
+    x = (N - 0.5).
+    """
     if losModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
         def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64)
+            xArr = np.asarray(xVec, np.float64) - 0.5
             mu, sigma = losModel['parms']
-            print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
+            # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
             pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
             return pVec
     elif losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
         def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64)
+            xArr = np.asarray(xVec, np.float64) - 0.5
             k, mu, sigma, lmda = losModel['parms']
-            print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+            # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
             pVec = ((k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
                      + ((1.0-k) * expon.pdf(xArr, scale=1.0/lmda))))
             return pVec
     elif losModel['pdf'] == 'expon(lambda=$0)':
         def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64)
+            xArr = np.asarray(xVec, np.float64) - 0.5
             lmda = losModel['parms'][0]
-            print "fullPDF: lmda= %s" % lmda
+            # print "fullPDF: lmda= %s" % lmda
             pVec = expon.pdf(xArr, scale=1.0/lmda)
             return pVec
     else:
@@ -91,14 +103,17 @@ def fullPDFFromLOSModel(losModel):
 class LOSPlotter(object):
     def __init__(self, descr, constants):
         self.fullPDFs = {}
-        if descr['category'] == 'HOSPITAL':
-            self.fullPDFs['ICU'] = fullPDFFromMeanLOS([descr['meanLOSICU'],
-                                                       constants['icuLOSLogNormSigma']])
-            self.fullPDFs['HOSP'] = fullPDFFromLOSModel(descr['losModel'])
-        elif descr['category'] == 'LTAC':
-            self.fullPDFs['HOSP'] = fullPDFFromLOSModel(descr['losModel'])
+        if descr['category'] in ['HOSPITAL', 'LTAC']:
+            if 'meanLOSICU' in descr:
+                self.fullPDFs['ICU'] = fullPDFFromMeanLOS([descr['meanLOSICU'],
+                                                           constants['icuLOSLogNormSigma']])
+            if 'losModel' in descr:
+                self.fullPDFs['HOSP'] = fullPDFFromLOSModel(descr['losModel'])
         elif descr['category'] == 'NURSINGHOME':
-            self.fullPDFs['NURSING'] = fullPDFFromLOSModel(descr['losModel'])
+            if 'losModel' in descr:
+                self.fullPDFs['NURSING'] = fullPDFFromLOSModel(descr['losModel'])
+            else:
+                self.fullPDFs['NURSING'] = fullPDFFromLOSModel(constants['nhLOSModel'])
         elif descr['category'] == 'COMMUNITY':
             self.fullPDFs['HOME'] = fullPDFFromLOSModel(constants['communityLOSModel'])
         else:
@@ -108,7 +123,6 @@ class LOSPlotter(object):
     def plot(self, tier, axes, nBins, rMin, rMax, scale, pattern='r-'):
         if tier in self.fullPDFs:
             curveX = np.linspace(rMin, rMax, nBins)
-#             curveY = self.fullPDFs[tier](curveX) * scale * ((rMax-rMin)/nBins)
             curveY = self.fullPDFs[tier](curveX) * scale
             axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
@@ -133,23 +147,37 @@ def importNotes(fname):
     return stuff
 
 
+def collectBarSamples(histoVal):
+    bins = []
+    counts = []
+    pairList = histoVal.histogram().items()
+    pairList.sort()
+    quantum = histoVal.d['quantum']
+    barWidth = 1.6 * quantum
+    for b, c in pairList:
+        bins.append(b - 0.5*(quantum + barWidth))
+        counts.append(c)
+    return bins, counts, barWidth
+
+
 def overallLOSFig(catNames, allOfCategoryDict):
     figs1, axes1 = plt.subplots(nrows=len(allOfCategoryDict), ncols=1)
     for offset, cat in enumerate(catNames):
-        bins = []
-        counts = []
+        constants = loadFacilityTypeConstants(constantFileNameMap[cat])
+        losPlotter = LOSPlotter({'category': cat}, constants)
+        bigHisto = HistoVal([])
         for tier in careTiers:
             try:
-                for k, v in allOfCategoryDict[cat][tier + '_LOS'].histogram().items():
-                    bins.append(k)
-                    counts.append(v)
+                bigHisto += allOfCategoryDict[cat][tier + '_LOS']
             except:
                 pass
-
-        rects = axes1[offset].bar(bins, counts, color='r')  # @UnusedVariable
+        bins, counts, barWidth = collectBarSamples(bigHisto)
+        rects = axes1[offset].bar(bins, counts, width=barWidth, color='b')  # @UnusedVariable
         axes1[offset].set_ylabel('Counts')
         axes1[offset].set_xlabel('Days')
         axes1[offset].set_title('LOS for ' + cat)
+        if bins:
+            losPlotter.plot(nameMap[cat], axes1[offset], 300, 0, max(bins), sum(counts))
     figs1.tight_layout()
     figs1.canvas.set_window_title("LOS Histograms By Category")
 
@@ -162,30 +190,18 @@ def singleLOSFig(abbrev, notesDict):
     for k in notesDict.keys():
         if k.endswith(abbrev):
             for idx, tier in enumerate(careTiers):
-                bins = []
-                counts = []
                 tK = tier + '_LOS'
                 if tK in notesDict[k]:
-                    print 'hit %s for %s' % (tier, abbrev)
-                    print 'dict: %s' % notesDict[k][tK].d
-                    pairList = notesDict[k][tK].histogram().items()
-                    pairList.sort()
-                    print 'items: %s' % {k:v for k,v in pairList}
-                    quantum = notesDict[k][tK].d['quantum']
-                    barWidth = 1.6 * quantum
-                    for b, c in pairList:
-                        bins.append(b - 0.5*(quantum + barWidth))
-                        counts.append(c)
+                    bins, counts, barWidth = collectBarSamples(notesDict[k][tK])
                     rects = axes1b[idx].bar(bins, counts, width=barWidth,  # @UnusedVariable
-                                            color='r')
+                                            color='b')
+                    losPlotter.plot(tier, axes1b[idx], 300, 0.0, max(bins),
+                                    sum(counts))
                 else:
-                    rects = axes1b[idx].bar([], [], color='r')  # @UnusedVariable
+                    rects = axes1b[idx].bar([], [], color='b')  # @UnusedVariable
                 axes1b[idx].set_ylabel('Counts')
                 axes1b[idx].set_xlabel('Days')
                 axes1b[idx].set_title('LOS for ' + tier)
-                if bins:
-                    losPlotter.plot(tier, axes1b[idx], 300, 0.0, max(bins),
-                                    sum(counts))
             break
     figs1b.tight_layout()
     figs1b.canvas.set_window_title("%s LOS Histograms By Category" % abbrev)
@@ -237,6 +253,11 @@ def patientFlowFig(allOfCategoryDict):
 
 def patientFateFig(catNames, allOfCategoryDict):
     figs4, axes4 = plt.subplots(nrows=1, ncols=len(catNames))
+    clrMap = {'death': 'black',
+              'HOME': 'green',
+              'NURSING': 'red',
+              'HOSP': 'blue',
+              'ICU': 'cyan'}
     for offset, cat in enumerate(catNames):
         keys = ['death'] + ['%s_found' % tier for tier in careTiers]
         labels = ['death'] + careTiers
@@ -248,11 +269,13 @@ def patientFateFig(catNames, allOfCategoryDict):
                 counts.append(0)
         ct2 = []
         lbl2 = []
+        clrs = []
         for ct, lbl in zip(counts, labels):
             if ct != 0:
                 ct2.append(ct)
                 lbl2.append(lbl)
-        axes4[offset].pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90)
+                clrs.append(clrMap[lbl])
+        axes4[offset].pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90, colors=clrs)
         axes4[offset].axis('equal')
         axes4[offset].set_title(cat)
     figs4.tight_layout()
