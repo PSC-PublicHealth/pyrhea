@@ -17,21 +17,19 @@
 
 _rhea_svn_id_ = "$Id$"
 
-from itertools import cycle
 import os.path
-import yaml
-import jsonschema
 from random import random
 import math
-from scipy.stats import lognorm, expon
+from scipy.stats import rv_continuous, lognorm, expon
 import logging
 
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+from facilitybase import PatientStatusSetter
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
-from hospital import createClassASetter, createOverallHealthSetter, createCopier
+from hospital import ClassASetter, OverallHealthSetter
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +37,21 @@ category = 'NURSINGHOME'
 _constants_values = 'nursinghome_constants.yaml'
 _constants_schema = 'nursinghome_constants_schema.yaml'
 _constants = None
+
+
+class LogNormPlusExp(rv_continuous):
+    """
+    Defined to yield k*lognorm(sigma=sigma, scale=math.exp(???))
+    """
+    def _pdf(self, x, s, k, lmda):
+        return ((lognorm.pdf(x, s) * k)
+                + expon.pdf(x, scale=(1.0 / lmda)) * (1.0 - k))
+
+    def _cdf(self, x, s, k, lmda):
+        return ((lognorm.cdf(x, s) * k)
+                + expon.cdf(x, scale=(1.0 / lmda)) * (1.0 - k))
+
+lognormplusexp = LogNormPlusExp(name='lognormplusexp', a=0.0)
 
 
 class NursingHome(Facility):
@@ -59,7 +72,12 @@ class NursingHome(Facility):
         self.rehabTreeCache = {}
         self.residentCachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][3]))
         self.residentTreeCache = {}
-
+        lMP = losModel['parms']
+        self.frailCachedCDF = CachedCDFGenerator(lognormplusexp(scale=math.exp(lMP[1]),
+                                                                s=lMP[2],
+                                                                k=lMP[0],
+                                                                lmda=lMP[3]))
+        self.frailTreeCache = {}
         self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                           patch, CareTier.NURSING, nBeds))
 
@@ -68,32 +86,11 @@ class NursingHome(Facility):
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
-        if treatment == TreatmentProtocol.REHAB:
-            if key in self.rehabTreeCache:
-                return self.rehabTreeCache[key]
+        if patientStatus.overall == PatientOverallHealth.FRAIL:
+            if key in self.frailTreeCache:
+                return self.frailTreeCache[key]
             else:
-                changeProb = self.rehabCachedCDF.intervalProb(*key)
-                adverseProb = (_c['rehabDeathRate']['value']
-                               + _c['rehabSickRate']['value']
-                               + _c['rehabVerySickRate']['value'])
-                tree = [changeProb,
-                        [adverseProb,
-                         Facility.foldCDF([(_c['rehabDeathRate']['value'] / adverseProb,
-                                            createClassASetter(DiagClassA.DEATH)),
-                                          (_c['rehabSickRate']['value'] / adverseProb,
-                                           createClassASetter(DiagClassA.SICK)),
-                                          (_c['rehabVerySickRate']['value'] / adverseProb,
-                                           createClassASetter(DiagClassA.VERYSICK)),
-                                           ]),
-                         createClassASetter(DiagClassA.HEALTHY)],
-                        createCopier()]
-                self.rehabTreeCache[key] = tree
-                return tree
-        elif treatment == TreatmentProtocol.NORMAL:
-            if key in self.residentTreeCache:
-                return self.residentTreeCache[key]
-            else:
-                changeProb = self.residentCachedCDF.intervalProb(*key)
+                changeProb = self.frailCachedCDF.intervalProb(*key)
                 totRate = (_c['residentDeathRate']['value']
                            + _c['residentSickRate']['value']
                            + _c['residentVerySickRate']['value']
@@ -101,19 +98,45 @@ class NursingHome(Facility):
                 tree = [changeProb,
                         Facility.foldCDF(
                             [(_c['residentDeathRate']['value']/totRate,
-                              createClassASetter(DiagClassA.DEATH)),
+                              ClassASetter(DiagClassA.DEATH)),
                              (_c['residentSickRate']['value']/totRate,
-                              createClassASetter(DiagClassA.SICK)),
+                              ClassASetter(DiagClassA.SICK)),
                              (_c['residentVerySickRate']['value']/totRate,
-                              createClassASetter(DiagClassA.VERYSICK)),
+                              ClassASetter(DiagClassA.VERYSICK)),
                              (_c['residentReturnToCommunityRate']['value']/totRate,
-                              createOverallHealthSetter(PatientOverallHealth.HEALTHY)),
+                              OverallHealthSetter(PatientOverallHealth.HEALTHY)),
                              ]),
-                        createCopier()]
-                self.residentTreeCache[key] = tree
+                        PatientStatusSetter()]
+                self.frailTreeCache[key] = tree
                 return tree
         else:
-            raise RuntimeError('Nursing homes do not provide treatment protocol %s' % treatment)
+            if treatment == TreatmentProtocol.REHAB:
+                if key in self.rehabTreeCache:
+                    return self.rehabTreeCache[key]
+                else:
+                    changeProb = self.rehabCachedCDF.intervalProb(*key)
+                    adverseProb = (_c['rehabDeathRate']['value']
+                                   + _c['rehabSickRate']['value']
+                                   + _c['rehabVerySickRate']['value'])
+                    tree = [changeProb,
+                            [adverseProb,
+                             Facility.foldCDF([(_c['rehabDeathRate']['value'] / adverseProb,
+                                                ClassASetter(DiagClassA.DEATH)),
+                                              (_c['rehabSickRate']['value'] / adverseProb,
+                                               ClassASetter(DiagClassA.SICK)),
+                                              (_c['rehabVerySickRate']['value'] / adverseProb,
+                                               ClassASetter(DiagClassA.VERYSICK)),
+                                               ]),
+                             ClassASetter(DiagClassA.HEALTHY)],
+                            PatientStatusSetter()]
+                    self.rehabTreeCache[key] = tree
+                    return tree
+            elif treatment == TreatmentProtocol.NORMAL:
+                raise RuntimeError('Patients with NORMAL overall health should only be'
+                                   ' in NURSING care for rehab')
+            else:
+                raise RuntimeError('Nursing homes do not provide treatment protocol %s'
+                                   % treatment)
 
     def prescribe(self, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""

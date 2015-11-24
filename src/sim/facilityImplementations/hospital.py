@@ -159,16 +159,16 @@ class Hospital(Facility):
                 changeProb = self.hospCachedCDF.intervalProb(*key)
                 tree = [changeProb,
                         Hospital.foldCDF([(self.hospDischargeViaDeathFrac,
-                                           createClassASetter(DiagClassA.DEATH)),
+                                           ClassASetter(DiagClassA.DEATH)),
                                           ((self.fracTransferHosp + self.fracTransferLTAC),
-                                           createClassASetter(DiagClassA.SICK)),
+                                           ClassASetter(DiagClassA.SICK)),
                                           (((self.fracTransferNH + self.fracDischargeHealthy)
                                             * _c['fracOfDischargesRequiringRehab']['value']),
-                                           createClassASetter(DiagClassA.NEEDSREHAB)),
+                                           ClassASetter(DiagClassA.NEEDSREHAB)),
                                           (((self.fracTransferNH + self.fracDischargeHealthy)
                                             * (1.0 - _c['fracOfDischargesRequiringRehab']['value'])),
-                                           createClassASetter(DiagClassA.HEALTHY))]),
-                        createCopier()]
+                                           ClassASetter(DiagClassA.HEALTHY))]),
+                        PatientStatusSetter()]
                 self.hospTreeCache[key] = tree
                 return tree
         elif careTier == CareTier.ICU:
@@ -180,10 +180,10 @@ class Hospital(Facility):
 #                                                  timeNow - patientStatus.startDateA)
                 tree = [changeProb,
                         Hospital.foldCDF([(self.icuDischargeViaDeathFrac,
-                                           createClassASetter(DiagClassA.DEATH)),
+                                           ClassASetter(DiagClassA.DEATH)),
                                           ((1.0 - self.icuDischargeViaDeathFrac),
-                                           createClassASetter(DiagClassA.SICK))]),
-                        createCopier()]
+                                           ClassASetter(DiagClassA.SICK))]),
+                        PatientStatusSetter()]
                 self.icuTreeCache[key] = tree
                 return tree
         else:
