@@ -20,13 +20,14 @@ _rhea_svn_id_ = "$Id$"
 import os.path
 from random import random
 import math
-from scipy.stats import rv_continuous, lognorm, expon
+from scipy.stats import lognorm, expon
 import logging
 
 import pyrheabase
 import pyrheautils
+from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
@@ -37,21 +38,6 @@ category = 'NURSINGHOME'
 _constants_values = 'nursinghome_constants.yaml'
 _constants_schema = 'nursinghome_constants_schema.yaml'
 _constants = None
-
-
-class LogNormPlusExp(rv_continuous):
-    """
-    Defined to yield k*lognorm(sigma=sigma, scale=math.exp(???))
-    """
-    def _pdf(self, x, s, k, lmda):
-        return ((lognorm.pdf(x, s) * k)
-                + expon.pdf(x, scale=(1.0 / lmda)) * (1.0 - k))
-
-    def _cdf(self, x, s, k, lmda):
-        return ((lognorm.cdf(x, s) * k)
-                + expon.cdf(x, scale=(1.0 / lmda)) * (1.0 - k))
-
-lognormplusexp = LogNormPlusExp(name='lognormplusexp', a=0.0)
 
 
 class NursingHome(Facility):
@@ -70,14 +56,14 @@ class NursingHome(Facility):
         self.rehabCachedCDF = CachedCDFGenerator(lognorm(losModel['parms'][2],
                                                          scale=math.exp(losModel['parms'][1])))
         self.rehabTreeCache = {}
-        self.residentCachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][3]))
-        self.residentTreeCache = {}
         lMP = losModel['parms']
-        self.frailCachedCDF = CachedCDFGenerator(lognormplusexp(scale=math.exp(lMP[1]),
-                                                                s=lMP[2],
-                                                                k=lMP[0],
-                                                                lmda=lMP[3]))
+#         self.frailCachedCDF = CachedCDFGenerator(lognormplusexp(scale=math.exp(lMP[1]),
+#                                                                 s=lMP[2],
+#                                                                 k=lMP[0],
+#                                                                 lmda=lMP[3]))
+        self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
         self.frailTreeCache = {}
+        self.frailRehabTreeCache = {}
         self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                           patch, CareTier.NURSING, nBeds))
 
@@ -87,28 +73,42 @@ class NursingHome(Facility):
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if patientStatus.overall == PatientOverallHealth.FRAIL:
-            if key in self.frailTreeCache:
-                return self.frailTreeCache[key]
+            if treatment == TreatmentProtocol.REHAB:
+                if key in self.frailRehabTreeCache:
+                    return self.frailRehabTreeCache[key]
+                else:
+                    # If no major changes happen, allow for the patient's completing rehab
+                    innerTree = BayesTree(ClassASetter(PatientOverallHealth.HEALTHY),
+                                          PatientStatusSetter(),
+                                          self.rehabCachedCDF.intervalProb(*key))
             else:
-                changeProb = self.frailCachedCDF.intervalProb(*key)
-                totRate = (_c['residentDeathRate']['value']
-                           + _c['residentSickRate']['value']
-                           + _c['residentVerySickRate']['value']
-                           + _c['residentReturnToCommunityRate']['value'])
-                tree = [changeProb,
-                        Facility.foldCDF(
-                            [(_c['residentDeathRate']['value']/totRate,
-                              ClassASetter(DiagClassA.DEATH)),
-                             (_c['residentSickRate']['value']/totRate,
-                              ClassASetter(DiagClassA.SICK)),
-                             (_c['residentVerySickRate']['value']/totRate,
-                              ClassASetter(DiagClassA.VERYSICK)),
-                             (_c['residentReturnToCommunityRate']['value']/totRate,
-                              OverallHealthSetter(PatientOverallHealth.HEALTHY)),
-                             ]),
-                        PatientStatusSetter()]
+                if key in self.frailTreeCache:
+                    return self.frailTreeCache[key]
+                else:
+                    innerTree = PatientStatusSetter()  # No change of state
+            changeProb = self.frailCachedCDF.intervalProb(*key)
+            totRate = (_c['residentDeathRate']['value']
+                       + _c['residentSickRate']['value']
+                       + _c['residentVerySickRate']['value']
+                       + _c['residentReturnToCommunityRate']['value'])
+            healthySetter = OverallHealthSetter(PatientOverallHealth.HEALTHY)
+            changeTree = BayesTree.fromLinearCDF([(_c['residentDeathRate']['value']/totRate,
+                                                   ClassASetter(DiagClassA.DEATH)),
+                                                  (_c['residentSickRate']['value']/totRate,
+                                                   ClassASetter(DiagClassA.SICK)),
+                                                  (_c['residentVerySickRate']['value']/totRate,
+                                                   ClassASetter(DiagClassA.VERYSICK)),
+                                                  (_c['residentReturnToCommunityRate']['value']
+                                                   / totRate,
+                                                   healthySetter)])
+            tree = BayesTree(changeTree,
+                             innerTree,
+                             changeProb)
+            if treatment == TreatmentProtocol.REHAB:
+                self.frailRehabTreeCache[key] = tree
+            else:
                 self.frailTreeCache[key] = tree
-                return tree
+            return tree
         else:
             if treatment == TreatmentProtocol.REHAB:
                 if key in self.rehabTreeCache:
@@ -118,17 +118,20 @@ class NursingHome(Facility):
                     adverseProb = (_c['rehabDeathRate']['value']
                                    + _c['rehabSickRate']['value']
                                    + _c['rehabVerySickRate']['value'])
-                    tree = [changeProb,
-                            [adverseProb,
-                             Facility.foldCDF([(_c['rehabDeathRate']['value'] / adverseProb,
-                                                ClassASetter(DiagClassA.DEATH)),
-                                              (_c['rehabSickRate']['value'] / adverseProb,
-                                               ClassASetter(DiagClassA.SICK)),
-                                              (_c['rehabVerySickRate']['value'] / adverseProb,
-                                               ClassASetter(DiagClassA.VERYSICK)),
-                                               ]),
-                             ClassASetter(DiagClassA.HEALTHY)],
-                            PatientStatusSetter()]
+                    adverseTree = BayesTree.fromLinearCDF([(_c['rehabDeathRate']['value']
+                                                            / adverseProb,
+                                                            ClassASetter(DiagClassA.DEATH)),
+                                                           (_c['rehabSickRate']['value']
+                                                            / adverseProb,
+                                                            ClassASetter(DiagClassA.SICK)),
+                                                           (_c['rehabVerySickRate']['value']
+                                                            / adverseProb,
+                                                            ClassASetter(DiagClassA.VERYSICK))])
+                    tree = BayesTree(BayesTree(adverseTree,
+                                               ClassASetter(DiagClassA.HEALTHY),
+                                               adverseProb),
+                                     PatientStatusSetter(),
+                                     changeProb)
                     self.rehabTreeCache[key] = tree
                     return tree
             elif treatment == TreatmentProtocol.NORMAL:

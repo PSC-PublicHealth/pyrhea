@@ -24,6 +24,7 @@ from pyrheautils import enum, namedtuple
 from math import fabs
 import logging
 from phacsl.utils.notes.statval import HistoVal
+from stats import BayesTree
 
 logger = logging.getLogger(__name__)
 
@@ -65,28 +66,6 @@ class PatientStatusSetter(object):
 
     def __str__(self):
         return 'PatientStatusSetter()'
-
-
-class CachedCDFGenerator:
-    """
-    This supports a common operation performed by Facilities- given a treatment interval (relative
-    to a start date of zero), return a likelihood.  For example, this may be the likelihood that
-    the patient will be discharged.  Since the interval bounds are integers, caching of the
-    generated values is very effective.
-    """
-    def __init__(self, frozenPDF):
-        self.frozenPDF = frozenPDF
-        self.cache = {}
-
-    def intervalProb(self, start, end):
-        key = (start, end)
-        if key in self.cache:
-            return self.cache[key]
-        else:
-            cP = ((self.frozenPDF.cdf(end) - self.frozenPDF.cdf(start))
-                  / (1.0 - self.frozenPDF.cdf(start)))
-            self.cache[key] = cP
-            return cP
 
 
 class Ward(pyrheabase.Ward):
@@ -190,9 +169,10 @@ class Facility(pyrheabase.Facility):
             else:
                 patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
                 self.patientDataDict[patientID] = patientRec
-            nh = self.getNoteHolder()
-            if nh:
-                nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
+            if timeNow != 0:  # Exclude initial populations
+                nh = self.getNoteHolder()
+                if nh:
+                    nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
@@ -201,12 +181,16 @@ class Facility(pyrheabase.Facility):
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
             patientRec = self.patientDataDict[patientID]
             patientRec.departureDate = timeNow
-            lengthOfStay = timeNow - patientRec.arrivalDate
-            losKey = (CareTier.names[tier] + '_LOS')
-            nh = self.getNoteHolder()
-            if losKey not in nh:
-                nh.addNote({losKey: HistoVal([])})
-            nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
+            if patientRec.arrivalDate != 0:  # exclude initial populations
+                lengthOfStay = timeNow - patientRec.arrivalDate
+                losKey = (CareTier.names[tier] + '_LOS')
+                nh = self.getNoteHolder()
+                if losKey not in nh:
+                    nh.addNote({losKey: HistoVal([])})
+                nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
+#                 nh.addNote({(CareTier.names[tier] + '_departures'): 1})
+#                 if tier != CareTier.NURSING or isFrail:
+#                     nh.addNote({losKey: lengthOfStay})
         elif issubclass(msgType, BirthMsg):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
@@ -217,8 +201,9 @@ class Facility(pyrheabase.Facility):
                                    self.getMsgPayload(pyrheabase.ArrivalMsg, a),
                                    timeNow)
             self.manager.patch.launch(a, timeNow)
-            nh = self.getNoteHolder()
-            nh.addNote({'births': 1})
+            if timeNow != 0:  # exclude initial populations
+                nh = self.getNoteHolder()
+                nh.addNote({'births': 1})
         else:
             raise RuntimeError('%s: got unknown message type %s' % (self.name,
                                                                     msgType .__name__))
@@ -315,55 +300,7 @@ class Facility(pyrheabase.Facility):
         if the random value is <= or > k respectively.  When a value is encountered which
         is not a 3-tuple, that value is returned as the result of the traversal.
         """
-        return PatientStatusSetter()  # A simple setter that just makes a copy
-
-    @staticmethod
-    def foldCDF(linearCDF):
-        """
-        Given a linear CDF, return an equivalent CDF in Bayes Tree form
-
-        The input CDF is of the form:
-
-           [(p1, r1), (p2, r2), ...]
-
-        such that the sum of p1, p2, etc is 1.0 .  The output CDF is of the form:
-
-            pdf = (tp1 pdf1 pdf2)
-
-        or
-
-            pdf = r1
-
-        where tp1 is a float between 0 and 1, and the second form is equivalent to (1.0 r1 None)
-        """
-        tol = 0.00001
-        lCDF = len(linearCDF)
-        if lCDF == 1:
-            p, r = linearCDF[0]
-            assert fabs(p - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
-            return r
-        elif lCDF == 2:
-            p1, r1 = linearCDF[0]
-            p2, r2 = linearCDF[1]
-            assert fabs(p1 + p2 - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
-            if p2 >= p1:
-                return [p1, r1, r2]
-            else:
-                return [p2, r2, r1]
-        else:
-            linearCDF.sort()
-            part1 = linearCDF[:lCDF/2]
-            part2 = linearCDF[lCDF/2:]
-            pivot = part1[-1][0]
-            if pivot == 0.0:
-                return Facility.foldCDF(part2)
-            else:
-                w1 = sum([p for p, r in part1])
-                w2 = sum([p for p, r in part2])
-                return [pivot,
-                        Facility.foldCDF([(p / w1, r) for p, r in part1]),
-                        Facility.foldCDF([(p / w2, r) for p, r in part2])
-                        ]
+        return BayesTree(PatientStatusSetter())
 
 
 class PatientAgent(pyrheabase.PatientAgent):
@@ -388,37 +325,13 @@ class PatientAgent(pyrheabase.PatientAgent):
         print '  diagnosis: %s' % str(self._diagnosis)
         print '  treatment: %s' % TreatmentProtocol.names[self._treatment]
 
-    @staticmethod
-    def _printBayesTree(tree, indent=0):
-        if isinstance(tree, types.ListType):
-            prob, path1, path2 = tree
-            print '%s(%f' % (' '*indent, prob)
-            PatientAgent._printBayesTree(path1, indent+4)
-            PatientAgent._printBayesTree(path2, indent+4)
-            print '%s)' % (' '*indent)
-        else:
-            print '%s%s' % (' '*indent, tree)
-
-    @staticmethod
-    def _traverseBayesTree(tree):
-        # PatientAgent._printBayesTree(tree)
-        while True:
-            if isinstance(tree, types.ListType):
-                if random() <= tree[0]:
-                    tree = tree[1]
-                else:
-                    tree = tree[2]
-            else:
-                # print 'walk returning %s' % str(tree)
-                return tree
-
     def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
             tree = self.ward.fac.getStatusChangeTree(self._status, self.tier, self._treatment,
                                                      self.lastUpdateTime, timeNow)
-            setter = self._traverseBayesTree(tree)
+            setter = tree.traverse()
             self._status = setter.set(self._status, timeNow)
 
     def updateEverything(self, timeNow):

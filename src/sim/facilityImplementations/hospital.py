@@ -27,9 +27,10 @@ from random import shuffle
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, PatientStatus
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, HOSPQueue, ICUQueue, tierToQueueMap
+from stats import CachedCDFGenerator, BayesTree
 
 category = 'HOSPITAL'
 _schema = 'facilityfacts_schema.yaml'
@@ -62,18 +63,6 @@ class OverallHealthSetter(PatientStatusSetter):
     def __str__(self):
         return ('PatientStatusSetter(overallHealth <- %s)'
                 % PatientOverallHealth.names[self.newOverallHealth])
-
-
-def createClassASetter(diagClassA):
-    return ClassASetter(diagClassA)
-
-
-def createOverallHealthSetter(patientOverallHealth):
-    return OverallHealthSetter(patientOverallHealth)
-
-
-def createCopier():
-    return PatientStatusSetter()
 
 
 class Hospital(Facility):
@@ -157,18 +146,23 @@ class Hospital(Facility):
                 return self.hospTreeCache[key]
             else:
                 changeProb = self.hospCachedCDF.intervalProb(*key)
-                tree = [changeProb,
-                        Hospital.foldCDF([(self.hospDischargeViaDeathFrac,
-                                           ClassASetter(DiagClassA.DEATH)),
-                                          ((self.fracTransferHosp + self.fracTransferLTAC),
-                                           ClassASetter(DiagClassA.SICK)),
-                                          (((self.fracTransferNH + self.fracDischargeHealthy)
-                                            * _c['fracOfDischargesRequiringRehab']['value']),
-                                           ClassASetter(DiagClassA.NEEDSREHAB)),
-                                          (((self.fracTransferNH + self.fracDischargeHealthy)
-                                            * (1.0 - _c['fracOfDischargesRequiringRehab']['value'])),
-                                           ClassASetter(DiagClassA.HEALTHY))]),
-                        PatientStatusSetter()]
+                rehabFrac = _c['fracOfDischargesRequiringRehab']['value']
+                changeTree = BayesTree.fromLinearCDF([(self.hospDischargeViaDeathFrac,
+                                                       ClassASetter(DiagClassA.DEATH)),
+                                                      ((self.fracTransferHosp
+                                                        + self.fracTransferLTAC),
+                                                       ClassASetter(DiagClassA.SICK)),
+                                                      (((self.fracTransferNH
+                                                         + self.fracDischargeHealthy)
+                                                        * rehabFrac),
+                                                       ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                      (((self.fracTransferNH
+                                                         + self.fracDischargeHealthy)
+                                                        * (1.0 - rehabFrac)),
+                                                       ClassASetter(DiagClassA.HEALTHY))])
+                tree = BayesTree(changeTree,
+                                 PatientStatusSetter(),
+                                 changeProb)
                 self.hospTreeCache[key] = tree
                 return tree
         elif careTier == CareTier.ICU:
@@ -176,14 +170,12 @@ class Hospital(Facility):
                 return self.icuTreeCache[key]
             else:
                 changeProb = self.icuCachedCDF.intervalProb(*key)
-#                 changeProb = self._icuChangeProb(startTime - patientStatus.startDateA,
-#                                                  timeNow - patientStatus.startDateA)
-                tree = [changeProb,
-                        Hospital.foldCDF([(self.icuDischargeViaDeathFrac,
-                                           ClassASetter(DiagClassA.DEATH)),
-                                          ((1.0 - self.icuDischargeViaDeathFrac),
-                                           ClassASetter(DiagClassA.SICK))]),
-                        PatientStatusSetter()]
+                tree = BayesTree(BayesTree.fromLinearCDF([(self.icuDischargeViaDeathFrac,
+                                                           ClassASetter(DiagClassA.DEATH)),
+                                                          ((1.0 - self.icuDischargeViaDeathFrac),
+                                                           ClassASetter(DiagClassA.SICK))]),
+                                 PatientStatusSetter(),
+                                 changeProb)
                 self.icuTreeCache[key] = tree
                 return tree
         else:

@@ -34,18 +34,19 @@ logger = logging.getLogger(__name__)
 
 class LogNormPlusExp(rv_continuous):
     """
-    Defined to yield k*lognorm(sigma=sigma, scale=math.exp(???))
+    Defined to yield k*lognorm(sigma=s, scale=math.exp(mu)) + (1-k)*expon(scale=1/lmda)
     """
-    def _pdf(self, x, s, k, lmda):
-        return ((lognorm.pdf(x, s) * k)
+    def _pdf(self, x, s, mu, k, lmda):
+        """s is the non-keyword parameter of lognorm, which corresponds to sigma.  """
+        return ((lognorm.pdf(x, s, scale=np.exp(mu)) * k)
                 + (expon.pdf(x, scale=(1.0 / lmda)) * (1.0 - k)))
 
-    def _cdf(self, x, s, k, lmda):
-        return ((lognorm.cdf(x, s) * k)
+    def _cdf(self, x, s, mu, k, lmda):
+        return ((lognorm.cdf(x, s, scale=np.exp(mu)) * k)
                 + (expon.cdf(x, scale=(1.0 / lmda)) * (1.0 - k)))
 
-    def _argcheck(self, s, k, lmda):
-        return (s > 0.0) and (k >= 0.0) and (k <= 1.0) and (lmda > 0.0)
+    def _argcheck(self, s, mu, k, lmda):
+        return np.all(s > 0.0) and np.all(k >= 0.0) and np.all(k <= 1.0) and np.all(lmda > 0.0)
 
 lognormplusexp = LogNormPlusExp(name='lognormplusexp', a=0.0)
 
@@ -179,21 +180,23 @@ class BayesTree(object):
 
 def createMapFun(parms):
     s = parms['s']
+    mu = parms['mu']
     k = parms['k']
     lmda = parms['lmda']
+    print 'testing %s' % parms
 
     def testfun(xVec):
-        return ((lognorm.pdf(xVec, s) * k)
+        return ((lognorm.pdf(xVec, s, scale=np.exp(mu)) * k)
                 + expon.pdf(xVec, scale=(1.0 / lmda)) * (1.0 - k))
 
     return testfun
 
 
-_lognormplusexp_test_parmsets = [{'s': 2.0, 'k': 0.0, 'lmda': 3.0},
-                                 {'s': 1.5, 'k': 0.25, 'lmda': 2.0},
-                                 {'s': 1.0, 'k': 0.5, 'lmda': 1.0},
-                                 {'s': 0.5, 'k': 0.75, 'lmda': 0.5},
-                                 {'s': 0.3, 'k': 1.0, 'lmda': 0.5},
+_lognormplusexp_test_parmsets = [{'s': 2.0, 'mu': 2.0, 'k': 0.0, 'lmda': 3.0},
+                                 {'s': 1.5, 'mu': 1.0, 'k': 0.25, 'lmda': 2.0},
+                                 {'s': 1.0, 'mu': 2.0, 'k': 0.5, 'lmda': 1.0},
+                                 {'s': 0.5, 'mu': 1.0, 'k': 0.75, 'lmda': 0.5},
+                                 {'s': 0.3, 'mu': 2.0, 'k': 1.0, 'lmda': 0.5},
                                  ]
 
 _bayestree_test_dump_string = """\

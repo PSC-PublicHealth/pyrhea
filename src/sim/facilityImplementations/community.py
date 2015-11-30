@@ -18,7 +18,6 @@
 _rhea_svn_id_ = "$Id$"
 
 import os.path
-from itertools import cycle
 import jsonschema
 import yaml
 from scipy.stats import expon
@@ -27,8 +26,9 @@ import logging
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, CachedCDFGenerator
-from hospital import createClassASetter, createOverallHealthSetter, createCopier
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
+from stats import CachedCDFGenerator, BayesTree
+from hospital import ClassASetter
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class Community(Facility):
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         assert careTier == CareTier.HOME, \
-            "The community only offers CareTier 'NURSING'; found %s" % careTier
+            "The community only offers CareTier 'HOME'; found %s" % careTier
         assert treatment == TreatmentProtocol.NORMAL, \
             "The community only offers treatment type 'NORMAL'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
@@ -75,15 +75,15 @@ class Community(Facility):
             deathRate = _constants['communityDeathRate']['value']
             verySickRate = _constants['communityVerySickRate']['value']
             sickRate = 1.0 - (deathRate + verySickRate)
-            tree = [changeProb,
-                    Facility.foldCDF([(deathRate,
-                                       createClassASetter(DiagClassA.DEATH)),
-                                      (sickRate,
-                                       createClassASetter(DiagClassA.SICK)),
-                                      (verySickRate,
-                                       createClassASetter(DiagClassA.VERYSICK)),
-                                      ]),
-                    createCopier()]
+            tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
+                                                       ClassASetter(DiagClassA.DEATH)),
+                                                      (sickRate,
+                                                       ClassASetter(DiagClassA.SICK)),
+                                                      (verySickRate,
+                                                       ClassASetter(DiagClassA.VERYSICK)),
+                                                      ]),
+                             PatientStatusSetter(),
+                             changeProb)
             self.treeCache[key] = tree
             return tree
 

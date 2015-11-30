@@ -23,6 +23,7 @@ import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 from phacsl.utils.notes.statval import HistoVal
+from stats import lognormplusexp
 import sys
 import math
 import pickle
@@ -53,19 +54,24 @@ defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty/facility
 defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations'
 
 
-def fullPDFFromMeanLOS(fitParms):
-    def losFun(xVec):
-        xArr = np.asarray(xVec, np.float64) - 0.5
+def fullCRVFromMeanLOS(fitParms):
+    def crvFun():
         mean = fitParms[0]
         sigma = fitParms[1]
         mu = math.log(mean) - (0.5 * sigma * sigma)
         # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
-        pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-        return pVec
+        return lognorm(sigma, scale=math.exp(mu), loc=0.0)
+    return crvFun
+
+
+def fullPDFFromMeanLOS(fitParms):
+    def losFun(xVec):
+        xArr = np.asarray(xVec, np.float64) - 0.5
+        return fullCRVFromMeanLOS(fitParms)().pdf(xArr)
     return losFun
 
 
-def fullPDFFromLOSModel(losModel):
+def fullCRVFromLOSModel(losModel):
     """
     Returns a function of the signature: pscore = losFun([x0, x1, x2, ...]) for use
     in plotting analytic PDFs.  The curve is shifted right by 0.5 because the bar
@@ -74,56 +80,62 @@ def fullPDFFromLOSModel(losModel):
     x = (N - 0.5).
     """
     if losModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
-        def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64) - 0.5
+        def crvFun():
             mu, sigma = losModel['parms']
-            # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
-            pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-            return pVec
+            # print "fullCRV: sigma= %s, mu= %s" % (sigma, mu)
+            return lognorm(sigma, scale=math.exp(mu), loc=0.0)
     elif losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
-        def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64) - 0.5
+        def crvFun():
             k, mu, sigma, lmda = losModel['parms']
             # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-            pVec = ((k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-                     + ((1.0-k) * expon.pdf(xArr, scale=1.0/lmda))))
-            return pVec
+            return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
     elif losModel['pdf'] == 'expon(lambda=$0)':
-        def losFun(xVec):
-            xArr = np.asarray(xVec, np.float64) - 0.5
+        def crvFun():
             lmda = losModel['parms'][0]
             # print "fullPDF: lmda= %s" % lmda
-            pVec = expon.pdf(xArr, scale=1.0/lmda)
-            return pVec
+            return expon(scale=1.0/lmda)
     else:
         raise RuntimeError('Unknown LOS model %s' % losModel['pdf'])
-    return losFun
+    return crvFun
+
+
+def fullPDFFromLOSModel(losModel):
+    """
+    Returns a function of the signature: pscore = losFun([x0, x1, x2, ...]) for use
+    in plotting analytic PDFs.
+    """
+    return fullCRVFromLOSModel(losModel)().pdf
 
 
 class LOSPlotter(object):
     def __init__(self, descr, constants):
-        self.fullPDFs = {}
+        self.fullCRVs = {}
         if descr['category'] in ['HOSPITAL', 'LTAC']:
             if 'meanLOSICU' in descr:
-                self.fullPDFs['ICU'] = fullPDFFromMeanLOS([descr['meanLOSICU'],
+                self.fullCRVs['ICU'] = fullCRVFromMeanLOS([descr['meanLOSICU'],
                                                            constants['icuLOSLogNormSigma']])
             if 'losModel' in descr:
-                self.fullPDFs['HOSP'] = fullPDFFromLOSModel(descr['losModel'])
+                self.fullCRVs['HOSP'] = fullCRVFromLOSModel(descr['losModel'])
         elif descr['category'] == 'NURSINGHOME':
             if 'losModel' in descr:
-                self.fullPDFs['NURSING'] = fullPDFFromLOSModel(descr['losModel'])
+                self.fullCRVs['NURSING'] = fullCRVFromLOSModel(descr['losModel'])
             else:
-                self.fullPDFs['NURSING'] = fullPDFFromLOSModel(constants['nhLOSModel'])
+                self.fullCRVs['NURSING'] = fullCRVFromLOSModel(constants['nhLOSModel'])
         elif descr['category'] == 'COMMUNITY':
-            self.fullPDFs['HOME'] = fullPDFFromLOSModel(constants['communityLOSModel'])
+            self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
         else:
             raise RuntimeError("%s has unknown category %s - cannot plot LOS"
                                % (abbrev, descr['category']))
 
     def plot(self, tier, axes, nBins, rMin, rMax, scale, pattern='r-'):
-        if tier in self.fullPDFs:
+        """The curve is shifted right by 0.5 because the bar chart it must overlay centers
+        the bar for integer N at x=N, but that bar really represents the integral of the PDF
+        from (N-1) to N and so should be centered at x = (N - 0.5)."""
+        if tier in self.fullCRVs:
             curveX = np.linspace(rMin, rMax, nBins)
-            curveY = self.fullPDFs[tier](curveX) * scale
+            boundedScale = scale / (self.fullCRVs[tier]().cdf(rMax)
+                                    - self.fullCRVs[tier]().cdf(rMin))
+            curveY = self.fullCRVs[tier]().pdf(curveX - 0.5) * boundedScale
             axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
