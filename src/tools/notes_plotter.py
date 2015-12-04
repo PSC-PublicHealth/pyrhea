@@ -38,14 +38,14 @@ from scipy.stats import lognorm, expon
 nameMap = {'NURSINGHOME': 'NURSING',
            'HOSPITAL': 'HOSP',
            'COMMUNITY': 'HOME',
-           'LTAC': 'HOSP'}
+           'LTAC': 'LTAC'}
 
 constantFileNameMap = {'NURSINGHOME': 'nursinghome',
                        'HOSPITAL': 'hospital',
                        'COMMUNITY': 'community',
-                       'LTAC': 'hospital'}
+                       'LTAC': 'ltac'}
 
-careTiers = ['HOME', 'NURSING', 'HOSP', 'ICU']
+careTiers = ['HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU']
 
 
 defaultNotesPath = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
@@ -55,20 +55,10 @@ defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementation
 
 
 def fullCRVFromMeanLOS(fitParms):
-    def crvFun():
-        mean = fitParms[0]
-        sigma = fitParms[1]
-        mu = math.log(mean) - (0.5 * sigma * sigma)
-        # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
-        return lognorm(sigma, scale=math.exp(mu), loc=0.0)
-    return crvFun
-
-
-def fullPDFFromMeanLOS(fitParms):
-    def losFun(xVec):
-        xArr = np.asarray(xVec, np.float64) - 0.5
-        return fullCRVFromMeanLOS(fitParms)().pdf(xArr)
-    return losFun
+    mean = fitParms[0]
+    sigma = fitParms[1]
+    mu = math.log(mean) - (0.5 * sigma * sigma)
+    return lognorm(sigma, scale=math.exp(mu), loc=0.0)
 
 
 def fullCRVFromLOSModel(losModel):
@@ -80,42 +70,30 @@ def fullCRVFromLOSModel(losModel):
     x = (N - 0.5).
     """
     if losModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
-        def crvFun():
-            mu, sigma = losModel['parms']
-            # print "fullCRV: sigma= %s, mu= %s" % (sigma, mu)
-            return lognorm(sigma, scale=math.exp(mu), loc=0.0)
+        mu, sigma = losModel['parms']
+        return lognorm(sigma, scale=math.exp(mu), loc=0.0)
     elif losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
-        def crvFun():
-            k, mu, sigma, lmda = losModel['parms']
-            # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-            return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
+        k, mu, sigma, lmda = losModel['parms']
+        return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
     elif losModel['pdf'] == 'expon(lambda=$0)':
-        def crvFun():
-            lmda = losModel['parms'][0]
-            # print "fullPDF: lmda= %s" % lmda
-            return expon(scale=1.0/lmda)
+        lmda = losModel['parms'][0]
+        return expon(scale=1.0/lmda)
     else:
         raise RuntimeError('Unknown LOS model %s' % losModel['pdf'])
-    return crvFun
-
-
-def fullPDFFromLOSModel(losModel):
-    """
-    Returns a function of the signature: pscore = losFun([x0, x1, x2, ...]) for use
-    in plotting analytic PDFs.
-    """
-    return fullCRVFromLOSModel(losModel)().pdf
 
 
 class LOSPlotter(object):
     def __init__(self, descr, constants):
         self.fullCRVs = {}
-        if descr['category'] in ['HOSPITAL', 'LTAC']:
+        if descr['category'] == 'HOSPITAL':
             if 'meanLOSICU' in descr:
                 self.fullCRVs['ICU'] = fullCRVFromMeanLOS([descr['meanLOSICU'],
                                                            constants['icuLOSLogNormSigma']])
             if 'losModel' in descr:
                 self.fullCRVs['HOSP'] = fullCRVFromLOSModel(descr['losModel'])
+        elif descr['category'] == 'LTAC':
+            if 'losModel' in descr:
+                self.fullCRVs['LTAC'] = fullCRVFromLOSModel(descr['losModel'])
         elif descr['category'] == 'NURSINGHOME':
             if 'losModel' in descr:
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(descr['losModel'])
@@ -133,9 +111,9 @@ class LOSPlotter(object):
         from (N-1) to N and so should be centered at x = (N - 0.5)."""
         if tier in self.fullCRVs:
             curveX = np.linspace(rMin, rMax, nBins)
-            boundedScale = scale / (self.fullCRVs[tier]().cdf(rMax)
-                                    - self.fullCRVs[tier]().cdf(rMin))
-            curveY = self.fullCRVs[tier]().pdf(curveX - 0.5) * boundedScale
+            boundedScale = scale / (self.fullCRVs[tier].cdf(rMax)
+                                    - self.fullCRVs[tier].cdf(rMin))
+            curveY = self.fullCRVs[tier].pdf(curveX - 0.5) * boundedScale
             axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
@@ -269,7 +247,8 @@ def patientFateFig(catNames, allOfCategoryDict):
               'HOME': 'green',
               'NURSING': 'red',
               'HOSP': 'blue',
-              'ICU': 'cyan'}
+              'ICU': 'cyan',
+              'LTAC': 'yellow'}
     for offset, cat in enumerate(catNames):
         keys = ['death'] + ['%s_found' % tier for tier in careTiers]
         labels = ['death'] + careTiers
@@ -382,7 +361,8 @@ overallLOSFig(catNames, allOfCategoryDict)
 singleLOSFig('SJUD', notesDict)
 singleLOSFig('WAEC', notesDict)
 singleLOSFig('CM69', notesDict)
-# bedBounceFig(allOfCategoryDict)
+singleLOSFig('COLL', notesDict)
+bedBounceFig(allOfCategoryDict)
 patientFlowFig(allOfCategoryDict)
 patientFateFig(catNames, allOfCategoryDict)
 occupancyTimeFig(specialDict)
