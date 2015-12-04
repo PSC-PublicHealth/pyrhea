@@ -61,11 +61,13 @@
       'communityLOSModel': {'$ref': '#/definitions/PDF'}
       'communityDeathRate': {'$ref': '#/definitions/fraction'}
       'communityVerySickRate': {'$ref': '#/definitions/fraction'}
+      'communityNeedsLTACRate': {'$ref': '#/definitions/fraction'}
       'communityPatientCheckInterval': {'$ref': '#/definitions/count'}
     'required':
       - 'communityLOSModel'
       - 'communityDeathRate'
       - 'communityVerySickRate'
+      - 'communityNeedsLTACRate'
       - 'communityPatientCheckInterval'
       
       

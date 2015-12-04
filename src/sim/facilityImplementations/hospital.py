@@ -149,9 +149,10 @@ class Hospital(Facility):
                 rehabFrac = _c['fracOfDischargesRequiringRehab']['value']
                 changeTree = BayesTree.fromLinearCDF([(self.hospDischargeViaDeathFrac,
                                                        ClassASetter(DiagClassA.DEATH)),
-                                                      ((self.fracTransferHosp
-                                                        + self.fracTransferLTAC),
+                                                      (self.fracTransferHosp,
                                                        ClassASetter(DiagClassA.SICK)),
+                                                      (self.fracTransferLTAC,
+                                                       ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       (((self.fracTransferNH
                                                          + self.fracDischargeHealthy)
                                                         * rehabFrac),
@@ -190,6 +191,8 @@ class Hospital(Facility):
                 return (CareTier.NURSING, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
             return (CareTier.NURSING, TreatmentProtocol.REHAB)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
+            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:

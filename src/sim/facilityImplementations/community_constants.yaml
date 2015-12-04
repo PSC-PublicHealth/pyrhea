@@ -12,6 +12,10 @@
   'value': 0.1
   'prov': 'DEBUGGING ONLY'
   
+'communityNeedsLTACRate':
+  'value': 0.0625
+  'prov': 'DEBUGGING ONLY'
+  
 'communityPatientCheckInterval':
   'value': 1
   'prov': 'arbitrary'

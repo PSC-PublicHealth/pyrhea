@@ -90,10 +90,13 @@ class NursingHome(Facility):
             totRate = (_c['residentDeathRate']['value']
                        + _c['residentSickRate']['value']
                        + _c['residentVerySickRate']['value']
+                       + _c['residentNeedsLTACRate']['value']
                        + _c['residentReturnToCommunityRate']['value'])
             healthySetter = OverallHealthSetter(PatientOverallHealth.HEALTHY)
             changeTree = BayesTree.fromLinearCDF([(_c['residentDeathRate']['value']/totRate,
                                                    ClassASetter(DiagClassA.DEATH)),
+                                                  (_c['residentNeedsLTACRate']['value']/totRate,
+                                                   ClassASetter(DiagClassA.NEEDSLTAC)),
                                                   (_c['residentSickRate']['value']/totRate,
                                                    ClassASetter(DiagClassA.SICK)),
                                                   (_c['residentVerySickRate']['value']/totRate,
@@ -117,10 +120,14 @@ class NursingHome(Facility):
                     changeProb = self.rehabCachedCDF.intervalProb(*key)
                     adverseProb = (_c['rehabDeathRate']['value']
                                    + _c['rehabSickRate']['value']
-                                   + _c['rehabVerySickRate']['value'])
+                                   + _c['rehabVerySickRate']['value']
+                                   + _c['rehabNeedsLTACRate']['value'])
                     adverseTree = BayesTree.fromLinearCDF([(_c['rehabDeathRate']['value']
                                                             / adverseProb,
                                                             ClassASetter(DiagClassA.DEATH)),
+                                                           (_c['rehabNeedsLTACRate']['value']
+                                                            / adverseProb,
+                                                            ClassASetter(DiagClassA.NEEDSLTAC)),
                                                            (_c['rehabSickRate']['value']
                                                             / adverseProb,
                                                             ClassASetter(DiagClassA.SICK)),
@@ -135,8 +142,17 @@ class NursingHome(Facility):
                     self.rehabTreeCache[key] = tree
                     return tree
             elif treatment == TreatmentProtocol.NORMAL:
-                raise RuntimeError('Patients with NORMAL overall health should only be'
-                                   ' in NURSING care for rehab')
+                if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
+                                                 DiagClassA.VERYSICK]):
+                    logger.warning('fac %s status: %s careTier %s startTime: %s: '
+                                   'this patient should be gone by now'
+                                   % (self.name, str(patientStatus), CareTier.names[careTier],
+                                      startTime))
+                    print 'PING!!'
+                    return BayesTree(PatientStatusSetter())
+                else:
+                    raise RuntimeError('Patients with NORMAL overall health should only be'
+                                       ' in NURSING care for rehab')
             else:
                 raise RuntimeError('Nursing homes do not provide treatment protocol %s'
                                    % treatment)
@@ -152,6 +168,8 @@ class NursingHome(Facility):
             return (CareTier.NURSING, TreatmentProtocol.REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
+            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
             return (CareTier.ICU, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:

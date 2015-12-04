@@ -17,11 +17,9 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import types
-from random import randint, random, shuffle, choice
+from random import randint, shuffle, choice
 import pyrheabase
 from pyrheautils import enum, namedtuple
-from math import fabs
 import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree
@@ -29,11 +27,11 @@ from stats import BayesTree
 logger = logging.getLogger(__name__)
 
 
-CareTier = enum('HOME', 'NURSING', 'HOSP', 'ICU')
+CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU')
 
 PatientOverallHealth = enum('HEALTHY', 'FRAIL')
 
-DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'SICK', 'VERYSICK', 'DEATH')
+DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH')
 
 DiagClassB = enum('CLEAR', 'COLONIZED', 'INFECTED')
 
@@ -94,6 +92,10 @@ class HOSPQueue(pyrheabase.FacRequestQueue):
     pass
 
 
+class LTACQueue(pyrheabase.FacRequestQueue):
+    pass
+
+
 class NURSINGQueue(pyrheabase.FacRequestQueue):
     pass
 
@@ -104,6 +106,7 @@ class HOMEQueue(pyrheabase.FacRequestQueue):
 
 tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.NURSING: NURSINGQueue,
+                  CareTier.LTAC: LTACQueue,
                   CareTier.HOSP: HOSPQueue,
                   CareTier.ICU: ICUQueue}
 
@@ -188,9 +191,6 @@ class Facility(pyrheabase.Facility):
                 if losKey not in nh:
                     nh.addNote({losKey: HistoVal([])})
                 nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
-#                 nh.addNote({(CareTier.names[tier] + '_departures'): 1})
-#                 if tier != CareTier.NURSING or isFrail:
-#                     nh.addNote({losKey: lengthOfStay})
         elif issubclass(msgType, BirthMsg):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
@@ -280,6 +280,9 @@ class Facility(pyrheabase.Facility):
         elif careTier == CareTier.NURSING:
             return PatientDiagnosis(PatientOverallHealth.FRAIL,
                                     DiagClassA.HEALTHY, DiagClassB.CLEAR)
+        elif careTier == CareTier.LTAC:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSLTAC, DiagClassB.CLEAR)
         elif careTier == CareTier.HOSP:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
                                     DiagClassA.SICK, DiagClassB.CLEAR)
@@ -329,10 +332,15 @@ class PatientAgent(pyrheabase.PatientAgent):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            tree = self.ward.fac.getStatusChangeTree(self._status, self.tier, self._treatment,
-                                                     self.lastUpdateTime, timeNow)
-            setter = tree.traverse()
-            self._status = setter.set(self._status, timeNow)
+            try:
+                tree = self.ward.fac.getStatusChangeTree(self._status, self.tier, self._treatment,
+                                                         self.lastUpdateTime, timeNow)
+                setter = tree.traverse()
+                self._status = setter.set(self._status, timeNow)
+            except Exception, e:
+                print 'Got exception %s on patient %s' % (str(e), self.name)
+                self.logger.critical('Got exception %s on patient %s' % (str(e), self.name))
+                raise
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)

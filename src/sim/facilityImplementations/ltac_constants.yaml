@@ -1,0 +1,13 @@
+'bedsPerWard':
+  'value': 20
+  'prov': 'empirical, based on rhea-dante'
+
+'dischargeViaDeathFrac':
+  'value': 0.0154
+  'prov': 'OrangeCounty model CategoryTransferRates.xls r68 RateCalcs:$59$B as for hospitals'
+  
+'fracOfDischargesRequiringRehab':
+  'value': 0.0448
+  'prov': 'OrangeCounty model CategoryTransferRates.xls r71 RateCalcs:$71$B as for hospitals'
+  
+  

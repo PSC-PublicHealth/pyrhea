@@ -21,6 +21,10 @@
   'value': 0.0015
   'prov': 'DEBUGGING ONLY'
   
+'rehabNeedsLTACRate':
+  'value': 0.001
+  'prov': 'DEBUGGING ONLY'
+  
 'residentDeathRate':
   'value': 0.001
   'prov': 'DEBUGGING ONLY'
@@ -31,6 +35,10 @@
   
 'residentVerySickRate':
   'value': 0.0015
+  'prov': 'DEBUGGING ONLY'
+  
+'residentNeedsLTACRate':
+  'value': 0.001
   'prov': 'DEBUGGING ONLY'
   
 'residentReturnToCommunityRate':

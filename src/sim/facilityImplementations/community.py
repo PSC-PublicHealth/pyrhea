@@ -74,13 +74,16 @@ class Community(Facility):
             changeProb = self.cachedCDF.intervalProb(*key)
             deathRate = _constants['communityDeathRate']['value']
             verySickRate = _constants['communityVerySickRate']['value']
-            sickRate = 1.0 - (deathRate + verySickRate)
+            needsLTACRate = _constants['communityNeedsLTACRate']['value']
+            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate)
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (sickRate,
                                                        ClassASetter(DiagClassA.SICK)),
                                                       (verySickRate,
                                                        ClassASetter(DiagClassA.VERYSICK)),
+                                                      (needsLTACRate,
+                                                       ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       ]),
                              PatientStatusSetter(),
                              changeProb)
@@ -96,6 +99,8 @@ class Community(Facility):
                 return (CareTier.NURSING, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
             return (CareTier.NURSING, TreatmentProtocol.REHAB)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
+            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:

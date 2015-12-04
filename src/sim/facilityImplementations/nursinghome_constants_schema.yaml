@@ -62,18 +62,22 @@
       'rehabDeathRate': {'$ref': '#/definitions/fraction'}
       'rehabSickRate': {'$ref': '#/definitions/fraction'}
       'rehabVerySickRate': {'$ref': '#/definitions/fraction'}
+      'rehabNeedsLTACRate': {'$ref': '#/definitions/fraction'}
       'reesidentDeathRate': {'$ref': '#/definitions/fraction'}
       'residentSickRate': {'$ref': '#/definitions/fraction'}
       'residentVerySickRate': {'$ref': '#/definitions/fraction'}
       'residentReturnToCommunityRate': {'$ref': '#/definitions/fraction'}
+      'residentNeedsLTACRate': {'$ref': '#/definitions/fraction'}
     'required':
       - 'nhLOSModel'
       - 'rehabDeathRate'
       - 'rehabSickRate'
       - 'rehabVerySickRate'
+      - 'rehabNeedsLTACRate'
       - 'residentDeathRate'
       - 'residentSickRate'
       - 'residentVerySickRate'
       - 'residentReturnToCommunityRate'
+      - 'residentNeedsLTACRate'
       
       

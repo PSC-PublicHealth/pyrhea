@@ -383,7 +383,7 @@ class PatientAgent(patches.Agent):
                     timeNow = self.sleep(self.ward.checkInterval)
                 else:
                     # print ('%s wants a tier %s ward at %s' %
-                    #        (self.name, CareTier.names[tier], timeNow))
+                    #        (self.name, tier, timeNow))
                     facAddrList = self.getCandidateFacilityList(timeNow, tier)
                     key = self.ward.fac.holdQueue.getUniqueKey()
                     self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
