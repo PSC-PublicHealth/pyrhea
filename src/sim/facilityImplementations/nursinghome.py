@@ -67,7 +67,8 @@ class NursingHome(Facility):
         self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                           patch, CareTier.NURSING, nBeds))
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+        careTier = ward.tier
         assert careTier == CareTier.NURSING, \
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
@@ -148,7 +149,6 @@ class NursingHome(Facility):
                                    'this patient should be gone by now'
                                    % (self.name, str(patientStatus), CareTier.names[careTier],
                                       startTime))
-                    print 'PING!!'
                     return BayesTree(PatientStatusSetter())
                 else:
                     raise RuntimeError('Patients with NORMAL overall health should only be'

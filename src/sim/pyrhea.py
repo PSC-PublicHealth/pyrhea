@@ -31,18 +31,39 @@ import pika
 import pickle
 
 import phacsl.utils.formats.csv_tools as csv_tools
-# import csv_tools
 
 import patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
-# import yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
-# import noteholder
-import pyrheabase
 
 inputSchema = 'rhea_input_schema.yaml'
 
 logger = None
+
+
+def loadPathogenImplementations(implementationDir):
+    logger.info('Loading infectious agent implementations')
+    implDict = {}
+    sys.path.append(implementationDir)
+    for fname in os.listdir(implementationDir):
+        name, ext = os.path.splitext(fname)
+        if ext == '.py':
+            newMod = load_source(name, os.path.join(implementationDir, fname))
+            for requiredAttr in ['pathogenName', 'getPathogenClass']:
+                if not hasattr(newMod, requiredAttr):
+                    raise RuntimeError('The infectious agent implemenation in %s has no %s' %
+                                       (os.path.join(implementationDir, fname),
+                                        requiredAttr))
+            assert newMod.pathogenName not in implDict, \
+                "Redundant definitions for pathogen %s" % newMod.category
+            implDict[newMod.pathogenName] = newMod
+            logger.info('Loaded %s implementing %s' % (fname, newMod.pathogenName))
+        elif ext.startswith('.py'):
+            pass  # .pyc files for example
+        else:
+            logger.info('Skipping non-python file %s' % fname)
+    sys.path.pop()  # drop implementaionDir
+    return implDict
 
 
 def loadFacilityImplementations(implementationDir):
@@ -199,12 +220,35 @@ def buildFacOccupancyDict(patch, timeNow):
     return facTypeDict
 
 
+def buildFacPthDict(patch, timeNow):
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        facPPC = {}
+        for ward in fac.getWards():
+            pPC = ward.iA.getPatientPthCounts(timeNow)
+            for k, v in pPC.items():
+                if k in facPPC:
+                    facPPC[k] += v
+                else:
+                    facPPC[k] = v
+        tpName = type(fac).__name__
+        for k, v in facPPC.items():
+            key = '%s_%s' % (tpName, k)
+            if key in facPthDict:
+                facPthDict[key] += v
+            else:
+                facPthDict[key] = v
+    return facPthDict
+
+
 def createPerDayCB(patch, noteHolder, runDurationDays):
     def perDayCB(loop, timeNow):
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
-        d = buildFacOccupancyDict(patch, timeNow)
-        noteHolder.addNote({'occupancy': [d]})
+        oD = buildFacOccupancyDict(patch, timeNow)
+        pD = buildFacPthDict(patch, timeNow)
+        noteHolder.addNote({'occupancy': [oD], 'pathogen': [pD]})
         if timeNow > runDurationDays:
             patch.group.stop()
     return perDayCB
@@ -280,7 +324,7 @@ class BurnInAgent(patches.Agent):
     def run(self, startTime):
         timeNow = self.sleep(self.burnInDays)  # @UnusedVariable
         logger.info('burnInAgent is running')
-        self.noteHolderGroup.clearAll(keepRegex='.*(([Nn]ame)|([Tt]ype)|([Cc]ode)|(_vol)|(occupancy))')
+        self.noteHolderGroup.clearAll(keepRegex='.*(([Nn]ame)|([Tt]ype)|([Cc]ode)|(_vol)|(occupancy)|(pathogen))')
         # and now the agent exits
 
 
@@ -347,6 +391,10 @@ def main():
     if deterministic:
         seed(1234 + comm.rank)  # Set the random number generator seed
 
+    pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
+    assert len(pthImplDict) == 1, 'Simulation currently supports only one pathogen at a time'
+    PthClass = pthImplDict.values()[0].getPathogenClass()
+
     facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
 
     myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
@@ -371,6 +419,9 @@ def main():
         if facDescription['category'] in facImplDict:
             facilities, wards, patients = \
                 facImplDict[facDescription['category']].generateFull(facDescription, patch)
+            for w in wards:
+                w.setInfectiousAgent(PthClass(w))
+                w.initializePatientPthState()
             for fac in facilities:
                 nh = noteHolderGroup.createNoteHolder()
                 nh.addNote({'rank': comm.rank})

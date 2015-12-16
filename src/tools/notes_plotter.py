@@ -19,11 +19,11 @@ _rhea_svn_id_ = "$Id$"
 
 import yaml
 import os.path
-import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
+import pathogenbase as pth
 import sys
 import math
 import pickle
@@ -295,8 +295,9 @@ def occupancyTimeFig(specialDict):
             keys.sort()
             for k in keys:
                 l = fields[k]
-                assert len(l) == len(dayList), ('field %s is the wrong length in special data %s'
-                                                % patchName)
+                assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
+                                                 '(%d vs. %d)')
+                                                % (k, patchName, len(l), len(dayList)))
                 axes5[offset].plot(dayList, l, label=k)
             axes5[offset].set_xlabel('Days')
             axes5[offset].set_ylabel('Occupancy')
@@ -306,6 +307,101 @@ def occupancyTimeFig(specialDict):
         axes5[offset].set_title(patchName)
     figs5.tight_layout()
     figs5.canvas.set_window_title("Time History of Occupancy")
+
+
+# def pathogenTimeFig(specialDict):
+#     figs6, axes6 = plt.subplots(nrows=1, ncols=len(specialDict))
+#     if len(specialDict) == 1:
+#         axes6 = [axes6]
+#     for offset, (patchName, data) in enumerate(specialDict.items()):
+#         try:
+#             pthDataList = data['pathogen']
+#             assert isinstance(pthDataList, types.ListType), \
+#                 'Special data %s is not a list' % patchName
+#             fields = {}
+#             for d in pthDataList:
+#                 for k, v in d.items():
+#                     if k not in fields:
+#                         fields[k] = []
+#                     fields[k].append(v)
+#             assert 'day' in fields, 'Date field is missing for special data %s' % patchName
+#             dayList = fields['day']
+#             del fields['day']
+#             keys = fields.keys()
+#             keys.sort()
+#             for k in keys:
+#                 facClassNm, enumStr = k.split('_')
+#                 l = fields[k]
+#                 lbl = '%s %s' % (facClassNm, pth.Status.names[int(enumStr)])
+#                 assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
+#                                                  '(%d vs. %d)')
+#                                                 % (k, patchName, len(l), len(dayList)))
+#                 if not all([ll == 0 for ll in l]) and facClassNm == 'Hospital':
+#                     axes6[offset].plot(dayList, l, label=lbl)
+#             axes6[offset].set_xlabel('Days')
+#             axes6[offset].set_ylabel('Pathogen Prevalence')
+#             axes6[offset].legend()
+#         except Exception, e:
+#             print e
+#         axes6[offset].set_title(patchName)
+#     figs6.tight_layout()
+#     figs6.canvas.set_window_title("Time History of Occupancy")
+
+
+def pathogenTimeFig(specialDict):
+    patchList = specialDict.keys()[:]
+    patchList.sort()
+    catList = []
+    for patchName, data in specialDict.items():
+        pthDataList = data['pathogen']
+        assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
+        for d in pthDataList:
+            for k in d.keys():
+                if k != 'day':
+                    cat = k.split('_')[0]
+                    if cat not in catList:
+                        catList.append(cat)
+    catList.sort()
+    figs6, axes6 = plt.subplots(nrows=len(catList), ncols=len(patchList))
+    axes6.reshape((len(catList), len(patchList)))
+    if len(catList) == 1:
+        axes6 = axes6[np.newaxis, :]
+    if len(patchList) == 1:
+        axes6 = axes6[:, np.newaxis]
+    for colOff, patchName in enumerate(patchList):
+        try:
+            pthDataList = specialDict[patchName]['pathogen']
+            assert isinstance(pthDataList, types.ListType), \
+                'Special data %s is not a list' % patchName
+            fields = {}
+            for d in pthDataList:
+                for k, v in d.items():
+                    if k not in fields:
+                        fields[k] = []
+                    fields[k].append(v)
+            assert 'day' in fields, 'Date field is missing for special data %s' % patchName
+            dayList = fields['day']
+            del fields['day']
+
+            for rowOff, cat in enumerate(catList):
+                for pthLvl in xrange(len(pth.Status.names)):
+                    key = '%s_%d' % (cat, pthLvl)
+                    if key in fields:
+                        lbl = '%s' % pth.Status.names[pthLvl]
+                        l = fields[key]
+                        assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
+                                                         '(%d vs. %d)')
+                                                        % (k, patchName, len(l), len(dayList)))
+                        if not all([ll == 0 for ll in l]):
+                            axes6[rowOff, colOff].plot(dayList, l, label=lbl)
+                axes6[rowOff, colOff].set_xlabel('Days')
+                axes6[rowOff, colOff].set_ylabel('Pathogen Prevalence')
+                axes6[rowOff, colOff].legend()
+                axes6[rowOff, colOff].set_title(cat)
+        except Exception, e:
+            print e
+    figs6.tight_layout()
+    figs6.canvas.set_window_title("Time History of Infection Status")
 
 
 def countBirthsDeaths(catNames, allOfCategoryDict):
@@ -366,5 +462,6 @@ bedBounceFig(allOfCategoryDict)
 patientFlowFig(allOfCategoryDict)
 patientFateFig(catNames, allOfCategoryDict)
 occupancyTimeFig(specialDict)
+pathogenTimeFig(specialDict)
 
 plt.show()

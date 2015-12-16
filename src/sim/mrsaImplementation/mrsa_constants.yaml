@@ -1,0 +1,38 @@
+'colonizationToInfectionFrac':
+  'value': 0.4
+  'prov': >-
+    DEBUGGING ONLY. Discussion: 30% lose colonization every 6 months?
+    33% of carriers are persistent.  25% lose colonization over 274 days. (Conversation with Sarah)
+  
+'initialFractionColonized':
+  'value': 0.1
+  'prov': 'DEBUGGING ONLY'
+  
+'initialFractionInfected':
+  'value': 0.01
+  'prov': >-
+    DEBUGGING ONLY - Sarah: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.  Nursing homes will be higher.
+    Nursing home average is 25.9%, range 0% to 52%.  Numbers exist for the community exist but are not handy- Sarah will ask.
+    
+'colonizationDurationPDF':
+    parms:
+    - 1.0e-2
+    pdf: 'expon(lambda=$0)'
+    prov: 'DEBUGGING ONLY - but how do you get un-colonized if everyone around you is colonized?'
+    
+'infectionDurationPDF':
+    parms:
+    - 3.0
+    - 0.75
+    pdf: lognorm(mu=$0,sigma=$1)
+    prov: >-
+      DEBUGGING ONLY - the transition should be from infected to clear (Sarah).  This should only happen with treatment.
+        
+'beta':
+  'value': 0.0002509485331378
+  'prov': >-
+    Typical value for modify_beta(-some number-)%beta(2) from
+    OC_County_Data_2013/OC_County_Data_2013-clean-FOR-JOEL/
+    CRE.INPUT_CDC-VITAL-SIGNS_FULL-COUNTY_1to8ICEBERG_0.10IP_LTAC-0.25_NH-0.080_0.75NH-ICU_0.50NH-GEN_LTAC-ICU-0.50_NH-ICU-0.20_0-SILOS-TRMX_CP-KNOWN_NH-CP-KNOWN-0.50-10D_CNTY-TRIG-28-CHG
+    This is actually CRE data- look at MRSA_INPUT.txt from 2007 model.
+  

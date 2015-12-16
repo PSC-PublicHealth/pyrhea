@@ -136,9 +136,10 @@ class Hospital(Facility):
             shuffle(facAddrList)
         return facAddrList
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         assert treatment == TreatmentProtocol.NORMAL, \
             "Hospitals only offer 'NORMAL' treatment; found %s" % treatment
+        careTier = ward.tier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if careTier == CareTier.HOSP:

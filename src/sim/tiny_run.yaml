@@ -4,4 +4,10 @@
 
 'facilityImplementationDir': './facilityImplementations'
 
-'runDurationDays': 30
+'pathogenImplementationDir': './mrsaImplementation'
+
+#'runDurationDays': 1095
+'runDurationDays': 365
+
+#'burnInDays': 365
+burnInDays: 100

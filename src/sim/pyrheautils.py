@@ -92,7 +92,38 @@ def importConstants(valuePath, schemaPath):
     return cJSON
 
 
+class SingletonMetaClass(type):
+    """
+    Thanks again to stackoverflow, this is a Singleton metaclass for Python.
+
+    see http://stackoverflow.com/questions/6760685/creating-a-singleton-in-python
+
+    Note that 'self' in this case should properly be 'cls' since it is a class, but
+    the syntax checker doesn't like that.
+    """
+    _instances = {}
+
+    def __call__(self, *args, **kwargs):  # stupid syntax checker does not understand metaclasses
+        if self not in self._instances:
+            self._instances[self] = super(SingletonMetaClass, self).__call__(*args, **kwargs)
+        return self._instances[self]
+
+
 class TestUtilFuncs(unittest.TestCase):
+    def test_singletonmeta(self):
+        class MyClass(object):
+            __metaclass__ = SingletonMetaClass
+            instanceCounter = 0
+
+            def __init__(self):
+                self.id = self.instanceCounter
+                self.instanceCounter += 1
+
+        inst1 = MyClass()
+        inst2 = MyClass()
+        self.assertTrue(inst1 is inst2, "Singleton is-ness failed")
+        self.assertTrue(inst1.id == inst2.id, "Singleton ids do not match")
+
     def test_namedtuple1(self):
         CareTier = enum('HOME', 'HOSP')
         PatientStatus = namedtuple('PatientStatus', ['careTier', 'thing', 'age'],

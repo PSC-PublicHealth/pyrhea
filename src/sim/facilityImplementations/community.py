@@ -62,7 +62,8 @@ class Community(Facility):
         self.cachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][0]))
         self.treeCache = {}
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+        careTier = ward.tier
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
         assert treatment == TreatmentProtocol.NORMAL, \

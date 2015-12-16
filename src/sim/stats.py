@@ -21,7 +21,7 @@ import types
 import sys
 import random
 from scipy.stats.distributions import rv_continuous, lognorm, expon
-from math import fabs
+from math import fabs, log, exp
 import logging
 
 import unittest
@@ -58,8 +58,8 @@ class CachedCDFGenerator:
     the patient will be discharged.  Since the interval bounds are integers, caching of the
     generated values is very effective.
     """
-    def __init__(self, frozenPDF):
-        self.frozenPDF = frozenPDF
+    def __init__(self, frozenCRV):
+        self.frozenCRV = frozenCRV
         self.cache = {}
 
     def intervalProb(self, start, end):
@@ -67,8 +67,8 @@ class CachedCDFGenerator:
         if key in self.cache:
             return self.cache[key]
         else:
-            sv = self.frozenPDF.cdf(start)
-            cP = ((self.frozenPDF.cdf(end) - sv)
+            sv = self.frozenCRV.cdf(start)
+            cP = ((self.frozenCRV.cdf(end) - sv)
                   / (1.0 - sv))
             self.cache[key] = cP
             return cP
@@ -176,6 +176,36 @@ class BayesTree(object):
         else:
             rng = randomNumberGenerator.random
         return self._innerTraverse(self.tree, rng)
+
+
+def fullLogNormCRVFromMean(mean, sigma):
+    """
+    Returns a scipy.stats.distributions frozen lognorm continuous random variable from a mean
+    and sigma.
+    """
+    mu = log(mean) - (0.5 * sigma * sigma)
+    return lognorm(sigma, scale=exp(mu), loc=0.0)
+
+
+def fullCRVFromPDFModel(pdfModel):
+    """
+    Returns a scipy.stats.distributions frozen continuous random variable from the
+    data in a PDF model.  The PDF model has the form:
+        pdfModel = {'pdf': 'some descriptive text string'
+                    'parms': iterable of floats }
+    The algorithm is a simple case statement with matches for known pdf strings.
+    """
+    if pdfModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
+        mu, sigma = pdfModel['parms']
+        return lognorm(sigma, scale=exp(mu), loc=0.0)
+    elif pdfModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
+        k, mu, sigma, lmda = pdfModel['parms']
+        return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
+    elif pdfModel['pdf'] == 'expon(lambda=$0)':
+        lmda = pdfModel['parms'][0]
+        return expon(scale=1.0/lmda)
+    else:
+        raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 
 
 def createMapFun(parms):

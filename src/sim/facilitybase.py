@@ -23,9 +23,10 @@ from pyrheautils import enum, namedtuple
 import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree
+from pathogenbase import Status as PthStatus, defaultStatus as defaultPthStatus
+from pathogenbase import Pathogen  # @UnusedImport
 
 logger = logging.getLogger(__name__)
-
 
 CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU')
 
@@ -33,25 +34,23 @@ PatientOverallHealth = enum('HEALTHY', 'FRAIL')
 
 DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH')
 
-DiagClassB = enum('CLEAR', 'COLONIZED', 'INFECTED')
-
 TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
 
 PatientStatus = namedtuple('PatientStatus',
                            ['overall',              # one of patientOverallHealth
                             'diagClassA',           # one of DiagClassA
                             'startDateA',           # date diagClassA status was entered
-                            'diagClassB',           # one of DiagClassB
-                            'startDateB'            # date diagClassB status was entered
+                            'pthStatus',            # one of PthStatus
+                            'startDatePth'          # date PthStatus status was entered
                             ],
-                           field_types=[PatientOverallHealth, DiagClassA, None, DiagClassB, None])
+                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
                                'diagClassA',           # one of DiagClassA
-                               'diagClassB',           # one of DiagClassB
+                               'pthStatus',            # one of PthStatus
                                ],
-                              field_types=[PatientOverallHealth, DiagClassA, DiagClassB])
+                              field_types=[PatientOverallHealth, DiagClassA, PthStatus])
 
 
 class PatientStatusSetter(object):
@@ -66,10 +65,32 @@ class PatientStatusSetter(object):
         return 'PatientStatusSetter()'
 
 
+class PthStatusSetter(PatientStatusSetter):
+    def __init__(self, newPthStatus):
+        self.newPthStatus = newPthStatus
+
+    def set(self, patientStatus, timeNow):
+        return patientStatus._replace(pthStatus=self.newPthStatus, startDateA=timeNow)
+
+    def __str__(self):
+        return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
+
+
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
         pyrheabase.Ward.__init__(self, name, patch, tier, nBeds)
         self.checkInterval = 1  # check health daily
+        self.iA = None  # infectious agent
+
+    def getPatientList(self):
+        return self._lockingAgentList[1:self._nLocks]
+
+    def setInfectiousAgent(self, iA):
+        self.iA = iA
+
+    def initializePatientPthState(self):
+        for p in self.getPatientList():
+            self.iA.initializePatientState(p)
 
 
 class FacilityManager(pyrheabase.FacilityManager):
@@ -241,13 +262,14 @@ class Facility(pyrheabase.Facility):
                                       (CareTier.names[tier] + '_notfound'): nFail,
                                       bounceKey: nBounces})
 
-    def diagnose(self, patientStatus):
+    def diagnose(self, patientStatus, oldDiagnosis):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
         return PatientDiagnosis(patientStatus.overall,
-                                patientStatus.diagClassA, patientStatus.diagClassB)
+                                patientStatus.diagClassA,
+                                patientStatus.pthStatus)
 
     def prescribe(self, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
@@ -276,23 +298,23 @@ class Facility(pyrheabase.Facility):
         """
         if careTier == CareTier.HOME:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, DiagClassB.CLEAR)
+                                    DiagClassA.HEALTHY, defaultPthStatus)
         elif careTier == CareTier.NURSING:
             return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, DiagClassB.CLEAR)
+                                    DiagClassA.HEALTHY, defaultPthStatus)
         elif careTier == CareTier.LTAC:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSLTAC, DiagClassB.CLEAR)
+                                    DiagClassA.NEEDSLTAC, defaultPthStatus)
         elif careTier == CareTier.HOSP:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.SICK, DiagClassB.CLEAR)
+                                    DiagClassA.SICK, defaultPthStatus)
         elif careTier == CareTier.ICU:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.VERYSICK, DiagClassB.CLEAR)
+                                    DiagClassA.VERYSICK, defaultPthStatus)
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         """
         Return a Bayes tree the traversal of which yields a patientStatus.
 
@@ -314,7 +336,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier)
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
-                                     self._diagnosis.diagClassB, 0)
+                                     self._diagnosis.pthStatus, 0)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)
         self.lastUpdateTime = timeNow
@@ -332,21 +354,22 @@ class PatientAgent(pyrheabase.PatientAgent):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            try:
-                tree = self.ward.fac.getStatusChangeTree(self._status, self.tier, self._treatment,
-                                                         self.lastUpdateTime, timeNow)
-                setter = tree.traverse()
-                self._status = setter.set(self._status, timeNow)
-            except Exception, e:
-                print 'Got exception %s on patient %s' % (str(e), self.name)
-                self.logger.critical('Got exception %s on patient %s' % (str(e), self.name))
-                raise
+            for src in [self.ward.fac, self.ward.iA]:
+                try:
+                    tree = src.getStatusChangeTree(self._status, self.ward, self._treatment,
+                                                   self.lastUpdateTime, timeNow)
+                    setter = tree.traverse()
+                    self._status = setter.set(self._status, timeNow)
+                except Exception, e:
+                    print 'Got exception %s on patient %s' % (str(e), self.name)
+                    self.logger.critical('Got exception %s on patient %s' % (str(e), self.name))
+                    raise
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
         if self._status.diagClassA == DiagClassA.DEATH:
             return None
-        self._diagnosis = self.ward.fac.diagnose(self._status)
+        self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis, self._treatment)
         if self.debug:
             self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
