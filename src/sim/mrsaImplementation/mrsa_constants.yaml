@@ -1,24 +1,26 @@
 'colonizationToInfectionFrac':
-  'value': 0.4
-  'prov': >-
-    DEBUGGING ONLY. Discussion: 30% lose colonization every 6 months?
-    33% of carriers are persistent.  25% lose colonization over 274 days. (Conversation with Sarah)
+  'value': 0.0
+  'prov': 'For this model, no distinction is made between colonization and infection'
   
 'initialFractionColonized':
   'value': 0.1
-  'prov': 'DEBUGGING ONLY'
+  'prov': >-
+    Sarah 12/16/2015: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.
+    Nursing home average is 25.9%, range 0% to 52%.  
+    Numbers exist for the community but are not handy- Sarah will ask.
   
 'initialFractionInfected':
-  'value': 0.01
-  'prov': >-
-    DEBUGGING ONLY - Sarah: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.  Nursing homes will be higher.
-    Nursing home average is 25.9%, range 0% to 52%.  Numbers exist for the community exist but are not handy- Sarah will ask.
+  'value': 0.0
+  'prov': 'For this model, no distinction is made between colonization and infection'
     
 'colonizationDurationPDF':
     parms:
     - 1.0e-2
     pdf: 'expon(lambda=$0)'
-    prov: 'DEBUGGING ONLY - but how do you get un-colonized if everyone around you is colonized?'
+    prov: >-
+      Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),
+      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
+      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
     
 'infectionDurationPDF':
     parms:
@@ -27,12 +29,13 @@
     pdf: lognorm(mu=$0,sigma=$1)
     prov: >-
       DEBUGGING ONLY - the transition should be from infected to clear (Sarah).  This should only happen with treatment.
+      But since this model does not make a distinction between colonization and infection, no patient will
+      be affected by this PDF.
         
 'beta':
-  'value': 0.0002509485331378
+  'value': 8.77554512489e-05
   'prov': >-
-    Typical value for modify_beta(-some number-)%beta(2) from
-    OC_County_Data_2013/OC_County_Data_2013-clean-FOR-JOEL/
-    CRE.INPUT_CDC-VITAL-SIGNS_FULL-COUNTY_1to8ICEBERG_0.10IP_LTAC-0.25_NH-0.080_0.75NH-ICU_0.50NH-GEN_LTAC-ICU-0.50_NH-ICU-0.20_0-SILOS-TRMX_CP-KNOWN_NH-CP-KNOWN-0.50-10D_CNTY-TRIG-28-CHG
-    This is actually CRE data- look at MRSA_INPUT.txt from 2007 model.
-  
+    This is the median of the 100 beta valus in Dropbox/RHEA Inputs/RHEA Inputs/MRSA.INPUT.txt
+    modify_beta(n)%beta(1).  The mean is 5.3373142527266e-04
+
+'facClass': 'HOSPITAL'

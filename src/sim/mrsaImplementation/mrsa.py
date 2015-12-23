@@ -145,5 +145,4 @@ def getPathogenClass():
 ###########
 _constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
                                                       _constants_values),
-                                         os.path.join(os.path.dirname(__file__),
-                                                      _constants_schema))
+                                         _constants_schema)

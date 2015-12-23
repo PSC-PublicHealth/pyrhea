@@ -19,26 +19,11 @@ _rhea_svn_id_="$Id$"
 
 import sys
 import os.path
-import json
-import yaml
-import jsonschema
 import optparse
 
 import yaml_ordered
 yaml_ordered.install()
-
-
-def fileToJSON(fname):
-    if fname.lower().endswith('.json') or fname.lower().endswith('.jsn'):
-        with open(fname, "r") as f:
-            tjson = json.load(f)
-    else:
-        assert fname.lower().endswith('.yaml') or fname.lower().endswith('.yml'), \
-            "File type of %s is not understood" % fname
-        with open(fname, "r") as f:
-            tjson = yaml.safe_load(f)
-            # print tjson
-    return tjson
+import schemautils
 
 
 def main(myargv=None):
@@ -59,15 +44,16 @@ def main(myargv=None):
     opts, args = parser.parse_args()
 
     if len(args) == 2:
-        schema = fileToJSON(args[0])
-        validator = jsonschema.validators.validator_for(schema)(schema=schema)
+        validator = schemautils.getValidator(args[0])
+
         if opts.R and os.path.isdir(args[1]):
             for root, dirs, files in os.walk(args[1]):  # @UnusedVariable
                 for fName in files:
                     if fName.lower().endswith(('.yaml', '.yml', '.json', '.jsn')):
                         path = os.path.join(root, fName)
                         try:
-                            nErrors = sum([1 for e in validator.iter_errors(fileToJSON(path))])
+                            nErrors = sum([1 for e in
+                                           validator.iter_errors(schemautils.fileToJSON(path))])
                             if nErrors:
                                 print 'FAIL: %s: %d errors' % (path, nErrors)
                             else:
@@ -77,7 +63,7 @@ def main(myargv=None):
         else:
             try:
                 nErrors = 0
-                for error in validator.iter_errors(fileToJSON(args[1])):
+                for error in validator.iter_errors(schemautils.fileToJSON(args[1])):
                     print '%s: %s' % (' '.join([str(word) for word in error.path]), error.message)
                     nErrors += 1
                 if nErrors:

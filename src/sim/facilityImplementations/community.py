@@ -18,8 +18,6 @@
 _rhea_svn_id_ = "$Id$"
 
 import os.path
-import jsonschema
-import yaml
 from scipy.stats import expon
 import logging
 
@@ -29,6 +27,7 @@ from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HO
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
+import schemautils
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +146,7 @@ def estimateWork(facRec):
 def checkSchema(facilityDescr):
     global _validator
     if _validator is None:
-        with open(os.path.join(os.path.dirname(__file__), _schema), 'rU') as f:
-            schemaJSON = yaml.safe_load(f)
-        _validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+        _validator = schemautils.getValidator(_schema)
     nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
 
@@ -159,5 +156,4 @@ def checkSchema(facilityDescr):
 ###########
 _constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
                                                       _constants_values),
-                                         os.path.join(os.path.dirname(__file__),
-                                                      _constants_schema))
+                                         _constants_schema)

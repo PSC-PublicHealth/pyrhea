@@ -21,7 +21,6 @@ import sys
 import os
 import yaml
 from imp import load_source
-import jsonschema
 from random import seed
 from collections import defaultdict
 import optparse
@@ -35,7 +34,9 @@ import phacsl.utils.formats.csv_tools as csv_tools
 import patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
+import schemautils
 
+schemaDir = '../schemata'
 inputSchema = 'rhea_input_schema.yaml'
 
 logger = None
@@ -183,9 +184,7 @@ def checkInputFileSchema(fname, schemaFname, comm):
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
-        with open(os.path.join(os.path.dirname(__file__), schemaFname), 'rU') as f:
-            schemaJSON = yaml.safe_load(f)
-        validator = jsonschema.validators.validator_for(schemaJSON)(schema=schemaJSON)
+        validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
         nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
         if nErrors:
             myLogger.error('Input file violates schema:')
@@ -372,7 +371,9 @@ def main():
                   'loggingExtra': numLogLevel
                   }
         if len(args) == 1:
-            clData['input'] = checkInputFileSchema(args[0], inputSchema, comm)
+            clData['input'] = checkInputFileSchema(args[0],
+                                                   os.path.join(schemaDir, inputSchema),
+                                                   comm)
         else:
             parser.error("A YAML-format file specifying run parameters must be specified.")
         parser.destroy()
@@ -391,6 +392,7 @@ def main():
     if deterministic:
         seed(1234 + comm.rank)  # Set the random number generator seed
 
+    schemautils.setSchemaBasePath(schemaDir)
     pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
     assert len(pthImplDict) == 1, 'Simulation currently supports only one pathogen at a time'
     PthClass = pthImplDict.values()[0].getPathogenClass()

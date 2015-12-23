@@ -64,6 +64,7 @@
       'infectionDurationPDF': {'$ref': '#/definitions/PDF'}
       'colonizationToInfectionFrac': {'$ref': '#/definitions/fraction'}
       'beta': {'$ref': '#/definitions/fraction'}
+      'facClass': {'$ref': 'facilityfacts_schema.yaml#definitions/category'}
     'required':
       - 'initialFractionColonized'
       - 'initialFractionInfected'
@@ -71,5 +72,6 @@
       - 'infectionDurationPDF'
       - 'colonizationToInfectionFrac'
       - 'beta'
+      - 'facClass'
       
       
