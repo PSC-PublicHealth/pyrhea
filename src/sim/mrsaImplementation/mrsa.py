@@ -33,21 +33,20 @@ _constants = None
 logger = logging.getLogger(__name__)
 
 
+def _valFromCategoryEntry(key, ctg, constantsJSON):
+    if key not in constantsJSON:
+        raise RuntimeError('Constant list for %s was not found' % key)
+    for v in constantsJSON[key]:
+        if v['category'] == ctg:
+            return v['frac']['value']
+    raise RuntimeError('Constant entry for category %s was not found' % ctg)
+
+
 class MRSACore(object):
     """This is where we put things that are best shared across all MRSA instances"""
     __metaclass__ = pyrheautils.SingletonMetaClass
 
     def __init__(self):
-        _c = _constants
-        initialFractionColonized = _c['initialFractionColonized']['value']
-        initialFractionInfected = _c['initialFractionInfected']['value']
-        fracClear = 1.0 - (initialFractionColonized + initialFractionInfected)
-        self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,
-                                                                 PthStatusSetter(PthStatus.COLONIZED)),
-                                                                (initialFractionInfected,
-                                                                 PthStatusSetter(PthStatus.INFECTED)),
-                                                                (fracClear,
-                                                                 PatientStatusSetter())])
         colCRV = fullCRVFromPDFModel(_constants['colonizationDurationPDF'])
         self.colCachedCDF = CachedCDFGenerator(colCRV)
         self.colTreeCache = {}
@@ -64,6 +63,19 @@ class MRSA(Pathogen):
         self.core = MRSACore()
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
+        initialFractionColonized = _valFromCategoryEntry('initialFractionColonized',
+                                                         self.ward.fac.category,
+                                                         _constants)
+        initialFractionInfected = _valFromCategoryEntry('initialFractionInfected',
+                                                        self.ward.fac.category,
+                                                        _constants)
+        fracClear = 1.0 - (initialFractionColonized + initialFractionInfected)
+        self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,
+                                                                 PthStatusSetter(PthStatus.COLONIZED)),
+                                                                (initialFractionInfected,
+                                                                 PthStatusSetter(PthStatus.INFECTED)),
+                                                                (fracClear,
+                                                                 PatientStatusSetter())])
 
     def _emptyPatientPth(self):
         return {k:0 for k in PthStatus.names.keys()}
@@ -76,7 +88,7 @@ class MRSA(Pathogen):
         This method assigns the patient a Status appropriate to time 0- that is,
         it implements the initial seeding of the patient population with pathogen.
         """
-        patient._status = self.core.initializationBayesTree.traverse().set(patient._status, 0)
+        patient._status = self.initializationBayesTree.traverse().set(patient._status, 0)
 
     def getPatientPthCounts(self, timeNow):
         """

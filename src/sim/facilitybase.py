@@ -147,9 +147,10 @@ class Facility(pyrheabase.Facility):
                                                    self.departureDate,
                                                    'Frail' if self.isFrail else 'Healthy')
 
-    def __init__(self, name, patch, reqQueueClasses=None):
+    def __init__(self, name, descr, patch, reqQueueClasses=None):
         pyrheabase.Facility.__init__(self, name, patch, managerClass=FacilityManager,
                                      reqQueueClasses=reqQueueClasses)
+        self.category = descr['category']
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}

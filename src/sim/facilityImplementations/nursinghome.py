@@ -42,7 +42,8 @@ _constants = None
 
 class NursingHome(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
+                          descr, patch,
                           reqQueueClasses=[NURSINGQueue])
         assert 'nBeds' in descr, 'Nursing home %(abbrev) description is missing nBeds' % descr
         nBeds = int(descr['nBeds'])

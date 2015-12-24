@@ -7,62 +7,14 @@
 
 'definitions':
     
-  'count':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'integer', 'minimum': 0}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-
-  'fraction':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-      
-  'float':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'number'}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-
-  'PDF':
-    'type': 'object'
-    'properties':
-      'prov':
-        'type': 'string'
-      'pdf':
-        'type': 'string'
-      'parms':
-        'type': 'array'
-        'items': {'type': 'number'}
-      'nsamp':
-        'type': 'integer'
-        'minimum': 1
-      'negLogLikPerSample':
-        'type': 'number'
-    'required':
-      - 'pdf'
-      - 'parms'
-      - 'prov'
-    
-
   'communityconstants':
     'type': 'object'
     'properties':
-      'communityLOSModel': {'$ref': '#/definitions/PDF'}
-      'communityDeathRate': {'$ref': '#/definitions/fraction'}
-      'communityVerySickRate': {'$ref': '#/definitions/fraction'}
-      'communityNeedsLTACRate': {'$ref': '#/definitions/fraction'}
-      'communityPatientCheckInterval': {'$ref': '#/definitions/count'}
+      'communityLOSModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
     'required':
       - 'communityLOSModel'
       - 'communityDeathRate'

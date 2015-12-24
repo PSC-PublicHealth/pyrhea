@@ -46,7 +46,8 @@ logger = logging.getLogger(__name__)
 
 class LTAC(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
+                          descr, patch,
                           reqQueueClasses=[LTACQueue])
         bedsPerWard = _constants['bedsPerWard']['value']
         self.dischargeViaDeathFrac = _constants['dischargeViaDeathFrac']['value']

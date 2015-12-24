@@ -1,0 +1,66 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/basics_schema.yaml'
+'title': 'basics schema'
+'description': 'basic components for use in other schemata'
+
+'definitions':
+  'count':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'integer', 'minimum': 0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'fraction':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+      
+  'float':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number'}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'nonnegfloat':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'number', 'minimum': 0.0}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
+  'datestring':
+    'type': 'string'
+    'pattern': '^(0[1-9]|[1-9]|[01][0-2])/(0[1-9]|[1-9]|[12][0-9]|3[01])/(19|20)[0-9][0-9]$'
+    
+  'PDF':
+    'type': 'object'
+    'properties':
+      'prov':
+        'type': 'string'
+      'pdf':
+        'type': 'string'
+      'parms':
+        'type': 'array'
+        'items': {'type': 'number'}
+      'nsamp':
+        'type': 'integer'
+        'minimum': 1
+      'negLogLikPerSample':
+        'type': 'number'
+    'required':
+      - 'pdf'
+      - 'parms'
+      - 'prov'
+      

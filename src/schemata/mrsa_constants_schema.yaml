@@ -6,65 +6,26 @@
 '$ref': '#/definitions/mrsaconstants'
 
 'definitions':
-    
-  'count':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'integer', 'minimum': 0}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-
-  'fraction':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-      
-  'float':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'number'}
-      'prov': {'type': 'string'}
-    'required':
-      - 'value'
-      - 'prov'
-
-  'PDF':
-    'type': 'object'
-    'properties':
-      'prov':
-        'type': 'string'
-      'pdf':
-        'type': 'string'
-      'parms':
-        'type': 'array'
-        'items': {'type': 'number'}
-      'nsamp':
-        'type': 'integer'
-        'minimum': 1
-      'negLogLikPerSample':
-        'type': 'number'
-    'required':
-      - 'pdf'
-      - 'parms'
-      - 'prov'
-    
+  'fracByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category': {'$ref': 'facilityfacts_schema.yaml#definitions/category'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'category'
+        - 'frac'      
 
   'mrsaconstants':
     'type': 'object'
     'properties':
-      'initialFractionColonized': {'$ref': '#/definitions/fraction'}
-      'initialFractionInfected': {'$ref': '#/definitions/fraction'}
-      'colonizationDurationPDF': {'$ref': '#/definitions/PDF'}
-      'infectionDurationPDF': {'$ref': '#/definitions/PDF'}
-      'colonizationToInfectionFrac': {'$ref': '#/definitions/fraction'}
-      'beta': {'$ref': '#/definitions/fraction'}
-      'facClass': {'$ref': 'facilityfacts_schema.yaml#definitions/category'}
+      'initialFractionColonized': {'$ref': '#/definitions/fracByCategory'}
+      'initialFractionInfected': {'$ref': '#/definitions/fracByCategory'}
+      'colonizationDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'colonizationToInfectionFrac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'beta': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
     'required':
       - 'initialFractionColonized'
       - 'initialFractionInfected'
@@ -72,6 +33,5 @@
       - 'infectionDurationPDF'
       - 'colonizationToInfectionFrac'
       - 'beta'
-      - 'facClass'
       
       

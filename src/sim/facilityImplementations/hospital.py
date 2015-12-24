@@ -66,7 +66,8 @@ class OverallHealthSetter(PatientStatusSetter):
 
 class Hospital(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
+                          descr, patch,
                           reqQueueClasses=[HOSPQueue, ICUQueue])
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']

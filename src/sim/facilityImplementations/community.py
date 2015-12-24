@@ -49,7 +49,8 @@ class CommunityWard(Ward):
 
 class Community(Facility):
     def __init__(self, descr, patch):
-        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr, patch,
+        Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
+                          descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue])
         meanPop = descr['meanPop']
         nBeds = int(round(3.0*meanPop))
