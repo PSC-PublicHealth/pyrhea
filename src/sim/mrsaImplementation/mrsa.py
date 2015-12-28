@@ -69,9 +69,12 @@ class MRSA(Pathogen):
         initialFractionInfected = _valFromCategoryEntry('initialFractionInfected',
                                                         self.ward.fac.category,
                                                         _constants)
+        colTree = BayesTree(PthStatusSetter(PthStatus.CHRONIC),
+                             PthStatusSetter(PthStatus.COLONIZED),
+                             _constants['fractionColonizedChronic']['value'])
         fracClear = 1.0 - (initialFractionColonized + initialFractionInfected)
         self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,
-                                                                 PthStatusSetter(PthStatus.COLONIZED)),
+                                                                 colTree),
                                                                 (initialFractionInfected,
                                                                  PthStatusSetter(PthStatus.INFECTED)),
                                                                 (fracClear,
@@ -105,7 +108,7 @@ class MRSA(Pathogen):
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         if patientStatus.pthStatus == PthStatus.CLEAR:
             pP = self.getPatientPthCounts(timeNow)
-            nExposures = pP[PthStatus.COLONIZED] + pP[PthStatus.INFECTED]
+            nExposures = pP[PthStatus.COLONIZED] + pP[PthStatus.INFECTED] + pP[PthStatus.CHRONIC]
             nTot = sum(pP.values())
             dT = timeNow - startTime
             key = (nExposures, nTot, dT)
@@ -114,7 +117,9 @@ class MRSA(Pathogen):
             else:
                 pSafe = math.pow((1.0 - _constants['beta']['value']), dT)
                 tree = BayesTree(PatientStatusSetter(),
-                                 PthStatusSetter(PthStatus.COLONIZED),
+                                 BayesTree(PthStatusSetter(PthStatus.CHRONIC),
+                                           PthStatusSetter(PthStatus.COLONIZED),
+                                           _constants['fractionColonizedChronic']['value']),
                                  pSafe)
                 self.core.exposureTreeCache[key] = tree
                 return tree
@@ -143,6 +148,8 @@ class MRSA(Pathogen):
                                      changeProb)
                     self.core.infTreeCache[key] = tree
                     return tree
+            elif patientStatus.pthStatus == PthStatus.CHRONIC:
+                    return BayesTree(PatientStatusSetter())
             else:
                 raise RuntimeError('Unexpected %s status %s at %s' %
                                    (self, patientStatus.pthStatus, self.ward._name))

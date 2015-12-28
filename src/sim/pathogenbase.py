@@ -19,7 +19,7 @@ _rhea_svn_id_ = "$Id$"
 
 from pyrheautils import enum
 
-Status = enum('CLEAR', 'COLONIZED', 'INFECTED', 'RECOVERED')
+Status = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED')
 defaultStatus = Status.CLEAR
 
 

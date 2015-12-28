@@ -56,7 +56,14 @@
       Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),
       while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
       after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
-    
+
+'fractionColonizedChronic':
+  'value': 0.33
+  'prov': >-
+      Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),
+      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
+      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
+
 'infectionDurationPDF':
     parms:
     - 3.0
