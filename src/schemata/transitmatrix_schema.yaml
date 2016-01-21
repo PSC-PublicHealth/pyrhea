@@ -1,0 +1,29 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/transitmatrix_schema.yaml'
+'title': 'transit matrix schema'
+'description': 'schema for facility-to-facility transit time / transit distance map'
+
+'$ref': '#/definitions/transitmatrix'
+
+'definitions':
+  'destentries':
+    'type': 'object'
+    'additionalProperties':
+      'type': 'object'
+      'properties':
+        'meters': {'type': 'integer', 'minimum', 0}
+        'seconds': {'type': 'integer', 'minimum', 0}
+
+  'catentries':
+    'type': 'object'
+    'properties':
+      'HOSPITAL': { '$ref': '#/definitions/destentries' }
+      'NURSINGHOME': { '$ref': '#/definitions/destentries' }
+      'LTAC': { '$ref': '#/definitions/destentries' }
+    'required': ['HOSPITAL', 'NURSINGHOME', 'LTAC']
+    'additionalProperties': { '$ref': '#/definitions/destentries' }
+      
+  'transitmatrix':
+    'type': 'object'
+    'additionalProperties': { '$ref': '#/definitions/catentries' }
+      
