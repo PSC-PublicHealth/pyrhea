@@ -28,13 +28,13 @@ import logging
 import logging.config
 import pika
 import pickle
-
-import phacsl.utils.formats.csv_tools as csv_tools
+import re
 
 import patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 import schemautils
+import pyrheautils
 
 schemaDir = '../schemata'
 inputSchema = 'rhea_input_schema.yaml'
@@ -42,53 +42,43 @@ inputSchema = 'rhea_input_schema.yaml'
 logger = None
 
 
+def loadPolicyImplementations(implementationDir):
+    logger.info('Loading policy implementations')
+    implList = []
+    for newMod in pyrheautils.loadModulesFromDir(implementationDir,
+                                                 requiredAttrList=['getPolicyClasses']):
+        newPolicyClasses = newMod.getPolicyClasses()
+        logger.info('Loaded %s implementing %s' % (newMod.__name__,
+                                                   [cls.__name__
+                                                    for cls in newPolicyClasses]))
+        implList.extend(newPolicyClasses)
+    return implList
+
+
 def loadPathogenImplementations(implementationDir):
     logger.info('Loading infectious agent implementations')
     implDict = {}
-    sys.path.append(implementationDir)
-    for fname in os.listdir(implementationDir):
-        name, ext = os.path.splitext(fname)
-        if ext == '.py':
-            newMod = load_source(name, os.path.join(implementationDir, fname))
-            for requiredAttr in ['pathogenName', 'getPathogenClass']:
-                if not hasattr(newMod, requiredAttr):
-                    raise RuntimeError('The infectious agent implemenation in %s has no %s' %
-                                       (os.path.join(implementationDir, fname),
-                                        requiredAttr))
-            assert newMod.pathogenName not in implDict, \
-                "Redundant definitions for pathogen %s" % newMod.category
-            implDict[newMod.pathogenName] = newMod
-            logger.info('Loaded %s implementing %s' % (fname, newMod.pathogenName))
-        elif ext.startswith('.py'):
-            pass  # .pyc files for example
-        else:
-            logger.info('Skipping non-python file %s' % fname)
-    sys.path.pop()  # drop implementaionDir
+    for newMod in pyrheautils.loadModulesFromDir(implementationDir,
+                                                 requiredAttrList=['pathogenName',
+                                                                   'getPathogenClass']):
+        assert newMod.pathogenName not in implDict, \
+            "Redundant definitions for pathogen %s" % newMod.category
+        implDict[newMod.pathogenName] = newMod
+        logger.info('Loaded %s implementing %s' % (newMod.__name__,
+                                                   newMod.pathogenName))
     return implDict
 
 
 def loadFacilityImplementations(implementationDir):
     logger.info('Loading facility implementations')
     implDict = {}
-    sys.path.append(implementationDir)
-    for fname in os.listdir(implementationDir):
-        name, ext = os.path.splitext(fname)
-        if ext == '.py':
-            newMod = load_source(name, os.path.join(implementationDir, fname))
-            for requiredAttr in ['category', 'generateFull']:
-                if not hasattr(newMod, requiredAttr):
-                    raise RuntimeError('The facility implemenation in %s has no %s' %
-                                       (os.path.join(implementationDir, fname),
-                                        requiredAttr))
-            assert newMod.category not in implDict, \
-                "Redundant definitions for category %s" % newMod.category
-            implDict[newMod.category] = newMod
-            logger.info('Loaded %s implementing %s' % (fname, newMod.category))
-        elif ext.startswith('.py'):
-            pass  # .pyc files for example
-        else:
-            logger.info('Skipping non-python file %s' % fname)
-    sys.path.pop()  # drop implementaionDir
+    for newMod in pyrheautils.loadModulesFromDir(implementationDir,
+                                                 requiredAttrList=['category',
+                                                                   'generateFull']):
+        assert newMod.category not in implDict, \
+            "Redundant definitions for category %s" % newMod.category
+        implDict[newMod.category] = newMod
+        logger.info('Loaded %s implementing %s' % (newMod.__name__, newMod.category))
     return implDict
 
 
@@ -327,6 +317,16 @@ class BurnInAgent(patches.Agent):
         # and now the agent exits
 
 
+def findPolicies(policyClassList,
+                 policyRules,
+                 category):
+    l = []
+    for pCl in policyClassList:
+        for categoryRegex, classRegex in policyRules:
+            if categoryRegex.match(category) and classRegex.match(pCl.__name__):
+                l.append(pCl)
+    return l
+
 def main():
 
     comm = patches.getCommWorld()
@@ -399,6 +399,10 @@ def main():
 
     facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
 
+    policyClassList = loadPolicyImplementations(inputDict['policyImplementationDir'])
+    policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
+                   for rule in inputDict['policySelectors']]
+
     myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
     logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
 
@@ -419,8 +423,12 @@ def main():
     for facDescription in myFacList:
         patch, allIter, allAgents, allFacilities = tupleList[offset]
         if facDescription['category'] in facImplDict:
+            facImpl = facImplDict[facDescription['category']]
             facilities, wards, patients = \
-                facImplDict[facDescription['category']].generateFull(facDescription, patch)
+                facImpl.generateFull(facDescription, patch,
+                                     policyClasses=findPolicies(policyClassList,
+                                                                policyRules,
+                                                                facImpl.category))
             for w in wards:
                 w.setInfectiousAgent(PthClass(w))
                 w.initializePatientPthState()
@@ -461,10 +469,10 @@ def main():
         d = {}
         for nh in allNotesGroup.getnotes():
             d[nh['name']] = nh.getDict()
-            if 'occupancy' in nh:
-                recs = nh['occupancy']
-                with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
-                    csv_tools.writeCSV(f, recs[1].keys(), recs)
+#             if 'occupancy' in nh:
+#                 recs = nh['occupancy']
+#                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
+#                     csv_tools.writeCSV(f, recs[1].keys(), recs)
         with open('notes.pkl', 'w') as f:
             pickle.dump(d, f)
 
