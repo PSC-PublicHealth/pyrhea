@@ -132,6 +132,17 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.ICU: ICUQueue}
 
 
+class TransferDestinationPolicy(object):
+    def __init__(self, patch):
+        self.patch = patch
+
+    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
+        queueClass = tierToQueueMap[newTier]
+        facAddrList = [tpl[1] for tpl in self.patch.serviceLookup(queueClass.__name__)]
+        shuffle(facAddrList)
+        return facAddrList
+
+
 class Facility(pyrheabase.Facility):
     class PatientRecord(object):
         def __init__(self, patientID, arrivalDate, isFrail):
@@ -147,13 +158,20 @@ class Facility(pyrheabase.Facility):
                                                    self.departureDate,
                                                    'Frail' if self.isFrail else 'Healthy')
 
-    def __init__(self, name, descr, patch, reqQueueClasses=None):
+    def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None):
         pyrheabase.Facility.__init__(self, name, patch, managerClass=FacilityManager,
                                      reqQueueClasses=reqQueueClasses)
         self.category = descr['category']
+        self.abbrev = descr['abbrev']
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}
+        transferDestinationPolicyClass = TransferDestinationPolicy
+        if policyClasses is not None:
+            for pC in policyClasses:
+                if issubclass(pC, TransferDestinationPolicy):
+                    transferDestinationPolicyClass = pC
+        self.transferDestinationPolicy = transferDestinationPolicyClass(patch)
 
     def setNoteHolder(self, noteHolder):
         self.noteHolder = noteHolder
@@ -163,10 +181,9 @@ class Facility(pyrheabase.Facility):
         return self.noteHolder
 
     def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
-        queueClass = tierToQueueMap[newTier]
-        facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
-        shuffle(facAddrList)
-        return facAddrList
+        return self.transferDestinationPolicy.getOrderedCandidateFacList(self,
+                                                                         oldTier, newTier,
+                                                                         timeNow)
 
     def getMsgPayload(self, msgType, patientAgent):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
@@ -232,7 +249,7 @@ class Facility(pyrheabase.Facility):
         return timeNow
 
     def getBedRequestPayload(self, patientAgent, desiredTier):
-        return (0, desiredTier)  # number of bounces and tier
+        return (0, desiredTier, self.abbrev)  # number of bounces, tier, originating fac
 
     def handleBedRequestResponse(self, ward, payload, timeNow):
         """
@@ -240,15 +257,15 @@ class Facility(pyrheabase.Facility):
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
         The return value of this message becomes the new payload.
         """
-        nBounces, tier = payload
-        return (nBounces + 1, tier)  # new number of bounces and tier
+        nBounces, tier, oldSenderAbbrev = payload  # @UnusedVariable
+        return (nBounces + 1, tier, self.abbrev)  # updated number of bounces and sender
 
     def handleBedRequestFate(self, ward, payload, timeNow):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the search for a bed failed, 'ward' will be None.
         """
-        nBounces, tier = payload
+        nBounces, tier, senderAbbrev = payload
         if ward is None:
             nFail = 1
             nSuccess = 0
@@ -257,11 +274,13 @@ class Facility(pyrheabase.Facility):
             nSuccess = 1
         nh = self.getNoteHolder()
         bounceKey = CareTier.names[tier] + '_bounce_histo'
+        transferKey = '%s_transfer' % senderAbbrev
         if bounceKey not in nh:
             nh.addNote({bounceKey: HistoVal([])})
         self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
                                       (CareTier.names[tier] + '_notfound'): nFail,
-                                      bounceKey: nBounces})
+                                      bounceKey: nBounces,
+                                      transferKey: nSuccess})
 
     def diagnose(self, patientStatus, oldDiagnosis):
         """
@@ -363,7 +382,8 @@ class PatientAgent(pyrheabase.PatientAgent):
                     self._status = setter.set(self._status, timeNow)
                 except Exception, e:
                     print 'Got exception %s on patient %s' % (str(e), self.name)
-                    self.logger.critical('Got exception %s on patient %s' % (str(e), self.name))
+                    self.logger.critical('Got exception %s on patient %s (id %s)'
+                                         % (str(e), self.name, self.id))
                     raise
 
     def updateEverything(self, timeNow):
