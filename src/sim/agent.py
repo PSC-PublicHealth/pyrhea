@@ -173,6 +173,10 @@ class Interactant(object):
         self.id = Interactant.counter
         Interactant.counter += 1
 
+    def getInfo(self):
+        """Used by derived classes to customize sharable information"""
+        return self._name
+
     def getNWaiting(self):
         """This returns the count of waiting agents for which timeless is false"""
         return self._nEnqueued
