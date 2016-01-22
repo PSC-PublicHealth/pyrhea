@@ -1,0 +1,22 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/bedcapacity_schema.yaml'
+'title': 'bed capacity schema'
+'description': 'schema for pre-extracted bed capacity info'
+
+'$ref': '#/definitions/bedcapacitylist'
+
+'definitions':
+  'bedcapacity':
+    'type': 'object'
+    'properties':
+      'abbrev': {'type': 'string'}
+      'capacity': {'type': 'number', 'minimum': 0}
+      'category': { '$ref': 'facilityfacts_schema.yaml#definitions/category' }
+      'icuCapacity': {'type': 'number', 'minimum': 0}
+    'required': ['abbrev', 'capacity', 'category']  # only HOSPITALs have icuCapacity
+    
+  'bedcapacitylist':
+    'type': 'array'
+    'items': { '$ref': '#definitions/bedcapacity' }
+    
+      

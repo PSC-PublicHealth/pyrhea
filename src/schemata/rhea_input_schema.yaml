@@ -20,6 +20,16 @@
       'pathogenImplementationDir':
         'description': 'Directory containing implementations of infectious agents'
         'type': 'string'
+      'policyImplementationDir':
+        'description': 'Directory containing implementations of policies'
+        'type': 'string'
+      'policySelectors':
+        'type': 'array'
+        'items':
+          'type': 'object'
+          'properties':
+            'category': { 'type': 'string', 'description': 'regex which must match facility category'}
+            'policyClass': { 'type': 'string', 'descripition': 'regex which must match policy class name'}
       'runDurationDays':
         'description': 'Total days simulated is the sum of this and burnInDays'
         'type': integer
@@ -32,6 +42,8 @@
       - 'facilityDirs'
       - 'facilityImplementationDir'
       - 'pathogenImplementationDir'
+      - 'policyImplementationDir'
+      - 'policySelectors'
       - 'runDurationDays'
       - 'burnInDays'
 

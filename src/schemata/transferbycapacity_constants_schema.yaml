@@ -1,0 +1,23 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/transferbycapacity_constants_schema.yaml'
+'title': 'transferbycapacity constants schema'
+'description': 'transferbycapacity constants schema'
+
+'$ref': '#/definitions/transferbycapacityconstants'
+
+'definitions':
+    
+  'transferbycapacityconstants':
+    'type': 'object'
+    'properties':
+      'capacityFilePath':
+        'description': 'Path to the YAML file containing pre-extracted bed capacity info'
+        'type': 'string'
+      'capacityFileSchema':
+        'description': 'Schema for the YAML file containing pre-extracted bed capacity info'
+        'type': 'string'
+    'required':
+      - 'capacityFilePath'
+      - 'capacityFileSchema'
+      
+      

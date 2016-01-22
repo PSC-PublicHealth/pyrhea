@@ -6,6 +6,13 @@
 
 'pathogenImplementationDir': './mrsaImplementation'
 
+'policyImplementationDir': './policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
+    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'CapacityTransferDestinationPolicy'
+
 #'runDurationDays': 1095
 'runDurationDays': 365
 

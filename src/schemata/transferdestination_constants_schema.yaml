@@ -1,0 +1,23 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/transferdestination_constants_schema.yaml'
+'title': 'transferdestination constants schema'
+'description': 'transferdestination constants schema'
+
+'$ref': '#/definitions/transferdestinationconstants'
+
+'definitions':
+    
+  'transferdestinationconstants':
+    'type': 'object'
+    'properties':
+      'transitMatrixFilePath':
+        'description': 'Path to the YAML file containing the transit distance matrix'
+        'type': 'string'
+      'transitMatrixFileSchema':
+        'description': 'Schema for the YAML file containing the transit distance matrix'
+        'type': 'string'
+    'required':
+      - 'transitMatrixFilePath'
+      - 'transitMatrixFileSchema'
+      
+      
