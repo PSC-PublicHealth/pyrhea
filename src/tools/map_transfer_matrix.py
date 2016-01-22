@@ -24,13 +24,15 @@ _rhea_svn_id_ = "$Id$"
 #
 ###############################
 
+import os.path
 
-import csv_tools
-import yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
 import math
 
 import numpy as np
 import matplotlib.pyplot as plt
+
 
 class Graph(object):
 
@@ -83,9 +85,14 @@ catchLocX = []
 catchLocY = []
 catchSize = []
 catchColor = []
+worldRadius = None
+mapCtr = None
+mapXVec = None
+mapYVec = None
+
 
 def facToNodeAttrs(facRec):
-    global catchLocX, catchLocY,catchSz,catchColor
+    global catchLocX, catchLocY, catchSz, catchColor
     attrDict = {'label': facRec['abbrev']}
 
     if 'nBeds' in facRec:
@@ -99,9 +106,6 @@ def facToNodeAttrs(facRec):
         attrDict['color'] = 'blue'
         attrDict['style'] = 'dashed'
     else:
-#         scaledSz = 0.17 * math.sqrt(float(szFac))
-#         attrDict['width'] = scaledSz
-#         attrDict['height'] = scaledSz
         scaledSz = 0.01 * float(szFac)
         attrDict['width'] = scaledSz
 
@@ -120,8 +124,8 @@ def facToNodeAttrs(facRec):
 
     x, y = mapProject(facRec['latitude'], facRec['longitude'],
                       worldRadius, mapCtr, mapXVec, mapYVec)
-    #catchLocX.append(facRec['longitude'])
-    #catchLocY.append(facRec['latitude'])
+    # catchLocX.append(facRec['longitude'])
+    # catchLocY.append(facRec['latitude'])
     catchLocX.append(x)
     catchLocY.append(y)
 
@@ -196,157 +200,194 @@ def project(v, xVec, yVec, center):
 def mapProject(lat, lon, r, ctr, xVec, yVec):
     """Returns (x, y) where x and y are the projected map coordinates"""
     sep = vecMinus(mapTo3D(lat, lon, r), ctr)
-    print 'sep: %s' % str(sep)
+#     print 'sep: %s' % str(sep)
     return (dot(sep, xVec), dot(sep, yVec))
 
 
-directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
-readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
+def parseFacilityData(fname):
+    junkKeys, facRecs = yaml_tools.parse_all(fname)  # @UnusedVariable
+    facDict = {r['abbrev']: r for r in facRecs}
+    return facDict
 
-transferDict = {}
-for k, rec in directTransferDict.items():
-    transferDict[k] = rec.copy()
-for k, r2 in readmitTransferDict.items():
-    r1 = transferDict[k]
-    for k2, v in r2.items():
-        r1[k2] += v
 
-junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts9')
-facDict = {r['abbrev']: r for r in facRecs}
+def initializeMapCoordinates(facRecs):
+    global worldRadius, mapCtr, mapXVec, mapYVec
 
-# Scale this to get good node spacing
-worldRadius = 250000.0
+    # Scale this to get good node spacing
+    worldRadius = 250000.0
 
-# Find the center vector of all the data- this will map to (0,0)
-ctr = (0.0, 0.0, 0.0)
-n = 0
-for rec in facRecs:
-    ctr = vecPlus(ctr, mapTo3D(rec['latitude'], rec['longitude'], worldRadius))
-    n += 1
-mapCtr = scale(ctr, 1.0/float(n))
-ctrLatRad = math.asin(mapCtr[2] / worldRadius)
-ctrLonRad = math.atan2(mapCtr[0], mapCtr[1])
-print 'Center: %s' % str(mapCtr)
-print 'Center latitude and longitude: %s %s' % (180.*ctrLatRad/math.pi, 180.*ctrLonRad/math.pi)
+    # Find the center vector of all the data- this will map to (0,0)
+    ctr = (0.0, 0.0, 0.0)
+    n = 0
+    for rec in facRecs:
+        ctr = vecPlus(ctr, mapTo3D(rec['latitude'], rec['longitude'], worldRadius))
+        n += 1
+    mapCtr = scale(ctr, 1.0/float(n))
+    ctrLatRad = math.asin(mapCtr[2] / worldRadius)
+    ctrLonRad = math.atan2(mapCtr[0], mapCtr[1])
+    print 'Map Center: %s' % str(mapCtr)
+    print 'Map Center latitude and longitude: %s %s' % (180.*ctrLatRad/math.pi,
+                                                        180.*ctrLonRad/math.pi)
 
-# X and Y vectors are normalized vectors in the longitude and latitude directions
-mapXVec = (math.cos(ctrLatRad) * math.cos(ctrLonRad),
-           -math.cos(ctrLatRad) * math.sin(ctrLonRad),
-           0.0)
-mapYVec = (-math.sin(ctrLatRad) * math.sin(ctrLonRad),
-           -math.sin(ctrLatRad) * math.cos(ctrLonRad),
-           math.cos(ctrLatRad))
-print 'mapXVec: %s' % str(mapXVec)
-print 'mapYVec: %s' % str(mapYVec)
+    # X and Y vectors are normalized vectors in the longitude and latitude directions
+    mapXVec = (math.cos(ctrLatRad) * math.cos(ctrLonRad),
+               -math.cos(ctrLatRad) * math.sin(ctrLonRad),
+               0.0)
+    mapYVec = (-math.sin(ctrLatRad) * math.sin(ctrLonRad),
+               -math.sin(ctrLatRad) * math.cos(ctrLonRad),
+               math.cos(ctrLatRad))
+    print 'mapXVec: %s' % str(mapXVec)
+    print 'mapYVec: %s' % str(mapYVec)
 
-transOutDict = {}
-transInDict = {}
-invertDict = {}
-for src, r in transferDict.items():
-    totTransfersOut = float(sum([v for k, v in r.items()]))
-    if totTransfersOut == 0.0:
-        print '%s has no outgoing transfers' % src
-    transOutDict[src] = totTransfersOut
-    for dst, v in r.items():
-        if dst not in transInDict:
-            transInDict[dst] = 0.0
-        transInDict[dst] += float(v)
-        if dst not in invertDict:
-            invertDict[dst] = {}
-        invertDict[dst][src] = v
 
-inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
-                ('NURSINGHOME', 'LTAC'),
-                ('LTAC', 'NURSINGHOME'),
-                ('HOSPITAL', 'NURSINGHOME'),
-                ('HOSPITAL', 'HOSPITAL'),
-                ('NURSINGHOME', 'NURSINGHOME'),
-                ('LTAC','LTAC'),
-                ('LTAC','HOSPITAL'),
-                ('HOSPITAL', 'LTAC')]
-#title = "HOSPITAL + LTAC internal direct transfers"
-#title = 'NURSINGHOME internal direct transfers'
-title = "NURSINGHOME to/from HOSPITAL+LTAC direct + indirect transfers"
-minWtCutoff = 0.1
-minCntCutoff = 2
-wtScale = 0.01
-
-createdSet = set()
-with Graph('graph.dot', title=title) as g:
+def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
+    facDict = {k.lower(): v for k, v in facDict.items()}  # convert keys to lower case
+    transOutDict = {}
+    transInDict = {}
+    invertDict = {}
     for src, r in transferDict.items():
+        totTransfersOut = float(sum([v for v in r.values()]))
+        if totTransfersOut == 0.0:
+            print '%s has no outgoing transfers' % src
+        transOutDict[src] = totTransfersOut
         for dst, v in r.items():
-            if transOutDict[src] > 0.0 and transInDict[dst] > 0.0:
-                reverseV = invertDict[src][dst]
-                visWt = float(v)/min(transOutDict[src], transInDict[dst])
-                if (visWt >= minWtCutoff
-                        and ((facDict[src]['category'], facDict[dst]['category'])
-                             in inclusionSet)):
-                    if src not in createdSet:
-                        g.addNode(src, facToNodeAttrs(facDict[src]))
-                        createdSet.add(src)
-                    if dst not in createdSet:
-                        g.addNode(dst, facToNodeAttrs(facDict[dst]))
-                        createdSet.add(dst)
-                    if (src, dst) not in createdSet and src != dst:
-                        if v >= reverseV:
-                            symV = reverseV
-                            asymV = v - reverseV
-                            if symV >= minCntCutoff:
-                                g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
-                                                     'label': symV, 'color': 'black'})
-                            if asymV >= minCntCutoff:
-                                g.addEdge(src, dst, {'weight': wtScale * asymV, 'color': 'red',
-                                                     'label': asymV})
-                        else:
-                            symV = v
-                            asymV = reverseV - v
-                            if symV >= minCntCutoff:
-                                g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
-                                                     'label': symV, 'color': 'black'})
-                            if asymV >= minCntCutoff:
-                                g.addEdge(dst, src, {'weight': wtScale * asymV, 'color': 'red',
-                                                     'label': asymV})
-                        createdSet.add((src, dst))
-                        createdSet.add((dst, src))
+            if dst not in transInDict:
+                transInDict[dst] = 0.0
+            transInDict[dst] += float(v)
+            if dst not in invertDict:
+                invertDict[dst] = {}
+            invertDict[dst][src] = v
 
-orderedSources = transferDict.keys()[:]
-orderedSources.sort()
-totalIn = 0
-totalOut = 0
-totalInHosp = 0
-totalOutHosp = 0
-totalInNH = 0
-totalOutNH = 0
-totBeds = 0
-totBedsHosp = 0
-totBedsNH = 0
-for src in orderedSources:
-    print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src], transOutDict[src])
-    totalIn += transInDict[src]
-    totalOut += transOutDict[src]
-    if facDict[src]['category'] == 'NURSINGHOME':
-        totalInNH += transInDict[src]
-        totalOutNH += transOutDict[src]
-        if 'nBeds' in facDict[src]:
-            totBeds += facDict[src]['nBeds']
-            totBedsNH += facDict[src]['nBeds']
+    minWtCutoff = 0.1
+    minCntCutoff = 2
+    wtScale = 0.01
+
+    createdSet = set()
+    with Graph(fname, title=title) as g:
+        for src, r in transferDict.items():
+            for dst, v in r.items():
+                if transOutDict[src] > 0.0 and transInDict[dst] > 0.0:
+                    if src in invertDict and dst in invertDict[src]:
+                        reverseV = invertDict[src][dst]
+                    else:
+                        reverseV = 0.0
+                    visWt = float(v)/min(transOutDict[src], transInDict[dst])
+                    if (visWt >= minWtCutoff
+                            and src in facDict and dst in facDict
+                            and ((facDict[src]['category'], facDict[dst]['category'])
+                                 in inclusionSet)):
+                        if src not in createdSet:
+                            g.addNode(src, facToNodeAttrs(facDict[src]))
+                            createdSet.add(src)
+                        if dst not in createdSet:
+                            g.addNode(dst, facToNodeAttrs(facDict[dst]))
+                            createdSet.add(dst)
+                        if (src, dst) not in createdSet and src != dst:
+                            if v >= reverseV:
+                                symV = reverseV
+                                asymV = v - reverseV
+                                if symV >= minCntCutoff:
+                                    g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
+                                                         'label': symV, 'color': 'black'})
+                                if asymV >= minCntCutoff:
+                                    g.addEdge(src, dst, {'weight': wtScale * asymV, 'color': 'red',
+                                                         'label': asymV})
+                            else:
+                                symV = v
+                                asymV = reverseV - v
+                                if symV >= minCntCutoff:
+                                    g.addEdge(src, dst, {'weight': wtScale * symV, 'dir': 'both',
+                                                         'label': symV, 'color': 'black'})
+                                if asymV >= minCntCutoff:
+                                    g.addEdge(dst, src, {'weight': wtScale * asymV, 'color': 'red',
+                                                         'label': asymV})
+                            createdSet.add((src, dst))
+                            createdSet.add((dst, src))
+
+    print 'wrote %s' % fname
+    oname = '%s.svg' % os.path.splitext(os.path.basename(fname))[0]
+    print 'A good post-processing command might be:'
+    print ('neato -Gspline=true -Nfontsize=5 -Nheight=0.1 -Efontsize=5'
+           ' -n2 -Tsvg -o%s %s' % (oname, fname))
+    return transInDict, transOutDict
+
+
+def main():
+    facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
+                                'facilityfactsCurrent')
+
+    directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
+    readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
+    transferDict = {}
+    for k, rec in directTransferDict.items():
+        transferDict[k] = rec.copy()
+    for k, r2 in readmitTransferDict.items():
+        r1 = transferDict[k]
+        for k2, v in r2.items():
+            r1[k2] += v
+
+    initializeMapCoordinates(facDict.values())
+
+    inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
+                    ('NURSINGHOME', 'LTAC'),
+                    ('LTAC', 'NURSINGHOME'),
+                    ('HOSPITAL', 'NURSINGHOME'),
+                    ('HOSPITAL', 'HOSPITAL'),
+                    ('NURSINGHOME', 'NURSINGHOME'),
+                    ('LTAC', 'LTAC'),
+                    ('LTAC', 'HOSPITAL'),
+                    ('HOSPITAL', 'LTAC')
+                    ]
+    # title = "HOSPITAL + LTAC internal direct transfers"
+    # title = 'NURSINGHOME internal direct transfers'
+    title = "NURSINGHOME to/from HOSPITAL+LTAC direct + indirect transfers"
+
+    transInDict, transOutDict = writeDotGraph('graph.dot', title,
+                                              facDict, transferDict, inclusionSet)
+
+    orderedSources = transferDict.keys()[:]
+    orderedSources.sort()
+    totalIn = 0
+    totalOut = 0
+    totalInHosp = 0
+    totalOutHosp = 0
+    totalInNH = 0
+    totalOutNH = 0
+    totBeds = 0
+    totBedsHosp = 0
+    totBedsNH = 0
+    for src in orderedSources:
+        print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src],
+                                  transOutDict[src])
+        totalIn += transInDict[src]
+        totalOut += transOutDict[src]
+        if facDict[src]['category'] == 'NURSINGHOME':
+            totalInNH += transInDict[src]
+            totalOutNH += transOutDict[src]
+            if 'nBeds' in facDict[src]:
+                totBeds += facDict[src]['nBeds']
+                totBedsNH += facDict[src]['nBeds']
+            else:
+                print '%s has no nBeds' % src
         else:
-            print '%s has no nBeds' % src
-    else:
-        totalInHosp += transInDict[src]
-        totalOutHosp += transOutDict[src]
-        if 'meanPop' in facDict[src]:
-            totBeds += facDict[src]['meanPop']
-            totBedsHosp += facDict[src]['meanPop']
-        else:
-            print '%s has no meanPop' % src
+            totalInHosp += transInDict[src]
+            totalOutHosp += transOutDict[src]
+            if 'meanPop' in facDict[src]:
+                totBeds += facDict[src]['meanPop']
+                totBedsHosp += facDict[src]['meanPop']
+            else:
+                print '%s has no meanPop' % src
 
-print 'Total incoming transfers: %s (%s hospitals, %s NH)' % (totalIn, totalInHosp, totalInNH)
-print 'Total outgoing transfers: %s (%s hospitals, %s NH)' % (totalOut, totalOutHosp, totalOutNH)
-print 'Total beds: %s (%s hospitals, %s NH)' % (totBeds, totBedsHosp, totBedsNH)
+    print 'Total incoming transfers: %s (%s hospitals, %s NH)' % (totalIn, totalInHosp, totalInNH)
+    print 'Total outgoing transfers: %s (%s hospitals, %s NH)' % (totalOut, totalOutHosp,
+                                                                  totalOutNH)
+    print 'Total beds: %s (%s hospitals, %s NH)' % (totBeds, totBedsHosp, totBedsNH)
 
-# fig, ax = plt.subplots()
-# ax.scatter(catchLocX, catchLocY, s=catchSize, c=catchColor, alpha=0.3)
-# ax.grid(True)
-# fig.tight_layout()
-# plt.show()
+    # fig, ax = plt.subplots()
+    # ax.scatter(catchLocX, catchLocY, s=catchSize, c=catchColor, alpha=0.3)
+    # ax.grid(True)
+    # fig.tight_layout()
+    # plt.show()
+
+if __name__ == "__main__":
+    main()

@@ -25,6 +25,7 @@ import phacsl.utils.notes.noteholder as noteholder
 from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
 import pathogenbase as pth
+import map_transfer_matrix as mtm
 import sys
 import math
 import pickle
@@ -103,8 +104,8 @@ class LOSPlotter(object):
         elif descr['category'] == 'COMMUNITY':
             self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
         else:
-            raise RuntimeError("%s has unknown category %s - cannot plot LOS"
-                               % (abbrev, descr['category']))
+            raise RuntimeError("facility %s has unknown category %s - cannot plot LOS"
+                               % (descr['abbrev'], descr['category']))
 
     def plot(self, tier, axes, nBins, rMin, rMax, scale, pattern='r-'):
         """The curve is shifted right by 0.5 because the bar chart it must overlay centers
@@ -155,7 +156,7 @@ def overallLOSFig(catNames, allOfCategoryDict):
     figs1, axes1 = plt.subplots(nrows=len(allOfCategoryDict), ncols=1)
     for offset, cat in enumerate(catNames):
         constants = loadFacilityTypeConstants(constantFileNameMap[cat])
-        losPlotter = LOSPlotter({'category': cat}, constants)
+        losPlotter = LOSPlotter({'abbrev': 'all', 'category': cat}, constants)
         bigHisto = HistoVal([])
         for tier in careTiers:
             try:
@@ -199,6 +200,7 @@ def singleLOSFig(abbrev, notesDict):
 
 
 def bedBounceFig(allOfCategoryDict):
+    catNames = allOfCategoryDict.keys()[:]
     figs2, axes2 = plt.subplots(nrows=len(careTiers), ncols=1)
     for offset, tier in enumerate(careTiers):
         key = '%s_bounce_histo' % tier
@@ -220,6 +222,7 @@ def bedBounceFig(allOfCategoryDict):
 
 
 def patientFlowFig(allOfCategoryDict):
+    catNames = allOfCategoryDict.keys()[:]
     figs3, axes3 = plt.subplots(nrows=1, ncols=len(careTiers))
     for offset, tier in enumerate(careTiers):
         nArrive = 0
@@ -390,8 +393,8 @@ def pathogenTimeFig(specialDict):
                     if key in fields:
                         lbl = '%s' % pth.Status.names[pthLvl]
                         l = fields[key]
-                        assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
-                                                         '(%d vs. %d)')
+                        assert len(l) == len(dayList), (('field %s is the wrong length in special'
+                                                         ' data %s (%d vs. %d)')
                                                         % (k, patchName, len(l), len(dayList)))
                         if not all([ll == 0 for ll in l]):
                             axes6[rowOff, colOff].plot(dayList, l, label=lbl)
@@ -460,48 +463,73 @@ def writeTransferMapAsCSV(transferMap, fname):
         csv_tools.writeCSV(f, kL, recs)
 
 
-if len(sys.argv) > 1:
-    notesFName = sys.argv[1]
-else:
-    notesFName = defaultNotesPath
+def writeTransferMapAsDot(transferDict, fname):
+    facDict = mtm.parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
+                                    'facilityfactsCurrent')
 
-notesDict = importNotes(notesFName)
-categoryDict = {}
-specialDict = {}
-for nm, d in notesDict.items():
-    try:
-        category, abbrev = tuple(nm.split('_'))
-        abbrev = abbrev.lower()
-        if category not in categoryDict:
-            categoryDict[category] = {}
-        categoryDict[category][abbrev] = d
-    except:
-        specialDict[nm] = d
+    mtm.initializeMapCoordinates(facDict.values())
 
-noteHolderGroup = noteholder.NoteHolderGroup()
-allOfCategoryDict = {}
-for category in categoryDict.keys():
-    allOfCategoryDict[category] = noteHolderGroup.createNoteHolder()
-    for abbrev, nhDict in categoryDict[category].items():
-        allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
+    inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
+                    ('NURSINGHOME', 'LTAC'),
+                    ('LTAC', 'NURSINGHOME'),
+                    ('HOSPITAL', 'NURSINGHOME'),
+                    ('HOSPITAL', 'HOSPITAL'),
+                    ('NURSINGHOME', 'NURSINGHOME'),
+                    ('LTAC', 'LTAC'),
+                    ('LTAC', 'HOSPITAL'),
+                    ('HOSPITAL', 'LTAC')
+                    ]
 
-catNames = allOfCategoryDict.keys()[:]
+    mtm.writeDotGraph('sim_graph.dot', 'Simulated patient transfers',
+                      facDict, transferDict, inclusionSet)
 
-writeTransferMapAsCSV(buildTransferMap(catNames, categoryDict),
-                      'sim_transfer_matrix.csv')
 
-countBirthsDeaths(catNames, allOfCategoryDict)
+def main():
+    if len(sys.argv) > 1:
+        notesFName = sys.argv[1]
+    else:
+        notesFName = defaultNotesPath
 
-overallLOSFig(catNames, allOfCategoryDict)
+    notesDict = importNotes(notesFName)
+    categoryDict = {}
+    specialDict = {}
+    for nm, d in notesDict.items():
+        try:
+            category, abbrev = tuple(nm.split('_'))
+            abbrev = abbrev.lower()
+            if category not in categoryDict:
+                categoryDict[category] = {}
+            categoryDict[category][abbrev] = d
+        except:
+            specialDict[nm] = d
 
-singleLOSFig('SJUD', notesDict)
-singleLOSFig('WAEC', notesDict)
-singleLOSFig('CM69', notesDict)
-singleLOSFig('COLL', notesDict)
-bedBounceFig(allOfCategoryDict)
-patientFlowFig(allOfCategoryDict)
-patientFateFig(catNames, allOfCategoryDict)
-occupancyTimeFig(specialDict)
-pathogenTimeFig(specialDict)
+    noteHolderGroup = noteholder.NoteHolderGroup()
+    allOfCategoryDict = {}
+    for category in categoryDict.keys():
+        allOfCategoryDict[category] = noteHolderGroup.createNoteHolder()
+        for abbrev, nhDict in categoryDict[category].items():
+            allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
 
-plt.show()
+    catNames = allOfCategoryDict.keys()[:]
+
+    writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
+                          'sim_transfer_matrix.csv')
+
+    countBirthsDeaths(catNames, allOfCategoryDict)
+
+    overallLOSFig(catNames, allOfCategoryDict)
+
+    singleLOSFig('SJUD', notesDict)
+    singleLOSFig('WAEC', notesDict)
+    singleLOSFig('CM69', notesDict)
+    singleLOSFig('COLL', notesDict)
+    bedBounceFig(allOfCategoryDict)
+    patientFlowFig(allOfCategoryDict)
+    patientFateFig(catNames, allOfCategoryDict)
+    occupancyTimeFig(specialDict)
+    pathogenTimeFig(specialDict)
+
+    plt.show()
+
+if __name__ == "__main__":
+    main()
