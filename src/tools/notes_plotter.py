@@ -20,6 +20,7 @@ _rhea_svn_id_ = "$Id$"
 import yaml
 import os.path
 import phacsl.utils.formats.yaml_tools as yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
 from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
@@ -423,6 +424,42 @@ def countBirthsDeaths(catNames, allOfCategoryDict):
     print 'totals: %d births, %d deaths' % (totBirths, totDeaths)
 
 
+def buildTransferMap(catNames, categoryDict):
+    transDict = {}
+    for catNm in catNames:
+        for fac, d in categoryDict[catNm].items():
+            if fac not in transDict:
+                transDict[fac] = {}
+            for k, v in d.items():
+                if k.endswith('_transfer'):
+                    dest = k[:-9].lower()
+                    if dest in transDict[fac]:
+                        transDict[fac][dest] += v
+                    else:
+                        transDict[fac][dest] = v
+    return transDict
+
+
+def writeTransferMapAsCSV(transferMap, fname):
+    recs = []
+    for src, d in transferMap.items():
+        rec = {'': src.upper()}
+        for dst, count in d.items():
+            rec['To_' + dst.upper()] = count
+        recs.append(rec)
+    allKeys = set(recs[0].keys())
+    for rec in recs[1:]:
+        allKeys.update(rec.keys())
+    kL = list(allKeys)
+    kL.sort()
+    for rec in recs:
+        for k in kL:
+            if k not in rec:
+                rec[k] = 0
+    with open('sim_transfer_matrix.csv', 'w') as f:
+        csv_tools.writeCSV(f, kL, recs)
+
+
 if len(sys.argv) > 1:
     notesFName = sys.argv[1]
 else:
@@ -449,6 +486,9 @@ for category in categoryDict.keys():
         allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
 
 catNames = allOfCategoryDict.keys()[:]
+
+writeTransferMapAsCSV(buildTransferMap(catNames, categoryDict),
+                      'sim_transfer_matrix.csv')
 
 countBirthsDeaths(catNames, allOfCategoryDict)
 
