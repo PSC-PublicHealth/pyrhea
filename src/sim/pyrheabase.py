@@ -32,7 +32,8 @@ class Ward(patches.MultiInteractant):
 
 
 class FacRequestQueue(patches.Interactant):
-    pass
+    def getInfo(self):
+        return (super(FacRequestQueue, self).getInfo(), self._lockingAgent.fac.abbrev)
 
 
 class HoldQueue(patches.Interactant):
@@ -218,7 +219,8 @@ class BedRequest(patches.Agent):
         self.tier = tier                  # the needed CareTier
         self.homeWardAddr = homeWardAddr  # to find our way home at the end of the search
         self.patientKey = patientKey      # to awaken the originating PatientAgent
-        self.facilityOptions = facilityOptions  # candidate facilities, in preference order
+        self.facilityOptions = facilityOptions[:]  # candidate facilities, in preference order
+        self.facilityOptions.reverse()
         self.payload = payload            # useful for derived classes
         self.bedWard = None               # the ward satisfying the request
         self.dest = None                  # the current travel destination
