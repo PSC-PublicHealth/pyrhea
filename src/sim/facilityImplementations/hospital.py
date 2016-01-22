@@ -65,10 +65,11 @@ class OverallHealthSetter(PatientStatusSetter):
 
 
 class Hospital(Facility):
-    def __init__(self, descr, patch):
+    def __init__(self, descr, patch, policyClasses=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
-                          reqQueueClasses=[HOSPQueue, ICUQueue])
+                          reqQueueClasses=[HOSPQueue, ICUQueue],
+                          policyClasses=policyClasses)
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
         self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
@@ -130,15 +131,19 @@ class Hospital(Facility):
         if ((oldTier == CareTier.ICU and newTier == CareTier.HOSP)
                 or (oldTier == CareTier.HOSP and newTier == CareTier.ICU)):
             qList = [rQ for rQ in self.reqQueues if isinstance(rQ, queueClass)]
+#             print '%s: clause 1' % self.abbrev
             return [q.getGblAddr() for q in qList]
         else:
-            facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
-            shuffle(facAddrList)
+            facAddrList = super(Hospital, self).getOrderedCandidateFacList(oldTier, newTier,
+                                                                           timeNow)
+#             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+        if treatment != TreatmentProtocol.NORMAL: print '%s clause 4' % self.abbrev
         assert treatment == TreatmentProtocol.NORMAL, \
-            "Hospitals only offer 'NORMAL' treatment; found %s" % treatment
+            ("Hospitals only offer 'NORMAL' treatment; found %s" %
+             TreatmentProtocol.names[treatment])
         careTier = ward.tier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
@@ -232,8 +237,8 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch):
-    fac = Hospital(facilityDescr, patch)
+def generateFull(facilityDescr, patch, policyClasses=None):
+    fac = Hospital(facilityDescr, patch, policyClasses=policyClasses)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

@@ -48,10 +48,11 @@ class CommunityWard(Ward):
 
 
 class Community(Facility):
-    def __init__(self, descr, patch):
+    def __init__(self, descr, patch, policyClasses=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
-                          reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue])
+                          reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
+                          policyClasses=policyClasses)
         meanPop = descr['meanPop']
         nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
@@ -129,8 +130,8 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch):
-    fac = Community(facilityDescr, patch)
+def generateFull(facilityDescr, patch, policyClasses=None):
+    fac = Community(facilityDescr, patch, policyClasses=policyClasses)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

@@ -41,10 +41,11 @@ _constants = None
 
 
 class NursingHome(Facility):
-    def __init__(self, descr, patch):
+    def __init__(self, descr, patch, policyClasses=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
-                          reqQueueClasses=[NURSINGQueue])
+                          reqQueueClasses=[NURSINGQueue],
+                          policyClasses=policyClasses)
         assert 'nBeds' in descr, 'Nursing home %(abbrev) description is missing nBeds' % descr
         nBeds = int(descr['nBeds'])
         if 'losModel' in descr:
@@ -213,8 +214,8 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch):
-    fac = NursingHome(facilityDescr, patch)
+def generateFull(facilityDescr, patch, policyClasses=None):
+    fac = NursingHome(facilityDescr, patch, policyClasses=policyClasses)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

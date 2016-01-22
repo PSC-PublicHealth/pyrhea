@@ -45,10 +45,11 @@ logger = logging.getLogger(__name__)
 
 
 class LTAC(Facility):
-    def __init__(self, descr, patch):
+    def __init__(self, descr, patch, policyClasses=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
-                          reqQueueClasses=[LTACQueue])
+                          reqQueueClasses=[LTACQueue],
+                          policyClasses=policyClasses)
         bedsPerWard = _constants['bedsPerWard']['value']
         self.dischargeViaDeathFrac = _constants['dischargeViaDeathFrac']['value']
         nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
@@ -162,8 +163,8 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch):
-    fac = LTAC(facilityDescr, patch)
+def generateFull(facilityDescr, patch, policyClasses=None):
+    fac = LTAC(facilityDescr, patch, policyClasses=policyClasses)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 
