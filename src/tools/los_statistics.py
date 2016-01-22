@@ -30,7 +30,7 @@ from scipy.cluster.vq import whiten, kmeans, vq
 def importLOSTable(fname):
     with open(fname, 'r') as f:
         keys, losRecs = csv_tools.parseCSV(f)  # @UnusedVariable
-        
+
     losListDict = {}
     for r in losRecs:
         k = r['# Abbreviation']
