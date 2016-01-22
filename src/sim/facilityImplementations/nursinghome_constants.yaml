@@ -22,8 +22,8 @@
   'prov': 'DEBUGGING ONLY'
   
 'rehabNeedsLTACRate':
-  'value': 0.001
-  'prov': 'DEBUGGING ONLY'
+  'value': 0.0005
+  'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
   
 'residentDeathRate':
   'value': 0.001
@@ -38,8 +38,8 @@
   'prov': 'DEBUGGING ONLY'
   
 'residentNeedsLTACRate':
-  'value': 0.001
-  'prov': 'DEBUGGING ONLY'
+  'value': 0.0005
+  'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
   
 'residentReturnToCommunityRate':
   'value': 0.0005
