@@ -15,12 +15,13 @@ handlers:
     filters: ['addRank']
   console:
     class: logging.StreamHandler
-    level: WARNING
+    level: DEBUG
     formatter: simple
     stream: ext://sys.stdout
     filters: ['addRank']
 loggers:
   __main__:
+    level: WARNING
     handlers: []
   patches:
     level: WARNING
@@ -28,8 +29,19 @@ loggers:
   agent:
     level: INFO
     handlers: []
+  facilitybase:
+    level: WARNING
+    handlers: []
+  facilitybase.PatientAgent:
+    #level: DEBUG
+    level: WARNING
+    handlers: []
+  transferdestination:
+    level: INFO
+  transferbycapacity:
+    level: INFO
   netinterface:
     level: WARNING
 root:
   level: WARNING
-  handlers: [console, rabbitmq]
+  handlers: [console]
