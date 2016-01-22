@@ -22,6 +22,9 @@ import collections
 import types
 import yaml
 import logging
+import sys
+import os
+from imp import load_source
 
 import schemautils
 
@@ -89,6 +92,30 @@ def importConstants(valuePath, schemaPath):
         raise RuntimeError('%s does not satisfy the schema %s' %
                            (valuePath, schemaPath))
     return cJSON
+
+
+def loadModulesFromDir(implementationDir,
+                       requiredAttrList=[]):
+    """
+    Scan the given directory for .py files and import them as modules one by one.
+    """
+    sys.path.append(implementationDir)
+    for fname in os.listdir(implementationDir):
+        name, ext = os.path.splitext(fname)
+        if ext == '.py':
+            newMod = load_source(name, os.path.join(implementationDir, fname))
+            for requiredAttr in requiredAttrList:
+                if not hasattr(newMod, requiredAttr):
+                    raise RuntimeError('The implementation in '
+                                       '%s is missing the required attribute %s' %
+                                       (os.path.join(implementationDir, fname),
+                                        requiredAttr))
+            yield newMod
+        elif ext.startswith('.py'):
+            pass  # .pyc files for example
+        else:
+            logger.info('Skipping non-python file %s' % fname)
+    sys.path.pop()  # drop implementaionDir
 
 
 class SingletonMetaClass(type):
