@@ -740,9 +740,9 @@ class PatchGroup(greenlet):
             pId = p.patchId
             myInteractants['_'].append(self.getGblAddr(pId))
             for iact in p.interactantDict.values():
-                nm = iact._name
+                info = iact.getInfo()
                 classNm = iact.__class__.__name__
-                myInteractants[classNm].append((nm, self.getGblAddr((pId, iact.id))))
+                myInteractants[classNm].append((info, self.getGblAddr((pId, iact.id))))
         gblAllInteractants = defaultdict(list)
         gblAllPatches = []
         if self.deterministic:
