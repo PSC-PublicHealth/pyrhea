@@ -50,7 +50,7 @@
     
 'colonizationDurationPDF':
     parms:
-    - 1.0e-2
+    - 5.059e-3
     pdf: 'expon(lambda=$0)'
     prov: >-
       Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),

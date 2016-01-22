@@ -25,6 +25,7 @@
       'colonizationDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'colonizationToInfectionFrac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'fractionColonizedChronic': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'beta': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
     'required':
       - 'initialFractionColonized'
@@ -32,6 +33,7 @@
       - 'colonizationDurationPDF'
       - 'infectionDurationPDF'
       - 'colonizationToInfectionFrac'
+      - 'fractionColonizedChronic'
       - 'beta'
       
       
