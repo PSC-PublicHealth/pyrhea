@@ -17,7 +17,7 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import csv_tools
+import phacsl.utils.formats.csv_tools as csv_tools
 import math
 
 import numpy as np
@@ -143,9 +143,11 @@ def main():
     indexDict = {}
     valVec = []
     offset = 0
-    losListDict = importLOSTable('/home/welling/git/rhea-dante/test/'
-                                 'nursing_home_CI_decolonization_2014/'
-                                 'Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
+#     losListDict = importLOSTable('/home/welling/git/rhea-dante/test/'
+#                                  'nursing_home_CI_decolonization_2014/'
+#                                  'Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
+    losListDict = importLOSTable('/home/welling/git/rhea-dante/data/OC_2013/'
+                                 + 'length_of_stay_2011_2012_OC_Nursing_Homes_08-12-2014_begin0000-end2012.csv')
     tblRecs = []
     aggregateLosList = []
     lLD = losListDict.items()[:]
@@ -163,7 +165,8 @@ def main():
         else:
             print '%s: only %d samples' % (abbrev, len(losList))
 
-    ofName = 'nh_los_model_fit_parms.csv'
+#    ofName = 'nh_los_model_fit_parms.csv'
+    ofName = 'nh_los_model_fit_parms_2013.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
         csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'nllPerSamp',
