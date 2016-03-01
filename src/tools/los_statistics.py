@@ -17,8 +17,8 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import csv_tools
-import yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
 import math
 
 import numpy as np
@@ -70,6 +70,11 @@ indexDict = {}
 valVec = []
 offset = 0
 losListDict = importLOSTable('/home/welling/git/rhea-dante/test/nursing_home_CI_decolonization_2014/Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv')
+#losListDict = importLOSTable('/home/welling/Dropbox/RHEA Inputs/OC_County_Data_2013/OC_County_Data_2013-clean-FOR-JOEL/'
+#                             + 'length_of_stay_2011_2012_OC_Nursing_Homes_08-12-2014_begin0000-end2012+Fix-SILOS+SCLE.csv')
+#losListDict = importLOSTable('/home/welling/Dropbox/RHEA Inputs/OC_County_Data_2013/OC_County_Data_2013-clean-FOR-JOEL/'
+#                             + 'length_of_stay_2011_2012_OC_Nursing_Homes_08-12-2014_begin0000-end2012+SILOS+SCLE.csv')
+#del losListDict['CMLH']
 tblRecs = []
 allLosSamples = []
 for abbrev, losList in losListDict.items():

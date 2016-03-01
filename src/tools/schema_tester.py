@@ -21,8 +21,6 @@ import sys
 import os.path
 import optparse
 
-import yaml_ordered
-yaml_ordered.install()
 import schemautils
 
 

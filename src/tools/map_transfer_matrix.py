@@ -29,6 +29,7 @@ import os.path
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import math
+import types
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -96,9 +97,15 @@ def facToNodeAttrs(facRec):
     attrDict = {'label': facRec['abbrev']}
 
     if 'nBeds' in facRec:
-        szFac = facRec['nBeds']
+        if isinstance(facRec['nBeds'], (types.IntType, types.FloatType)):
+            szFac = facRec['nBeds']
+        else:
+            szFac = float(facRec['nBeds']['value'])
     elif 'meanPop' in facRec:
-        szFac = facRec['meanPop']
+        if isinstance(facRec['meanPop'], (types.IntType, types.FloatType)):
+            szFac = float(facRec['meanPop'])
+        else:
+            szFac = float(facRec['meanPop']['value'])
     else:
         print '%s has no nBeds or meanPop'
         szFac = None
@@ -134,7 +141,7 @@ def facToNodeAttrs(facRec):
     return attrDict
 
 
-def importTransferTable(fname):
+def importTransferTable(fname, abbrevPrefix='To_'):
     with open(fname, 'r') as f:
         keys, transferRecs = csv_tools.parseCSV(f)  # @UnusedVariable
 
@@ -142,8 +149,12 @@ def importTransferTable(fname):
     for r in transferRecs:
         newR = {}
         for k, v in r.items():
-            if k.startswith('To_'):
-                newR[k[3:]] = v
+            if abbrevPrefix:
+                if k.startswith(abbrevPrefix):
+                    newR[k[len(abbrevPrefix):]] = v
+            else:
+                if len(k):
+                    newR[k] = v
         transferDict[r['']] = newR
     return transferDict
 
@@ -246,11 +257,13 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
     transInDict = {}
     invertDict = {}
     for src, r in transferDict.items():
+        src = src.lower()
         totTransfersOut = float(sum([v for v in r.values()]))
         if totTransfersOut == 0.0:
             print '%s has no outgoing transfers' % src
         transOutDict[src] = totTransfersOut
         for dst, v in r.items():
+            dst = dst.lower()
             if dst not in transInDict:
                 transInDict[dst] = 0.0
             transInDict[dst] += float(v)
@@ -265,7 +278,9 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
     createdSet = set()
     with Graph(fname, title=title) as g:
         for src, r in transferDict.items():
+            src = src.lower()
             for dst, v in r.items():
+                dst = dst.lower()
                 if transOutDict[src] > 0.0 and transInDict[dst] > 0.0:
                     if src in invertDict and dst in invertDict[src]:
                         reverseV = invertDict[src][dst]
@@ -275,7 +290,8 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
                     if (visWt >= minWtCutoff
                             and src in facDict and dst in facDict
                             and ((facDict[src]['category'], facDict[dst]['category'])
-                                 in inclusionSet)):
+                                 in inclusionSet)
+                        ):
                         if src not in createdSet:
                             g.addNode(src, facToNodeAttrs(facDict[src]))
                             createdSet.add(src)
@@ -313,11 +329,16 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
 
 
 def main():
-    facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
+    # facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
+    #                             'facilityfactsCurrent')
+    facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/'
                                 'facilityfactsCurrent')
 
-    directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
-    readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
+#     directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
+#     readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
+    directTransferDict = importTransferTable('Transferring_matrix_abbrev_9-18-2014_with-update-10-2-2014_copy_RHEA_Direct_fix_HSOU+silos+SCLE.csv',
+                                             abbrevPrefix=None)
+    readmitTransferDict = {}
     transferDict = {}
     for k, rec in directTransferDict.items():
         transferDict[k] = rec.copy()
@@ -338,9 +359,9 @@ def main():
                     ('LTAC', 'HOSPITAL'),
                     ('HOSPITAL', 'LTAC')
                     ]
-    # title = "HOSPITAL + LTAC internal direct transfers"
+    title = "HOSPITAL + LTAC internal direct transfers"
     # title = 'NURSINGHOME internal direct transfers'
-    title = "NURSINGHOME to/from HOSPITAL+LTAC direct + indirect transfers"
+    # title = "NURSINGHOME to/from HOSPITAL+LTAC direct + indirect transfers"
 
     transInDict, transOutDict = writeDotGraph('graph.dot', title,
                                               facDict, transferDict, inclusionSet)
@@ -357,24 +378,32 @@ def main():
     totBedsHosp = 0
     totBedsNH = 0
     for src in orderedSources:
-        print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src],
-                                  transOutDict[src])
-        totalIn += transInDict[src]
-        totalOut += transOutDict[src]
+        print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src.lower()],
+                                  transOutDict[src.lower()])
+        totalIn += transInDict[src.lower()]
+        totalOut += transOutDict[src.lower()]
         if facDict[src]['category'] == 'NURSINGHOME':
-            totalInNH += transInDict[src]
-            totalOutNH += transOutDict[src]
+            totalInNH += transInDict[src.lower()]
+            totalOutNH += transOutDict[src.lower()]
             if 'nBeds' in facDict[src]:
-                totBeds += facDict[src]['nBeds']
-                totBedsNH += facDict[src]['nBeds']
+                if isinstance(facDict[src]['nBeds'], types.IntType):
+                    totBeds += facDict[src]['nBeds']
+                    totBedsNH += facDict[src]['nBeds']
+                else:
+                    totBeds += int(facDict[src]['nBeds']['value'])
+                    totBedsNH += int(facDict[src]['nBeds']['value'])
             else:
                 print '%s has no nBeds' % src
         else:
-            totalInHosp += transInDict[src]
-            totalOutHosp += transOutDict[src]
+            totalInHosp += transInDict[src.lower()]
+            totalOutHosp += transOutDict[src.lower()]
             if 'meanPop' in facDict[src]:
-                totBeds += facDict[src]['meanPop']
-                totBedsHosp += facDict[src]['meanPop']
+                if isinstance(facDict[src]['meanPop'], types.FloatType):
+                    totBeds += facDict[src]['meanPop']
+                    totBedsHosp += facDict[src]['meanPop']
+                else:
+                    totBeds += float(facDict[src]['meanPop']['value'])
+                    totBedsHosp += float(facDict[src]['meanPop']['value'])
             else:
                 print '%s has no meanPop' % src
 

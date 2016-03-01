@@ -165,7 +165,7 @@ def main():
         else:
             print '%s: only %d samples' % (abbrev, len(losList))
 
-#    ofName = 'nh_los_model_fit_parms.csv'
+#     ofName = 'nh_los_model_fit_parms.csv'
     ofName = 'nh_los_model_fit_parms_2013.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
@@ -194,7 +194,9 @@ def main():
     print 'Top six pairs:'
     for v, k in pairs[:6]:
         print '  %s: %s' % (k, v)
-        trackers.append(k)
+        #trackers.append(k)
+    
+    trackers = ['GGCH', 'STAN', 'TOWN', 'NEWO', 'ELIZ', 'LAKE', 'TERR']
 
     clrs = ['red', 'blue', 'green', 'yellow']
     fig1, scatterAx = plt.subplots()

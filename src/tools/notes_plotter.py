@@ -51,9 +51,9 @@ careTiers = ['HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU']
 
 
 defaultNotesPath = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
-defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfactsCurrent',
-                    '/home/welling/workspace/pyRHEA/models/OrangeCounty/communitiesCurrent']
-defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations'
+defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013',
+                    '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/communitiesTiny']
+defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations2013'
 
 
 def fullCRVFromMeanLOS(fitParms):
@@ -302,7 +302,10 @@ def occupancyTimeFig(specialDict):
                 assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
                                                  '(%d vs. %d)')
                                                 % (k, patchName, len(l), len(dayList)))
-                axes5[offset].plot(dayList, l, label=k)
+                if not k.endswith('_all'):
+                    # The '_all' curves count every arrival at the facility and
+                    # are no longer of interest
+                    axes5[offset].plot(dayList, l, label=k)
             axes5[offset].set_xlabel('Days')
             axes5[offset].set_ylabel('Occupancy')
             axes5[offset].legend()

@@ -10,8 +10,8 @@ import os
 import urllib
 import json
 import time
-import yaml_tools
-import csv_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
 import datetime
 
 
@@ -36,11 +36,11 @@ targetTimestamp = (targetDateTime - epochDateTime).total_seconds()
 
 nRequestsThisBatch = 52  # Google API permits 100, but this keeps url length down
 
-facKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts10')
+facKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013')
 facDict = {r['abbrev']: r for r in facRecs}
 
 try:
-    with open('/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.csv', 'rU') as f:
+    with open('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.csv', 'rU') as f:
         transitKeys, transitRecs = csv_tools.parseCSV(f)  #
 except Exception, e:
     print 'Could not parse input transitmatrix'
@@ -125,14 +125,14 @@ for fromLoc, fromDict in transitDict.items():
 
 print 'Added %d recs; %d total' % (len(outTransitRecs) - nInputRecs, len(outTransitRecs))
 try:
-    os.unlink('/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.sav.csv')
+    os.unlink('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.sav.csv')
 except:
     pass
 try:
-    os.rename('/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.csv',
-              '/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.sav.csv')
+    os.rename('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.csv',
+              '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.sav.csv')
 except:
     pass
-with open('/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.csv', 'w') as f:
+with open('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.csv', 'w') as f:
     csv_tools.writeCSV(f, transitKeys, outTransitRecs)
-print 'Wrote %s' % '/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.csv'
+print 'Wrote %s' % '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/transitmatrix.csv'
