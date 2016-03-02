@@ -1,0 +1,83 @@
+'colonizationToInfectionFrac':
+  'value': 0.0
+  'prov': 'For this model, no distinction is made between colonization and infection'
+  
+#'initialFractionColonized':
+#  'value': 0.1
+#  'prov': >-
+#    Sarah 12/16/2015: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.
+#    Nursing home average is 25.9%, range 0% to 52%.  
+#    Numbers exist for the community but are not handy- Sarah will ask.
+
+'initialFractionColonized':
+- 'category': 'HOSPITAL'
+  'frac':
+    'value': 0.055
+    'prov': 'Sarah 12/16/2015: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.'
+- 'category': 'LTAC'
+  'frac':
+    'value': 0.28
+    'prov': >
+      'Prevalence of methicillin-resistant Staphylococcus aureus and Acinetobacter baumannii 
+      in a long-term acute care facility', Furuno et al., 
+      Am J Infect Control. 2008 Sep; 36(7): 468–471.
+- 'category': 'NURSINGHOME'
+  'frac':
+    'value': 0.259
+    'prov': 'Sarah 12/16/2015: Nursing home average is 25.9%, range 0% to 52%.'
+- 'category': 'COMMUNITY'
+  'frac':
+    'value': 0.259
+    'prov': 'DEBUGGING ONLY - Sarah 12/16/2015: Numbers exist for the community but are not handy- Sarah will ask.'
+
+'initialFractionInfected':
+- 'category': 'HOSPITAL'
+  'frac':
+    'value': 0.0
+    'prov': 'For this model, no distinction is made between colonization and infection'
+- 'category': 'LTAC'
+  'frac':
+    'value': 0.0
+    'prov': 'For this model, no distinction is made between colonization and infection'
+- 'category': 'NURSINGHOME'
+  'frac':
+    'value': 0.0
+    'prov': 'For this model, no distinction is made between colonization and infection'
+- 'category': 'COMMUNITY'
+  'frac':
+    'value': 0.0
+    'prov': 'For this model, no distinction is made between colonization and infection'
+    
+'colonizationDurationPDF':
+    parms:
+    - 5.059e-3
+    pdf: 'expon(lambda=$0)'
+    prov: >-
+      Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),
+      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
+      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
+
+'fractionColonizedChronic':
+  'value': 0.33
+  'prov': >-
+      Additionally, MRSA carriage was deemed to be persistent for one-third of carriers(22),
+      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
+      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
+
+'infectionDurationPDF':
+    parms:
+    - 3.0
+    - 0.75
+    pdf: lognorm(mu=$0,sigma=$1)
+    prov: >-
+      DEBUGGING ONLY - the transition should be from infected to clear (Sarah).  This should only happen with treatment.
+      But since this model does not make a distinction between colonization and infection, no patient will
+      be affected by this PDF.
+        
+'beta':
+  'value': 8.5061848125100008e-05
+  'prov': >-
+    This is the median of the 102 beta valus in rhea-dante c91ea171:data/OC_2013/MRSA.INPUT_for_JOEL.txt
+    modify_beta(n)%beta(1).  The mean is 0.0005161267075923481, std dev 0.00081511260560777638.  
+    Excluding 0.0 values there are 94 samples, median 9.511040317044999e-05, 
+    mean 0.00056005238483425009, std dev 0.00083447785403349944
