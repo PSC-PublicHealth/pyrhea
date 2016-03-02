@@ -1,0 +1,28 @@
+'communityLOSModel':
+    parms:
+#    - 2.0e-2
+#    - 1.8e-2
+    - 1.5e-2
+#    - 1.0e-2
+    pdf: 'expon(lambda=$0)'
+    prov: 'DEBUGGING ONLY - hand-tuning for stability starting at lambda=1.0e-2'
+  
+'communityDeathRate':
+  'value': 0.01
+  'prov': 'DEBUGGING ONLY'
+  
+'communityVerySickRate':
+#  'value': 0.013
+  'value': 0.013
+#  'value': 0.1
+  'prov': 'DEBUGGING ONLY - hand-tuned to reduce ICU crowding starting from 0.1'
+  
+'communityNeedsLTACRate':
+  'value': 0.03
+  'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
+  
+'communityPatientCheckInterval':
+  'value': 1
+  'prov': 'arbitrary'
+  
+  
