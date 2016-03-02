@@ -394,7 +394,7 @@ def main():
 
     schemautils.setSchemaBasePath(schemaDir)
     pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
-    assert len(pthImplDict) == 1, 'Simulation currently supports only one pathogen at a time'
+    assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
     PthClass = pthImplDict.values()[0].getPathogenClass()
 
     facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])

@@ -1,0 +1,20 @@
+'facilityDirs':
+  - '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013'
+  - '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/communitiesTiny'
+
+'facilityImplementationDir': './facilityImplementations2013'
+
+'pathogenImplementationDir': './mrsaImplementation2013'
+
+'policyImplementationDir': './policyImplementations2013'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
+    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'CapacityTransferDestinationPolicy'
+
+#'runDurationDays': 1095
+'runDurationDays': 365
+
+#'burnInDays': 365
+burnInDays: 100
