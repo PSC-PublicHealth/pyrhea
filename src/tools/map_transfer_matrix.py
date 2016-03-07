@@ -107,27 +107,31 @@ def facToNodeAttrs(facRec):
         else:
             szFac = float(facRec['meanPop']['value'])
     else:
-        print '%s has no nBeds or meanPop'
+        print '%s has no nBeds or meanPop' % facRec['abbrev']
         szFac = None
+
+    if facRec['category'] == 'HOSPITAL':
+        attrDict['shape'] = 'box'
+        catchColor.append('blue')
+    elif facRec['category'] == 'NURSINGHOME':
+        attrDict['shape'] = 'ellipse'
+        catchColor.append('red')
+    elif facRec['category'] == 'LTAC':
+        attrDict['shape'] = 'triangle'
+        catchColor.append('blue')
+    elif facRec['category'] == 'COMMUNITY':
+        attrDict['shape'] = 'star'
+        szFac *= 0.01
+        catchColor.append('green')
+    else:
+        attrDict['shape'] = 'octagon'
+        catchColor.append('violet')
+
     if szFac is None:
         attrDict['color'] = 'blue'
         attrDict['style'] = 'dashed'
     else:
-        scaledSz = 0.01 * float(szFac)
-        attrDict['width'] = scaledSz
-
-    if facRec['category'] == 'HOSPITAL':
-        attrDict['shape'] = 'box'
-        catchSize.append(facRec['meanPop'])
-        catchColor.append('blue')
-    elif facRec['category'] == 'NURSINGHOME':
-        attrDict['shape'] = 'ellipse'
-        catchSize.append(facRec['nBeds'])
-        catchColor.append('red')
-    else:
-        attrDict['shape'] = 'triangle'
-        catchSize.append(facRec['meanPop'])
-        catchColor.append('blue')
+        attrDict['width'] = 0.01 * float(szFac)
 
     x, y = mapProject(facRec['latitude'], facRec['longitude'],
                       worldRadius, mapCtr, mapXVec, mapYVec)
@@ -135,6 +139,7 @@ def facToNodeAttrs(facRec):
     # catchLocY.append(facRec['latitude'])
     catchLocX.append(x)
     catchLocY.append(y)
+    catchSize.append(szFac)
 
     attrDict['pos'] = '"%f,%f?"' % (x, y)
 
@@ -215,9 +220,15 @@ def mapProject(lat, lon, r, ctr, xVec, yVec):
     return (dot(sep, xVec), dot(sep, yVec))
 
 
-def parseFacilityData(fname):
-    junkKeys, facRecs = yaml_tools.parse_all(fname)  # @UnusedVariable
-    facDict = {r['abbrev']: r for r in facRecs}
+def parseFacilityData(fnameOrNameList):
+    if not isinstance(fnameOrNameList, types.ListType):
+        fnameOrNameList = [fnameOrNameList]
+    facDict = {}
+    for fn in fnameOrNameList:
+        junkKeys, facRecs = yaml_tools.parse_all(fn)  # @UnusedVariable
+        for r in facRecs:
+            assert r['abbrev'] not in facDict, 'Redundant definitions for %s' % r['abbrev']
+            facDict[r['abbrev']] = r
     return facDict
 
 
@@ -251,7 +262,8 @@ def initializeMapCoordinates(facRecs):
     print 'mapYVec: %s' % str(mapYVec)
 
 
-def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
+def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
+    initializeMapCoordinates(facDict.values())
     facDict = {k.lower(): v for k, v in facDict.items()}  # convert keys to lower case
     transOutDict = {}
     transInDict = {}
@@ -277,6 +289,12 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
 
     createdSet = set()
     with Graph(fname, title=title) as g:
+        for src in facDict.keys():
+            src = src.lower()
+            if src not in createdSet:
+                g.addNode(src, facToNodeAttrs(facDict[src]))
+                createdSet.add(src)
+
         for src, r in transferDict.items():
             src = src.lower()
             for dst, v in r.items():
@@ -289,15 +307,9 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet):
                     visWt = float(v)/min(transOutDict[src], transInDict[dst])
                     if (visWt >= minWtCutoff
                             and src in facDict and dst in facDict
-                            and ((facDict[src]['category'], facDict[dst]['category'])
-                                 in inclusionSet)
-                        ):
-                        if src not in createdSet:
-                            g.addNode(src, facToNodeAttrs(facDict[src]))
-                            createdSet.add(src)
-                        if dst not in createdSet:
-                            g.addNode(dst, facToNodeAttrs(facDict[dst]))
-                            createdSet.add(dst)
+                            and ((inclusionSet is None)
+                                 or ((facDict[src]['category'], facDict[dst]['category'])
+                                     in inclusionSet))):
                         if (src, dst) not in createdSet and src != dst:
                             if v >= reverseV:
                                 symV = reverseV
