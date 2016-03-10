@@ -77,7 +77,7 @@ class CapacityCore(object):
             self.tierAddrMap[tier] = {}
             serviceTupleList = self.patch.serviceLookup(tierToQueueMap[tier].__name__)
             for info, addr in serviceTupleList:
-                innerInfo, facAbbrev = info  # @UnusedVariable
+                innerInfo, facAbbrev, facCoords = info  # @UnusedVariable
                 self.tierAddrMap[tier][facAbbrev] = addr
         logger.info('map complete')
 
@@ -91,42 +91,6 @@ class CapacityTransferDestinationPolicy(BaseTransferDestinationPolicy):
     def __init__(self, patch):
         super(CapacityTransferDestinationPolicy, self).__init__(patch)
         self.core = CapacityCore(patch)
-
-#     def buildCacheEntry(self, oldFacility, newTier):
-#         srcAbbrev = oldFacility.abbrev
-#         queueClass = tierToQueueMap[newTier]
-#         tplList = []
-#         for info, addr in self.patch.serviceLookup(queueClass.__name__):
-#             innerInfo, destAbbrev = info  # @UnusedVariable
-#             travelTime = self.core.tbl[srcAbbrev][destAbbrev]['seconds']
-#             tplList.append((travelTime, info, addr))
-#         tplList.sort()
-#         return [c for a, b, c in tplList]  # @UnusedVariable
-
-#     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
-#         pairList = self.core.tbl[newTier][:]
-#         tot = self.core.totTbl[newTier]
-# #         print 'newTier: %s' % CareTier.names[newTier]
-#         facList = []
-#         while pairList:
-#             capSum = 0.0
-#             idx = 0
-#             lim = random.random() * tot
-# #             print lim
-#             while True:
-# #                 print 'sum = %s idx = %s tpl = %s' % (capSum, idx, str(pairList[idx]))
-#                 capSum += pairList[idx][0]
-#                 if capSum >= lim:
-#                     capacity, abbrev = pairList.pop(idx)  # @UnusedVariable
-#                     facList.append(abbrev)
-#                     tot -= capacity
-# #                     print 'breaking; facList = %s' % facList
-#                     break
-#                 else:
-#                     idx += 1
-# #         print 'done! %s' % facList
-#         tAM = self.core.getTierAddrMap(newTier)
-#         return [tAM[facAbbrev] for facAbbrev in facList]
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
         pairList = deque(self.core.tbl[newTier])

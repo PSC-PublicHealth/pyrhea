@@ -97,7 +97,13 @@ class FacilityManager(pyrheabase.FacilityManager):
     pass
 
 
-class BirthQueue(pyrheabase.FacRequestQueue):
+class FacRequestQueue(pyrheabase.FacRequestQueue):
+    def getInfo(self):
+        return (super(FacRequestQueue, self).getInfo(),
+                self._lockingAgent.fac.abbrev, self._lockingAgent.fac.coords)
+
+
+class BirthQueue(FacRequestQueue):
     pass
 
 
@@ -105,23 +111,23 @@ class BirthMsg(pyrheabase.SimpleMsg):
     pass
 
 
-class ICUQueue(pyrheabase.FacRequestQueue):
+class ICUQueue(FacRequestQueue):
     pass
 
 
-class HOSPQueue(pyrheabase.FacRequestQueue):
+class HOSPQueue(FacRequestQueue):
     pass
 
 
-class LTACQueue(pyrheabase.FacRequestQueue):
+class LTACQueue(FacRequestQueue):
     pass
 
 
-class NURSINGQueue(pyrheabase.FacRequestQueue):
+class NURSINGQueue(FacRequestQueue):
     pass
 
 
-class HOMEQueue(pyrheabase.FacRequestQueue):
+class HOMEQueue(FacRequestQueue):
     pass
 
 
@@ -163,6 +169,7 @@ class Facility(pyrheabase.Facility):
                                      reqQueueClasses=reqQueueClasses)
         self.category = descr['category']
         self.abbrev = descr['abbrev']
+        self.coords = (descr['longitude'], descr['latitude'])
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}

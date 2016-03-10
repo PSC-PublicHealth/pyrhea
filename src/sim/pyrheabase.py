@@ -32,8 +32,7 @@ class Ward(patches.MultiInteractant):
 
 
 class FacRequestQueue(patches.Interactant):
-    def getInfo(self):
-        return (super(FacRequestQueue, self).getInfo(), self._lockingAgent.fac.abbrev)
+    pass
 
 
 class HoldQueue(patches.Interactant):

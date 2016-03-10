@@ -86,12 +86,6 @@ class LTAC(Facility):
                                (category, patch.name, descr['abbrev'], 'LTAC', i)),
                               patch, CareTier.LTAC, bedsPerWard))
 
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
-        queueClass = tierToQueueMap[newTier]
-        facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
-        shuffle(facAddrList)
-        return facAddrList
-
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         assert treatment == TreatmentProtocol.NORMAL, \
             "LTACs only offer 'NORMAL' treatment; found %s" % treatment

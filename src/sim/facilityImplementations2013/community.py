@@ -53,7 +53,7 @@ class Community(Facility):
                           descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
                           policyClasses=policyClasses)
-        meanPop = descr['meanPop']
+        meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
         assert losModel['pdf'] == 'expon(lambda=$0)', \
@@ -116,7 +116,7 @@ class Community(Facility):
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Hospital description %(abbrev)s is missing the expected field 'meanPop'" % descr
-    meanPop = float(descr['meanPop'])
+    meanPop = float(descr['meanPop']['value'])
     agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOME)
@@ -137,9 +137,9 @@ def generateFull(facilityDescr, patch, policyClasses=None):
 
 def estimateWork(facRec):
     if 'meanPop' in facRec:
-        return facRec['meanPop'] / _constants['communityPatientCheckInterval']['value']
+        return facRec['meanPop']['value'] / _constants['communityPatientCheckInterval']['value']
     elif 'nBeds' in facRec:
-        return facRec['nBeds'] / _constants['communityPatientCheckInterval']['value']
+        return facRec['nBeds']['value'] / _constants['communityPatientCheckInterval']['value']
     else:
         logger.warning('Cannot estimate work for %(abbrev)s' % facRec)
         return 0
