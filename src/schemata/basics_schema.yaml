@@ -40,6 +40,15 @@
       - 'value'
       - 'prov'
 
+  'posinteger':
+    'type': 'object'
+    'properties':
+      'value': {'type': 'integer', 'minimum': 1}
+      'prov': {'type': 'string'}
+    'required':
+      - 'value'
+      - 'prov'
+
   'datestring':
     'type': 'string'
     'pattern': '^(0[1-9]|[1-9]|[01][0-2])/(0[1-9]|[1-9]|[12][0-9]|3[01])/(19|20)[0-9][0-9]$'

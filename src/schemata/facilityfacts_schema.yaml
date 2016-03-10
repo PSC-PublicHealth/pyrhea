@@ -31,30 +31,22 @@
     'required':
       - 'category'
       - 'count'
-  
-  'facilityfacts':
+
+  'basicfacilityfacts':
     'type': 'object'
     'properties':
       'name': {'type': 'string'}
       'abbrev': {'type': 'string'}
-      'category': {'$ref': '#/definitions/category'}
-      'nBeds': {'minimum': 1, 'type': 'integer'}
-      'nBeds_prov': {'type': 'string'}
-      'meanPop': {'minimum': 0.0, 'type': 'number'}
-      'meanPop_prov': {'type': 'string'}
-      'fracBedsICU':
-        'type': 'number'
-        'minimum': 0.0
-        'maximum': 1.0
-      'fracBedsICU_prov': {'type': 'string'}
+      'nBeds': {'$ref': 'basics_schema.yaml#/definitions/posinteger'}
+      'meanPop': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
       'meanLOS': {'$ref': '#/definitions/LOSData'}
       'meanLOSICU': {'$ref': '#/definitions/LOSData'}
+      'fracAdultPatientDaysICU': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'address': {'type': 'string'}
       'address_prov': {'type': 'string'}
       'longitude': {'type': 'number', 'minimum': -180.0, 'maximum': 180.0}
       'latitude':  { 'type': 'number', 'minimum': -90.0, 'maximum': 90.0}
       'lat_lon_prov': {'type': 'string'}
-      'totalDischarges': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
       'totalTransfersIn': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
       'totalTransfersOut': 
         'type': 'array'
@@ -72,10 +64,35 @@
       - 'longitude'
       - 'latitude'
       - 'lat_lon_prov'
-      - 'totalDischarges'
       - 'totalTransfersIn'
       - 'totalTransfersOut'
       - 'losModel'
 #      - 'nBeds'
 #      - 'meanPop'
+
+  'hospitalfacts':
+    'allOf':
+    - {'$ref': '#/definitions/basicfacilityfacts'}
+    - 'properties':
+        'category': 
+          'type': 'string'
+          'enum': ['HOSPITAL', 'LTAC']
+        'totalDischarges':
+          'description': 'Count of all discharges, including discharge via death'
+          '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+      'required':
+      - 'totalDischarges'
+          
+  'nursinghomefacts':
+    'allOf':
+    - {'$ref': '#/definitions/basicfacilityfacts'}
+    - 'properties':
+        'category': 
+          'type': 'string'
+          'enum': ['NURSINGHOME']
+          
+  'facilityfacts':
+    'oneOf':
+    - {'$ref': '#/definitions/hospitalfacts'}
+    - {'$ref': '#/definitions/nursinghomefacts'}
 

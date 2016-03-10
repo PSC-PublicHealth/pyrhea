@@ -11,10 +11,6 @@
     'type': 'string'
     'enum': ['COMMUNITY']
 
-  'datestring':
-    'type': 'string'
-    'pattern': '^(0[1-9]|[1-9]|[01][0-2])/(0[1-9]|[1-9]|[12][0-9]|3[01])/(19|20)[0-9][0-9]$'
-    
   'LOSData':
     'type': 'object'
     'properties':
@@ -26,44 +22,7 @@
       'startdate': {'$ref': '#/definitions/datestring'}
       'enddate': {'$ref': '#/definitions/datestring'}
     'required': ['value', 'prov']
-    
-  'PDF':
-    'type': 'object'
-    'properties':
-      'prov':
-        'type': 'string'
-      'pdf':
-        'type': 'string'
-      'parms':
-        'type': 'array'
-        'items': {'type': 'number'}
-      'nsamp':
-        'type': 'integer'
-        'minimum': 1
-      'negLogLikPerSample':
-        'type': 'number'
-    'required':
-      - 'pdf'
-      - 'parms'
-      - 'prov'
-    
-  'count':
-    'type': 'object'
-    'properties':
-      'value': {'type': 'number', 'minimum': 0.0}
-      'prov': {'type': 'string'}
-    'required':
-      - 'prov'
-      - 'value'
-      
-  'categorycount':
-    'type': 'object'
-    'properties':
-      'category': {'$ref': '#/definitions/category'}
-      'count': {'$ref': '#/definitions/count'}
-    'required':
-      - 'prov'
-      - 'value'
+        
   
   'communityfacts':
     'type': 'object'
@@ -71,12 +30,13 @@
       'name': {'type': 'string'}
       'abbrev': {'type': 'string'}
       'category': {'$ref': '#/definitions/category'}
-      'meanPop': {'minimum': 0.0, 'type': 'number'}
-      'meanPop_prov': {'type': 'string'}
+      'meanPop': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
+      'longitude': {'type': 'number', 'minimum': -180.0, 'maximum': 180.0}
+      'latitude':  { 'type': 'number', 'minimum': -90.0, 'maximum': 90.0}
+      'lat_lon_prov': {'type': 'string'}
     'required': 
       - 'name'
       - 'abbrev'
       - 'category'
       - 'meanPop'
-      - 'meanPop_prov'
 

@@ -1,0 +1,7 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/nursinghomefacts_schema.yaml'
+'title': 'nursing home facts schema'
+'description': 'Only the nursing home part of the facility facts schema'
+
+'$ref': 'facilityfacts_schema.yaml#/definitions/nursinghomefacts'
+
