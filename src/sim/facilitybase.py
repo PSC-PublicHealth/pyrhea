@@ -169,7 +169,10 @@ class Facility(pyrheabase.Facility):
                                      reqQueueClasses=reqQueueClasses)
         self.category = descr['category']
         self.abbrev = descr['abbrev']
-        self.coords = (descr['longitude'], descr['latitude'])
+        if 'longitude' in descr and 'latitude' in descr:
+            self.coords = (descr['longitude'], descr['latitude'])
+        else:
+            self.coords = (None, None)
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}
