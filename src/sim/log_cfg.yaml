@@ -9,10 +9,10 @@ filters:
   addRank:
     '()': 'pyrhea.RankLoggingFilter'
 handlers:
-  rabbitmq:
-    '()': 'pyrhea.PikaLogHandler'
-    formatter: raw
-    filters: ['addRank']
+  #rabbitmq:
+  #  '()': 'pyrhea.PikaLogHandler'
+  #  formatter: raw
+  #  filters: ['addRank']
   console:
     class: logging.StreamHandler
     level: DEBUG
