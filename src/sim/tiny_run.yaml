@@ -1,6 +1,6 @@
 'facilityDirs':
-  - '/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfactsCurrent'
-  - '/home/welling/workspace/pyRHEA/models/OrangeCounty/communitiesTiny'
+  - '/home/welling/git/pyrhea/models/OrangeCounty/facilityfactsCurrent'
+  - '/home/welling/git/pyrhea/models/OrangeCounty/communitiesTiny'
 
 'facilityImplementationDir': './facilityImplementations'
 

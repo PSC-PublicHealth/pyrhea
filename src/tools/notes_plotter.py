@@ -50,10 +50,18 @@ constantFileNameMap = {'NURSINGHOME': 'nursinghome',
 careTiers = ['HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU']
 
 
-defaultNotesPath = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
-defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013',
-                    '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/communitiesTiny']
-defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations2013'
+# defaultNotesPath = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
+# defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013',
+#                     '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/communitiesTiny']
+# defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations2013'
+
+
+thisDir = os.path.dirname(__file__)
+defaultNotesPath = os.path.join(thisDir, '../sim/notes.pkl')
+defaultDescrDirs = [os.path.join(thisDir, '../../models/OrangeCounty2013/facilityfactsCurrent2013'),
+                    os.path.join(thisDir, '../../models/OrangeCounty2013/communitiesTiny'),
+                    os.path.join(thisDir, '../../models/OrangeCounty2013/synthCommunities')]
+defaultConstDir = os.path.join(thisDir, '../sim/facilityImplementations2013')
 
 
 def fullCRVFromMeanLOS(fitParms):
@@ -467,8 +475,8 @@ def writeTransferMapAsCSV(transferMap, fname):
 
 
 def writeTransferMapAsDot(transferDict, fname):
-    facDict = mtm.parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
-                                    'facilityfactsCurrent')
+    facDict = mtm.parseFacilityData(os.path.join(thisDir, '../../models/OrangeCounty2013/'
+                                                 'facilityfactsCurrent2013'))
 
     mtm.initializeMapCoordinates(facDict.values())
 
