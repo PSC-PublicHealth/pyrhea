@@ -245,7 +245,7 @@ class GateEntrance(Interactant):
             #  This will get enqueued for sending
             if lockingAgent.debug:
                 self.logger.debug('%s bound  to gate %s' % (lockingAgent.name, self._name))
-        agent.Interactant.lock(self, lockingAgent, debug=False)
+        return agent.Interactant.lock(self, lockingAgent, debug=False)
 
 
 class GateExit(Interactant):
