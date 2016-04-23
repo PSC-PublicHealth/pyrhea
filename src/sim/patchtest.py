@@ -25,6 +25,9 @@ import sys
 from random import choice
 
 import patches
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TestInteractant(patches.Interactant):
@@ -93,13 +96,12 @@ def createPerDayCB(patch, runDurationDays):
 
 def describeSelf():
     print """
-    This main provides diagnostics. -t, -v and -d for trace, verbose and debug respectively.
+    This main provides diagnostics. -t and -d for trace and debug respectively.
     """
 
 
 def main():
     trace = False
-    verbose = False
     debug = False
 
     for a in sys.argv[1:]:
@@ -111,10 +113,17 @@ def main():
             describeSelf()
             sys.exit('unrecognized argument %s' % a)
 
+    if debug:
+        logLevel = 'DEBUG'
+    else:
+        logLevel = 'INFO'
+
     comm = patches.getCommWorld()
     rank = comm.rank
+    logging.basicConfig(format="%%(levelname)s:%%(name)s:rank%s:%%(message)s" % rank,
+                        level=logLevel)
 
-    patchGroup = patches.PatchGroup(comm, trace=trace)
+    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=False)
     nPatches = 2
     for j in xrange(nPatches):
 
@@ -124,19 +133,18 @@ def main():
                                for nm in ['SubA', 'SubB', 'SubC']])
 
         allAgents = []
-        for i in xrange(100):
-            if debug:
-                debugThis = True
-            else:
-                debugThis = (i % 50 == 0)
+        for i in xrange(1000):
+            debugThis = (i % 50 == 0)
             allAgents.append(TestAgent('Agent_%d_%d_%d' % (rank, j, i),
                                        patch, debug=debugThis))
 
         patch.addAgents(allAgents)
         patch.loop.addPerDayCallback(createPerDayCB(patch, 1000))
         patchGroup.addPatch(patch)
+    logger.info('starting main loop')
     msg = patchGroup.start()
-    print '%d all done (from main) with msg %s' % (rank, msg)
+    logger.info('%d all done (from main) with msg %s' % (rank, msg))
+    logging.shutdown()
 
 
 ############

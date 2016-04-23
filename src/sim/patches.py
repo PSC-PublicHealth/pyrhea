@@ -39,13 +39,6 @@ def _substituteClockAgentBreakHook(clockAgent):
 agent._clockAgentBreakHook = _substituteClockAgentBreakHook
 
 
-"""
-To Do:
--Add rollback chain support
--Implement rollback
-"""
-
-
 class MsgTypes():
     GATE = 0
 
@@ -265,6 +258,7 @@ class GateExit(Interactant):
         """ This is called by the messaging system to deliver incoming agents """
         if msgType == MsgTypes.GATE:
             senderTime, agentList = incomingTuple
+            logger.debug('%s got %s arriving agents' % (self._name, len(agentList)))
             if self._debug:
                 d = {}
                 for k in [a.__class__.__name__ for a in agentList]:

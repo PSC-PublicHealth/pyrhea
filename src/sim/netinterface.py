@@ -20,7 +20,7 @@ _rhea_svn_id_ = "$Id$"
 from mpi4py import MPI
 import numpy as np
 import types
-from collections import namedtuple, deque
+from collections import namedtuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -126,10 +126,9 @@ class GblAddr(_InnerGblAddr):
 class NetworkInterface(object):
     MPI_TAG_MORE = 1
     MPI_TAG_END = 2
-#     maxChunksPerMsg = 256000
-#     irecvBufferSize = 1024*1024
-    maxChunksPerMsg = 32*128
-    irecvBufferSize = 1024*1024
+
+    maxChunksPerMsg = 32
+    irecvBufferSize = 1024 * 1024
 
     def __init__(self, comm, sync=True, deterministic=False):
         self.comm = comm
@@ -193,10 +192,12 @@ class NetworkInterface(object):
 
     def _innerRecv(self, tpl):
         msgType, srcTag, destTag, partTpl = tpl
+        logger.debug('msg type %s arrived from %s for %s' % (msgType, srcTag, destTag))
         self.clientIncomingCallbacks[(srcTag.rank, srcTag.lclId, destTag.lclId)](msgType, partTpl)
 
     def finishRecv(self):
         self.vclock.incr()  # must happen before incoming messages arrive
+        logger.debug('%d local messages' % len(self.incomingLclMessages))
         for tpl in self.incomingLclMessages:
             self._innerRecv(tpl)
         self.incomingLclMessages = []
@@ -205,10 +206,14 @@ class NetworkInterface(object):
                 break
             if self.deterministic:
                 s = MPI.Status()
-                msg = MPI.Request.wait(self.outstandingRecvReqs[0], s)
-                self.outstandingRecvReqs.popleft()
+                msg = MPI.Request.wait(self.outstandingRecvReqs[-1], s)
+                logger.debug('netInterface rank %d: wait returned for last idx: tag %s source %s'
+                             % (self.comm.rank, s.Get_tag(), s.Get_source()))
+                self.outstandingRecvReqs.pop()
                 tag = s.Get_tag()
                 if tag == NetworkInterface.MPI_TAG_MORE:
+                    logger.debug('netInterface rank %d: MORE from %s' %
+                                 (self.comm.rank, s.Get_source()))
                     buf = bytearray(NetworkInterface.irecvBufferSize)
                     self.outstandingRecvReqs.append(self.comm.irecv(buf, s.Get_source(),
                                                                     MPI.ANY_TAG))
@@ -226,7 +231,7 @@ class NetworkInterface(object):
             elif self.sync:
                 s = MPI.Status()
                 idx, msg = MPI.Request.waitany(self.outstandingRecvReqs, s)
-                logger.debug('netInterface rank %d: waitany returned for index %s: tag %s source %s' 
+                logger.debug('netInterface rank %d: waitany returned for idx %s: tag %s source %s'
                              % (self.comm.rank, idx, s.Get_tag(), s.Get_source()))
                 self.outstandingRecvReqs.pop(idx)
                 tag = s.Get_tag()
@@ -282,19 +287,20 @@ class NetworkInterface(object):
                     for srcTag, destTag, msgType, cargo in msgList:
                         self.incomingLclMessages.append((msgType, srcTag, destTag, cargo))
                 else:
-                    bigCargo = [vTimeNow]
-                    for srcTag, destTag, msgType, cargo \
-                            in msgList[0:NetworkInterface.maxChunksPerMsg]:
-                        bigCargo.append((msgType, srcTag, destTag, cargo))
-                    msgList = msgList[NetworkInterface.maxChunksPerMsg:]
-                    if msgList:
-                        req = self.comm.isend(bigCargo, destRank,
-                                              tag=NetworkInterface.MPI_TAG_MORE)
-                    else:
-                        bigCargo.extend(self.doneMsg)
-                        req = self.comm.isend(bigCargo, destRank,
-                                              tag=NetworkInterface.MPI_TAG_END)
-                    self.outstandingSendReqs.append(req)
+                    while msgList:
+                        bigCargo = [vTimeNow]
+                        for srcTag, destTag, msgType, cargo \
+                                in msgList[0:NetworkInterface.maxChunksPerMsg]:
+                            bigCargo.append((msgType, srcTag, destTag, cargo))
+                        msgList = msgList[NetworkInterface.maxChunksPerMsg:]
+                        if msgList:
+                            req = self.comm.isend(bigCargo, destRank,
+                                                  tag=NetworkInterface.MPI_TAG_MORE)
+                        else:
+                            bigCargo.extend(self.doneMsg)
+                            req = self.comm.isend(bigCargo, destRank,
+                                                  tag=NetworkInterface.MPI_TAG_END)
+                        self.outstandingSendReqs.append(req)
 
         else:
             for destRank, msgList in self.outgoingDict.items():
