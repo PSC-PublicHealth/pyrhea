@@ -22,7 +22,7 @@ This provides a simple test routine for patches.
 """
 
 import sys
-from random import choice
+from random import choice, seed
 
 import patches
 import logging
@@ -101,12 +101,15 @@ def describeSelf():
 def main():
     trace = False
     debug = False
+    deterministic = False
 
     for a in sys.argv[1:]:
         if a == '-d':
             debug = True
         elif a == '-t':
             trace = True
+        elif a == '--deterministic':
+            deterministic = True
         else:
             describeSelf()
             sys.exit('unrecognized argument %s' % a)
@@ -121,7 +124,10 @@ def main():
     logging.basicConfig(format="%%(levelname)s:%%(name)s:rank%s:%%(message)s" % rank,
                         level=logLevel)
 
-    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=False)
+    if deterministic:
+        seed(1234)
+
+    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic)
     nPatches = 2
     for j in xrange(nPatches):
 
