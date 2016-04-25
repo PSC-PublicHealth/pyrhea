@@ -245,7 +245,6 @@ class GateExit(Interactant):
     def __init__(self, name, ownerPatch, srcTag, debug=False):
         Interactant.__init__(self, name, ownerPatch, debug=debug)
         self.srcTag = srcTag
-        self.partnerMaxDay = 0
         self.logger = logging.getLogger(__name__ + '.GateExit')
 
     def cycleStart(self, timeNow):
@@ -620,13 +619,13 @@ class PatchGroup(greenlet):
             pass
         return evtFun
 
-    def __init__(self, comm, name=None, sync=True, trace=False, deterministic=False,
+    def __init__(self, comm, name=None, trace=False, deterministic=False,
                  printCensus=False):
         if trace:
             greenlet.settrace(greenletTrace)
 
         self.patches = []
-        self.nI = netinterface.NetworkInterface(comm, sync=sync, deterministic=deterministic)
+        self.nI = netinterface.NetworkInterface(comm, deterministic=deterministic)
         if name is None:
             self.name = 'PatchGroup_%d' % comm.rank
         else:
@@ -636,7 +635,6 @@ class PatchGroup(greenlet):
         self.outstandingRecvReqs = []
         self.expectFrom = set()
         self.clientGateExits = {}
-        self.sync = sync
         self.deterministic = deterministic
         self.printCensus = printCensus
         self.prevTraceCB = None

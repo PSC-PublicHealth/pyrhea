@@ -47,8 +47,6 @@ class TestAgent(patches.Agent):
     def run(self, startTime):
         timeNow = startTime
         while True:
-            if timeNow is None:
-                raise RuntimeError('Death to %s' % self.name)
             if self.fsmstate == TestAgent.STATE_ATTARGET:
                 timeNow = self.sleep(1)
                 candidates = self.patch.serviceLookup('TestInteractant')
@@ -61,14 +59,14 @@ class TestAgent(patches.Agent):
                     self.target = None
                 self.fsmstate = TestAgent.STATE_MOVING
                 if self.debug:
-                    print '%s leaving for %s at %s' % (self.name, nm, timeNow)
+                    logger.debug('%s leaving for %s at %s' % (self.name, nm, timeNow))
             elif self.fsmstate == TestAgent.STATE_MOVING:
                 nxtI, final = self.patch.getPathTo(self.targetAddr)
                 if final:
                     self.fsmstate = TestAgent.STATE_ATTARGET
                     self.target = nxtI
                     if self.debug:
-                        print('%s arrives at %s day %s' % (self.name, nxtI._name, timeNow))
+                        logger.debug('%s arrives at %s day %s' % (self.name, nxtI._name, timeNow))
                 timeNow = nxtI.lock(self)
         if self.debug:
             return '%s is exiting at %s' % (self, timeNow)

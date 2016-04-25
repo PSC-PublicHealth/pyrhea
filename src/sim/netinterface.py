@@ -130,17 +130,14 @@ class NetworkInterface(object):
     maxChunksPerMsg = 32
     irecvBufferSize = 1024 * 1024
 
-    def __init__(self, comm, sync=True, deterministic=False):
+    def __init__(self, comm, deterministic=False):
         self.comm = comm
         self.vclock = VectorClock(self.comm.size, self.comm.rank)
         self.outgoingDict = {}
-#         self.outstandingSendReqs = deque()
-#         self.outstandingRecvReqs = deque()
         self.outstandingSendReqs = []
         self.outstandingRecvReqs = []
         self.expectFrom = set()  # Other ranks sending to us directly
         self.clientIncomingCallbacks = {}
-        self.sync = sync
         self.deterministic = deterministic
         self.doneMsg = [(False, 0)]
         self.incomingLclMessages = []
@@ -228,7 +225,7 @@ class NetworkInterface(object):
                 self.vclock.merge(vtm)
                 for tpl in msg[1:]:
                     self._innerRecv(tpl)
-            elif self.sync:
+            else:
                 s = MPI.Status()
                 idx, msg = MPI.Request.waitany(self.outstandingRecvReqs, s)
                 logger.debug('netInterface rank %d: waitany returned for idx %s: tag %s source %s'
@@ -253,25 +250,6 @@ class NetworkInterface(object):
                 self.vclock.merge(vtm)
                 for tpl in msg[1:]:
                     self._innerRecv(tpl)
-            else:
-                idx, flag, msg = MPI.Request.testany(self.outstandingRecvReqs)
-                if idx >= 0:
-                    self.outstandingRecvReqs.pop(idx)
-                if flag:
-                    doneMsg = msg.pop()
-                    if doneMsg[0]:
-                        self.doneSignalsSeen += 1
-                    vtm = msg[0]
-                    #
-                    # Handle vtime order issues here
-                    #
-                    self.vclock.merge(vtm)
-                    for tpl in msg[1:]:
-                        self._innerRecv(tpl)
-                else:
-                    logger.debug('netInterface rank %d empty recv queue' % self.comm.rank)
-                    break
-#         self.outstandingRecvReqs = deque()
         self.outstandingRecvReqs = []
 
     def startSend(self):
@@ -301,6 +279,8 @@ class NetworkInterface(object):
                             req = self.comm.isend(bigCargo, destRank,
                                                   tag=NetworkInterface.MPI_TAG_END)
                         self.outstandingSendReqs.append(req)
+            self.outgoingDict.clear()
+            self.doneMsg = [(False, 0)]  # to avoid accidental re-sends
 
         else:
             for destRank, msgList in self.outgoingDict.items():
@@ -325,8 +305,8 @@ class NetworkInterface(object):
                         self.outstandingSendReqs.append(req)
                         logger.debug('netInterface rank %d sent %s to %s req %s' %
                                      (self.comm.rank, len(bigCargo), destRank, req))
-        self.outgoingDict.clear()
-        self.doneMsg = [(False, 0)]  # to avoid accidental re-sends
+            self.outgoingDict.clear()
+            self.doneMsg = [(False, 0)]  # to avoid accidental re-sends
 
     def finishSend(self):
         sList = []
@@ -334,7 +314,6 @@ class NetworkInterface(object):
             sList.append(MPI.Status())
         logger.debug('netInterface rank %d enters send waitall' % self.comm.rank)
         MPI.Request.Waitall(self.outstandingSendReqs, statuses=sList)  # @UnusedVariable
-#         self.outstandingSendReqs = deque()
         self.outstandingSendReqs = []
 
     def sendDoneSignal(self):
