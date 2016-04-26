@@ -15,13 +15,12 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import logging
 
 import os.path
 import math
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 
@@ -61,7 +60,7 @@ def longitudeLatitudeSep(lon1, lat1, lon2, lat2):
 
 class MinDistanceCore(object):
     """This is where we put things that are best shared across all instances"""
-    __metaclass__ = pyrheautils.SingletonMetaClass
+    __metaclass__ = SingletonMetaClass
 
     def __init__(self):
         pass

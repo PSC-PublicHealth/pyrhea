@@ -19,7 +19,7 @@ _rhea_svn_id_ = "$Id$"
 
 from random import randint, shuffle, choice
 import pyrheabase
-from pyrheautils import enum, namedtuple
+from phacsl.utils.collections.phacollections import enum, namedtuple
 import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree

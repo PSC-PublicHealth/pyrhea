@@ -21,6 +21,7 @@ import os.path
 import logging
 import math
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
 from facilitybase import PatientStatusSetter, Pathogen, PthStatus, PthStatusSetter
@@ -44,7 +45,7 @@ def _valFromCategoryEntry(key, ctg, constantsJSON):
 
 class MRSACore(object):
     """This is where we put things that are best shared across all MRSA instances"""
-    __metaclass__ = pyrheautils.SingletonMetaClass
+    __metaclass__ = SingletonMetaClass
 
     def __init__(self):
         colCRV = fullCRVFromPDFModel(_constants['colonizationDurationPDF'])
@@ -70,8 +71,8 @@ class MRSA(Pathogen):
                                                         self.ward.fac.category,
                                                         _constants)
         colTree = BayesTree(PthStatusSetter(PthStatus.CHRONIC),
-                             PthStatusSetter(PthStatus.COLONIZED),
-                             _constants['fractionColonizedChronic']['value'])
+                            PthStatusSetter(PthStatus.COLONIZED),
+                            _constants['fractionColonizedChronic']['value'])
         fracClear = 1.0 - (initialFractionColonized + initialFractionInfected)
         self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,
                                                                  colTree),

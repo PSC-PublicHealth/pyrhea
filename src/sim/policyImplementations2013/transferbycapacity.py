@@ -15,11 +15,10 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import logging
 
 import os.path
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
 import random
 from collections import deque
@@ -36,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 class CapacityCore(object):
     """This is where we put things that are best shared across all instances"""
-    __metaclass__ = pyrheautils.SingletonMetaClass
+    __metaclass__ = SingletonMetaClass
 
     def __init__(self, patch):
         self.patch = patch
@@ -97,7 +96,7 @@ class CapacityTransferDestinationPolicy(BaseTransferDestinationPolicy):
         tot = self.core.totTbl[newTier]
 #         print 'newTier: %s' % CareTier.names[newTier]
         facList = []
-        facList_sav = [abbrev for capacity, abbrev in pairList]
+#        facList_sav = [abbrev for capacity, abbrev in pairList]
         while pairList:
             capSum = 0.0
             lim = random.random() * tot
