@@ -213,7 +213,7 @@ class Facility(pyrheabase.Facility):
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientID, tier, isFrail = myPayload
             if patientID in self.patientDataDict:
-                logger.info('Patient %s has returned to %s' % (patientID, self.name))
+                logger.debug('Patient %s has returned to %s' % (patientID, self.name))
                 patientRec = self.patientDataDict[patientID]
                 patientRec.prevVisits += 1
                 patientRec.arrivalDate = timeNow

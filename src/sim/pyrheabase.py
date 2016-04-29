@@ -73,7 +73,7 @@ class Manager(patches.Agent):
 
     def handleRequest(self, req, logDebug, timeNow):
         if isinstance(req, SimpleMsg):
-            return self.fac.handleIncomingMsg(req.__class__, req.payload, timeNow)
+            return self.toManage.handleIncomingMsg(req.__class__, req.payload, timeNow)
         else:
             raise RuntimeError("%s unexpectedly got the message %s" % (self.name, req.name))
 
@@ -84,7 +84,7 @@ class Manager(patches.Agent):
             foundAny = True
             while foundAny:
                 foundAny = False
-                for rQ in self.fac.reqQueues:
+                for rQ in self.toManage.reqQueues:
                     if rQ._lockQueue:
                         foundAny = True
                         req = rQ._lockQueue[0]
@@ -227,7 +227,13 @@ class Person(patches.Agent):
                                   (self.name, self.fsmstate, timeNow))
             if self.fsmstate == Person.STATE_ATLOC:
                 newLocAddr, timeNow = self.getNewLocAddr(timeNow)
+                if self.debug:
+                    self.logger.debug('%s point 1: new addr %s vs current %s' %
+                                      (self.name, newLocAddr, self.locAddr))
                 if newLocAddr is None:
+                    if self.debug:
+                        self.logger.debug('%s point 5: agent dies' %
+                                          self.name)
                     self.handleDeath(timeNow)
                     self.patch.launch(DepartureMsg(self.name + '_depMsg',
                                                    self.patch,
@@ -242,9 +248,6 @@ class Person(patches.Agent):
                                           (self.name, self.loc.checkInterval))
                     timeNow = self.sleep(self.loc.checkInterval)
                 else:
-                    if self.debug:
-                        self.logger.debug('%s point 1: new addr %s vs current %s' %
-                                          (self.name, self.newLocAddr, self.locAddr))
                     self.patch.launch(DepartureMsg(self.name + '_depMsg',
                                                    self.patch,
                                                    self.loc.getDepartureMsgPayload(self),
@@ -260,6 +263,7 @@ class Person(patches.Agent):
                 if final:
                     self.fsmstate = Person.STATE_JUSTARRIVED
                     self.loc = addr
+                    self.locAddr = self.newLocAddr
                     if self.debug:
                         self.logger.debug('%s point 6: arrive tier %s day %s'
                                           % (self.name, self.ward.tier, timeNow))
@@ -268,7 +272,7 @@ class Person(patches.Agent):
                 self.handleArrival(timeNow)
                 self.patch.launch(ArrivalMsg(self.name + '_arvMsg',
                                              self.patch,
-                                             self.loc.getArrivalMessagePayload(),
+                                             self.loc.getArrivalMsgPayload(self),
                                              self.loc.getReqQueueAddr()),
                                   timeNow)
                 self.fsmstate = PatientAgent.STATE_ATLOC
@@ -277,7 +281,8 @@ class Person(patches.Agent):
                                       % (self.name, timeNow))
                 timeNow = self.sleep(self.getPostArrivalPauseTime(timeNow))
             if self.debug:
-                self.logger.debug('%s point 2' % self.name)
+                self.logger.debug('%s point 2: state is now %s day %s' %
+                                  (self.name, self.fsmstate, timeNow))
 
     def __getstate__(self):
         d = patches.Agent.__getstate__(self)
@@ -301,7 +306,7 @@ class Ward(Location):
         return self.fac.getMsgPayload(DepartureMsg, person)
 
     def getArrivalMsgPayload(self, person):
-        return self.fac.getMsgPayload(ArrivalMsg, self)
+        return self.fac.getMsgPayload(ArrivalMsg, person)
 
     def getReqQueueAddr(self):
         return self.fac.reqQueues[0].getGblAddr()
@@ -526,6 +531,18 @@ class PatientAgent(Person):
     def ward(self):
         return self.loc
 
+    @ward.setter
+    def ward(self, value):
+        self.loc = value
+
+    @property
+    def newWardAddr(self):
+        return self.newLocAddr
+
+    @newWardAddr.setter
+    def newWardAddr(self, value):
+        self.newLocAddr = value
+
     def handleTierUpdate(self, timeNow):
         return self.ward.tier
 
@@ -551,7 +568,7 @@ class PatientAgent(Person):
                                              tier, self.ward.getGblAddr(),
                                              key, facAddrList,
                                              self.ward.fac.getBedRequestPayload(self, tier)),
-                                   timeNow)
+                                  timeNow)
                 if self.debug:
                     self.logger.debug('%s point 3: launched req for tier %s'
                                       % (self.name, tier))

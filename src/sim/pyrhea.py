@@ -29,6 +29,7 @@ import logging.config
 import pika
 import pickle
 import re
+import signal
 
 import patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
@@ -329,6 +330,13 @@ def findPolicies(policyClassList,
 
 def main():
 
+    # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
+    # handy trick to enable attachment of pdb to a running program
+    def handle_pdb(sig, frame):
+        import pdb
+        pdb.Pdb().set_trace(frame)
+    signal.signal(signal.SIGUSR1, handle_pdb)
+
     comm = patches.getCommWorld()
     logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank)
 
@@ -465,7 +473,10 @@ def main():
         exitMsg = patchGroup.start()
         logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
     except Exception, e:
-        logger.error('%s hit exception %s; writing notes and exiting' % (patchGroup.name, e))
+        logger.error('%s exception %s; traceback follows' % (patchGroup.name, e))
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        logger.error('%s writing notes and exiting' % patchGroup.name)
 
     allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
     if comm.rank == 0:
