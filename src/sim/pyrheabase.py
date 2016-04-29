@@ -245,18 +245,14 @@ class Person(patches.Agent):
                     if self.debug:
                         self.logger.debug('%s point 1: new addr %s vs current %s' %
                                           (self.name, self.newLocAddr, self.locAddr))
-                    else:
-                        if self.debug:
-                            self.logger.debug('%s point 5: day %s'
-                                              % (self.name, timeNow))
-                        self.patch.launch(DepartureMsg(self.name + '_depMsg',
-                                                       self.patch,
-                                                       self.loc.getDepartureMsgPayload(self),
-                                                       self.loc.getReqQueueAddr()),
-                                          timeNow)
-                        self.newLocAddr = newLocAddr
-                        timeNow = self.loc.unlock(self)
-                        self.fsmstate = Person.STATE_MOVING
+                    self.patch.launch(DepartureMsg(self.name + '_depMsg',
+                                                   self.patch,
+                                                   self.loc.getDepartureMsgPayload(self),
+                                                   self.loc.getReqQueueAddr()),
+                                      timeNow)
+                    self.newLocAddr = newLocAddr
+                    timeNow = self.loc.unlock(self)
+                    self.fsmstate = Person.STATE_MOVING
 
             elif self.fsmstate == Person.STATE_MOVING:
                 self.loc = None

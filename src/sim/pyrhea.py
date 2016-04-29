@@ -461,8 +461,11 @@ def main():
                          'rank': comm.rank})
 
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
-    exitMsg = patchGroup.start()
-    logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
+    try:
+        exitMsg = patchGroup.start()
+        logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
+    except Exception, e:
+        logger.error('%s hit exception %s; writing notes and exiting' % (patchGroup.name, e))
 
     allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
     if comm.rank == 0:
