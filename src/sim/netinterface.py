@@ -110,7 +110,8 @@ class GblAddr(_InnerGblAddr):
         return self < other or self == other
 
     def __eq__(self, other):
-        return self.rank == other.rank and self.lclId == other.lclId
+        return (type(self) == type(other)
+                and self.rank == other.rank and self.lclId == other.lclId)
 
     def __ne__(self, other):
         return self.rank != other.rank or self.lclId != other.lclId

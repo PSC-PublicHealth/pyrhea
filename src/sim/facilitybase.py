@@ -417,7 +417,7 @@ class PatientAgent(pyrheabase.PatientAgent):
     def handleTierUpdate(self, timeNow):
         return self.updateEverything(timeNow)
 
-    def handlePatientDeath(self, timeNow):
+    def handleDeath(self, timeNow):
         assert self._status.diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
         self.ward.fac.noteHolder.addNote({"death": 1})
         if self.debug:

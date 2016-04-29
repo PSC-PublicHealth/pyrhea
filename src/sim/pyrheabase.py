@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import logging
 from random import shuffle
 import patches
@@ -24,15 +22,19 @@ import patches
 logger = logging.getLogger(__name__)
 
 
-class Ward(patches.MultiInteractant):
-    def __init__(self, name, patch, tier, nBeds):
-        patches.MultiInteractant.__init__(self, name, nBeds, patch)
-        self.tier = tier
-        self.fac = None
+class Location(patches.MultiInteractant):
+    def __init__(self, name, patch, nCapacity, checkInterval=1):
+        patches.MultiInteractant.__init__(self, name, nCapacity, patch)
+        self.checkInterval = checkInterval
 
+    def getDepartureMsgPayload(self, person):
+        return None
 
-class FacRequestQueue(patches.Interactant):
-    pass
+    def getArrivalMsgPayload(self, person):
+        return None
+
+    def getReqQueueAddr(self):
+        raise RuntimeError('Derived classes must implement this method')
 
 
 class HoldQueue(patches.Interactant):
@@ -62,12 +64,265 @@ class HoldQueue(patches.Interactant):
         return patches.Interactant.awaken(self, agent)
 
 
-class FacilityManager(patches.Agent):
-    def __init__(self, name, patch, facility):
+class Manager(patches.Agent):
+    def __init__(self, name, patch, managementBase):
         patches.Agent.__init__(self, name, patch)
-        self.fac = facility
         self.timeless = True
+        self.toManage = managementBase
+        self.logger = logger.getChild('Manager')
+
+    def handleRequest(self, req, logDebug, timeNow):
+        if isinstance(req, SimpleMsg):
+            return self.fac.handleIncomingMsg(req.__class__, req.payload, timeNow)
+        else:
+            raise RuntimeError("%s unexpectedly got the message %s" % (self.name, req.name))
+
+    def run(self, startTime):
+        timeNow = startTime  # @UnusedVariable
+        logDebug = self.logger.isEnabledFor(logging.DEBUG)
+        while True:
+            foundAny = True
+            while foundAny:
+                foundAny = False
+                for rQ in self.fac.reqQueues:
+                    if rQ._lockQueue:
+                        foundAny = True
+                        req = rQ._lockQueue[0]
+                        timeNow = self.handleRequest(req, logDebug, timeNow)
+                        rQ.awaken(req)
+            timeNow = self.sleep(0)  # @UnusedVariable
+
+
+class SimpleMsg(patches.Agent):
+    STATE_MOVING = 0
+    STATE_ARRIVED = 1
+
+    def __init__(self, name, patch, payload, destAddr, debug=False):
+        patches.Agent.__init__(self, name, patch, debug=debug)
+        self.payload = payload
+        self.destAddr = destAddr
+        self.fsmstate = self.STATE_MOVING
+
+    def run(self, startTime):
+        timeNow = startTime  # @UnusedVariable
+        while True:
+            if self.fsmstate == self.STATE_MOVING:
+                addr, final = self.patch.getPathTo(self.destAddr)
+                if final:
+                    self.fsmstate = self.STATE_ARRIVED
+                timeNow = addr.lock(self)  # @UnusedVariable
+            elif self.fsmstate == self.STATE_ARRIVED:
+                break  # we are done
+
+    def __getstate__(self):
+        d = patches.Agent.__getstate__(self)
+        d['payload'] = self.payload
+        d['fsmstate'] = self.fsmstate
+        d['destAddr'] = self.destAddr
+        return d
+
+    def __setstate__(self, stateDict):
+        patches.Agent.__setstate__(self, stateDict)
+        self.payload = stateDict['payload']
+        self.fsmstate = stateDict['fsmstate']
+        self.destAddr = stateDict['destAddr']
+
+
+class ArrivalMsg(SimpleMsg):
+    pass
+
+
+class DepartureMsg(SimpleMsg):
+    pass
+
+
+class RequestQueue(patches.Interactant):
+    pass
+
+
+class ManagementBase(object):
+    def __init__(self, name, patch, managerClass=None, reqQueueClasses=None):
+        if managerClass is None:
+            managerClass = Manager
+        if reqQueueClasses is None:
+            reqQueueClasses = [RequestQueue]
+        self.name = name
+        self.manager = managerClass(name + '_Mgr', patch, self)
+        self.reqQueues = [rQC(name+'_rQ', patch) for rQC in reqQueueClasses]
+        for rQ in self.reqQueues:
+            rQ.lock(self.manager)
+        self.holdQueue = HoldQueue(name+'_hQ', patch)
+        self.holdQueue.lock(self.manager)
+
+    def getMsgPayload(self, msgType, person):
+        if issubclass(msgType, ArrivalMsg):
+            return person.loc.getArrivalMsgPayload(person)
+        elif issubclass(msgType, DepartureMsg):
+            return person.loc.getDepartureMsgPayload(person)
+        else:
+            raise RuntimeError('%s: payload request for unknown message type %s'
+                               % (self.name, msgType.__name__))
+
+    def handleIncomingMsg(self, msgType, payload, timeNow):
+        return timeNow
+
+
+class Person(patches.Agent):
+    STATE_ATLOC = 0
+    STATE_MOVING = 1
+    STATE_JUSTARRIVED = 2
+
+    def __init__(self, name, patch, loc, debug=False):
+        """
+        loc is the current location, an interactant to which the Person instance is locked.
+        """
+        patches.Agent.__init__(self, name, patch, debug=debug)
+        self.fsmstate = PatientAgent.STATE_ATLOC
+        self.loc = loc
+        self.locAddr = loc.getGblAddr()
+        self.newLocAddr = None
+        self.logger = logging.getLogger(__name__ + '.Person')
+
+    def getPostArrivalPauseTime(self, timeNow):
+        """
+        This allows the insertion of an extra pause on arrival at a new location.  It is useful
+        for desynchronizing the activity cycles of agents at a location which does not sample
+        all agents daily.
+        """
+        return 0
+
+    def getNewLocAddr(self, timeNow):
+        """
+        This method is called once each time the Person agent is active and returns a tuple
+        of the form (newLocGlobalAddr, updatedTimeNow).  Returning a newLocGlobalAddr of
+        self.locAddr (that is, the current value) indicates that the Person stays attached
+        to the same location for this time slice.  Returning a newLocGlobalAddr
+        of None signals 'death' and will result in self.handleDeath being called and the agent's
+        thread exiting.  This method may not return for a long time as the agent waits for
+        a new location to become available.
+        """
+        return self.locAddr, timeNow
+
+    def handleArrival(self, timeNow):
+        """
+        An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
+        locked the interactant self.loc.
+        """
+        pass
+
+    def handleDeath(self, timeNow):
+        """
+        The name says it all.  Do any bookkeeping needed to deal with the death of this Person.
+        After this method returns, a DepartureMessage will be sent to inform its current location
+        of departure and the agent's run method will exit.
+        """
+        pass
+
+    def run(self, startTime):
+        timeNow = startTime
+        timeNow = self.sleep(self.getPostArrivalPauseTime(timeNow))
+        while True:
+            if self.debug:
+                self.logger.debug('%s point 0: state %s day %s' %
+                                  (self.name, self.fsmstate, timeNow))
+            if self.fsmstate == Person.STATE_ATLOC:
+                newLocAddr, timeNow = self.getNewLocAddr(timeNow)
+                if newLocAddr is None:
+                    self.handleDeath(timeNow)
+                    self.patch.launch(DepartureMsg(self.name + '_depMsg',
+                                                   self.patch,
+                                                   self.loc.getDepartureMsgPayload(self),
+                                                   self.loc.getReqQueueAddr()),
+                                      timeNow)
+                    timeNow = self.loc.unlock(self)
+                    break
+                elif newLocAddr == self.locAddr:
+                    if self.debug:
+                        self.logger.debug('%s point 9: sleeping for %s' %
+                                          (self.name, self.loc.checkInterval))
+                    timeNow = self.sleep(self.loc.checkInterval)
+                else:
+                    if self.debug:
+                        self.logger.debug('%s point 1: new addr %s vs current %s' %
+                                          (self.name, self.newLocAddr, self.locAddr))
+                    else:
+                        if self.debug:
+                            self.logger.debug('%s point 5: day %s'
+                                              % (self.name, timeNow))
+                        self.patch.launch(DepartureMsg(self.name + '_depMsg',
+                                                       self.patch,
+                                                       self.loc.getDepartureMsgPayload(self),
+                                                       self.loc.getReqQueueAddr()),
+                                          timeNow)
+                        self.newLocAddr = newLocAddr
+                        timeNow = self.loc.unlock(self)
+                        self.fsmstate = Person.STATE_MOVING
+
+            elif self.fsmstate == Person.STATE_MOVING:
+                self.loc = None
+                addr, final = self.patch.getPathTo(self.newLocAddr)
+                if final:
+                    self.fsmstate = Person.STATE_JUSTARRIVED
+                    self.loc = addr
+                    if self.debug:
+                        self.logger.debug('%s point 6: arrive tier %s day %s'
+                                          % (self.name, self.ward.tier, timeNow))
+                timeNow = addr.lock(self)
+            elif self.fsmstate == Person.STATE_JUSTARRIVED:
+                self.handleArrival(timeNow)
+                self.patch.launch(ArrivalMsg(self.name + '_arvMsg',
+                                             self.patch,
+                                             self.loc.getArrivalMessagePayload(),
+                                             self.loc.getReqQueueAddr()),
+                                  timeNow)
+                self.fsmstate = PatientAgent.STATE_ATLOC
+                if self.debug:
+                    self.logger.debug('%s point 7: day %s'
+                                      % (self.name, timeNow))
+                timeNow = self.sleep(self.getPostArrivalPauseTime(timeNow))
+            if self.debug:
+                self.logger.debug('%s point 2' % self.name)
+
+    def __getstate__(self):
+        d = patches.Agent.__getstate__(self)
+        d['newLocAddr'] = self.newLocAddr
+        d['fsmstate'] = self.fsmstate
+        return d
+
+    def __setstate__(self, d):
+        patches.Agent.__setstate__(self, d)
+        self.newLocAddr = d['newLocAddr']
+        self.fsmstate = d['fsmstate']
+
+
+class Ward(Location):
+    def __init__(self, name, patch, tier, nBeds):
+        Location.__init__(self, name, patch, nBeds)
+        self.tier = tier
+        self.fac = None
+
+    def getDepartureMsgPayload(self, person):
+        return self.fac.getMsgPayload(DepartureMsg, person)
+
+    def getArrivalMsgPayload(self, person):
+        return self.fac.getMsgPayload(ArrivalMsg, self)
+
+    def getReqQueueAddr(self):
+        return self.fac.reqQueues[0].getGblAddr()
+
+
+class FacRequestQueue(RequestQueue):
+    pass
+
+
+class FacilityManager(Manager):
+    def __init__(self, name, patch, facility):
+        super(FacilityManager, self).__init__(name, patch, facility)
         self.logger = logger.getChild('FacilityManager')
+
+    @property
+    def fac(self):
+        return self.toManage
 
     def allocateAvailableBed(self, tier):
         if tier in self.fac.wardTierDict:
@@ -101,42 +356,20 @@ class FacilityManager(patches.Agent):
                 self.logger.debug('%s: found a bed for %s' % (self.name, req.name))
         return timeNow
 
-    def run(self, startTime):
-        timeNow = startTime  # @UnusedVariable
-        logDebug = self.logger.isEnabledFor(logging.DEBUG)
-        while True:
-            foundAny = True
-            while foundAny:
-                foundAny = False
-                for rQ in self.fac.reqQueues:
-                    if rQ._lockQueue:
-                        foundAny = True
-                        req = rQ._lockQueue[0]
-                        if isinstance(req, BedRequest):
-                            timeNow = self.handleBedRequest(req, logDebug, timeNow)
-                        elif isinstance(req, SimpleMsg):
-                            timeNow = self.fac.handleIncomingMsg(req.__class__, req.payload,
-                                                                 timeNow)
-                        else:
-                            raise RuntimeError("%s unexpectedly got the message %s" %
-                                               (self.name, req.name))
-                        rQ.awaken(req)
-            timeNow = self.sleep(0)  # @UnusedVariable
+    def handleRequest(self, req, logDebug, timeNow):
+        if isinstance(req, BedRequest):
+            return self.handleBedRequest(req, logDebug, timeNow)
+        else:
+            return super(FacilityManager, self).handleRequest(req, logDebug, timeNow)
 
 
-class Facility(object):
+class Facility(ManagementBase):
     def __init__(self, name, patch, managerClass=None, reqQueueClasses=None):
         if managerClass is None:
             managerClass = FacilityManager
         if reqQueueClasses is None:
             reqQueueClasses = [FacRequestQueue]
-        self.name = name
-        self.manager = managerClass(name + '_Mgr', patch, self)
-        self.reqQueues = [rQC(name+'_rQ', patch) for rQC in reqQueueClasses]
-        for rQ in self.reqQueues:
-            rQ.lock(self.manager)
-        self.holdQueue = HoldQueue(name+'_hQ', patch)
-        self.holdQueue.lock(self.manager)
+        ManagementBase.__init__(self, name, patch, managerClass, reqQueueClasses)
         self.wardTierDict = {}  # lists of wards by tier
         self.wardAddrDict = {}  # dict of (ward, nFree) by lclAddr
 
@@ -166,8 +399,7 @@ class Facility(object):
         elif issubclass(msgType, DepartureMsg):
             return patientAgent.ward.getGblAddr()
         else:
-            raise RuntimeError('%s: payload request for unknown message type %s'
-                               % (self.name, msgType.__name__))
+            return super(Facility, self).getMsgPayload(msgType, patientAgent)
 
     def handleIncomingMsg(self, msgType, payload, timeNow):
         wardGblAddr = payload
@@ -287,69 +519,21 @@ class BedRequest(patches.Agent):
         self.payload = stateDict['payload']
 
 
-class SimpleMsg(patches.Agent):
-    STATE_MOVING = 0
-    STATE_ARRIVED = 1
-
-    def __init__(self, name, patch, payload, destAddr, debug=False):
-        patches.Agent.__init__(self, name, patch, debug=debug)
-        self.payload = payload
-        self.destAddr = destAddr
-        self.fsmstate = self.STATE_MOVING
-
-    def run(self, startTime):
-        timeNow = startTime  # @UnusedVariable
-        while True:
-            if self.fsmstate == self.STATE_MOVING:
-                addr, final = self.patch.getPathTo(self.destAddr)
-                if final:
-                    self.fsmstate = self.STATE_ARRIVED
-                timeNow = addr.lock(self)  # @UnusedVariable
-            elif self.fsmstate == self.STATE_ARRIVED:
-                break  # we are done
-
-    def __getstate__(self):
-        d = patches.Agent.__getstate__(self)
-        d['payload'] = self.payload
-        d['fsmstate'] = self.fsmstate
-        d['destAddr'] = self.destAddr
-        return d
-
-    def __setstate__(self, stateDict):
-        patches.Agent.__setstate__(self, stateDict)
-        self.payload = stateDict['payload']
-        self.fsmstate = stateDict['fsmstate']
-        self.destAddr = stateDict['destAddr']
-
-
-class ArrivalMsg(SimpleMsg):
-    pass
-
-
-class DepartureMsg(SimpleMsg):
-    pass
-
-
-class PatientAgent(patches.Agent):
-    STATE_ATWARD = 0
-    STATE_MOVING = 1
-    STATE_JUSTARRIVED = 2
+class PatientAgent(Person):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
-        patches.Agent.__init__(self, name, patch, debug=debug)
-        self.ward = ward
+        Person.__init__(self, name, patch, ward, debug=debug)
         self.tier = ward.tier
-        self.newWardAddr = None
-        self.fsmstate = PatientAgent.STATE_ATWARD
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
-    def getPostArrivalPauseTime(self, timeNow):
-        return 0
+    @property
+    def ward(self):
+        return self.loc
 
     def handleTierUpdate(self, timeNow):
         return self.ward.tier
 
-    def handlePatientDeath(self, timeNow):
+    def handleDeath(self, timeNow):
         pass
 
     def getCandidateFacilityList(self, timeNow, newTier):
@@ -357,108 +541,55 @@ class PatientAgent(patches.Agent):
         shuffle(facAddrList)
         return facAddrList
 
-    def run(self, startTime):
-        timeNow = startTime
-        timeNow = self.sleep(self.getPostArrivalPauseTime(timeNow))
-        while True:
-            if self.debug:
-                self.logger.debug('%s point 0: status %s state %s day %s' %
-                                  (self.name, str(self._status), self.fsmstate, timeNow))
-            if self.fsmstate == PatientAgent.STATE_ATWARD:
-                tier = self.handleTierUpdate(timeNow)
+    def getNewLocAddr(self, timeNow):
+        tier = self.handleTierUpdate(timeNow)
+        if tier == self.tier:
+            return self.locAddr, timeNow  # things stay the same
+        elif tier is None:
+            return None, timeNow  # signal death
+        else:
+            while True:
+                facAddrList = self.getCandidateFacilityList(timeNow, tier)
+                key = self.ward.fac.holdQueue.getUniqueKey()
+                self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
+                                             tier, self.ward.getGblAddr(),
+                                             key, facAddrList,
+                                             self.ward.fac.getBedRequestPayload(self, tier)),
+                                   timeNow)
                 if self.debug:
-                    self.logger.debug('%s point 1: status %s tiers %s vs %s' %
-                                      (self.name, str(self._status), tier, self.ward.tier))
-                if tier is None:
-                    self.handlePatientDeath(timeNow)
-                    self.patch.launch(DepartureMsg(self.name + '_depMsg',
-                                                   self.patch,
-                                                   self.ward.fac.getMsgPayload(DepartureMsg, self),
-                                                   self.ward.fac.reqQueues[0].getGblAddr()),
-                                      timeNow)
-                    timeNow = self.ward.unlock(self)
-                    break
-                elif self.ward.tier == tier:
+                    self.logger.debug('%s point 3: launched req for tier %s'
+                                      % (self.name, tier))
+                timeNow = self.ward.fac.holdQueue.lock(self, key=key)
+                if self.debug:
+                    self.logger.debug('%s point 4: day %s'
+                                      % (self.name, timeNow))
+                # The BedRequest will have updated the value of self.newLocAddr before exiting.
+                # Just be sure not to return it if the new value is None, or the calling loop
+                # will interpret it as a signal that the agent has died!
+                if self.newLocAddr is None:
+                    # Nowhere to go; try again tomorrow
+                    # print ('%s is stuck at %s; going back to sleep at %s' %
+                    #        (self.name, self.ward, timeNow))
                     if self.debug:
-                        self.logger.debug('%s point 9: status %s' % (self.name, str(self._status)))
-                    timeNow = self.sleep(self.ward.checkInterval)
+                        self.logger.debug('%s point 8: stuck here day %s'
+                                          % (self.name, timeNow))
+                    timeNow = self.sleep(1)
+                    # state is unchanged
                 else:
-                    # print ('%s wants a tier %s ward at %s' %
-                    #        (self.name, tier, timeNow))
-                    facAddrList = self.getCandidateFacilityList(timeNow, tier)
-                    key = self.ward.fac.holdQueue.getUniqueKey()
-                    self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
-                                                 tier, self.ward.getGblAddr(),
-                                                 key, facAddrList,
-                                                 self.ward.fac.getBedRequestPayload(self, tier)),
-                                      timeNow)
-                    if self.debug:
-                        self.logger.debug('%s point 3: launched req for tier %s'
-                                          % (self.name, tier))
-                    timeNow = self.ward.fac.holdQueue.lock(self, key=key)
-                    if self.debug:
-                        self.logger.debug('%s point 4: status %s day %s'
-                                          % (self.name, str(self._status), timeNow))
-                    if self.newWardAddr is None:
-                        # Nowhere to go; try again tomorrow
-                        # print ('%s is stuck at %s; going back to sleep at %s' %
-                        #        (self.name, self.ward, timeNow))
-                        if self.debug:
-                            self.logger.debug('%s point 8: status %s day %s'
-                                              % (self.name, str(self._status), timeNow))
-                        timeNow = self.sleep(1)
-                        # state is unchanged
-                    else:
-                        if self.debug:
-                            self.logger.debug('%s point 5: status %s day %s'
-                                              % (self.name, str(self._status), timeNow))
-                        rQAddr = self.ward.fac.reqQueues[0].getGblAddr()
-                        self.patch.launch(DepartureMsg(self.name + '_depMsg',
-                                                       self.patch,
-                                                       self.ward.fac.getMsgPayload(DepartureMsg,
-                                                                                   self),
-                                                       rQAddr),
-                                          timeNow)
-                        timeNow = self.ward.unlock(self)
-                        self.fsmstate = PatientAgent.STATE_MOVING
-            elif self.fsmstate == PatientAgent.STATE_MOVING:
-                self.ward = None
-                addr, final = self.patch.getPathTo(self.newWardAddr)
-                if final:
-                    self.fsmstate = PatientAgent.STATE_JUSTARRIVED
-                    self.ward = addr
-                    self.tier = self.ward.tier
-                    if self.debug:
-                        self.logger.debug('%s point 6: arrive tier %s day %s'
-                                          % (self.name, self.ward.tier, timeNow))
-                timeNow = addr.lock(self)
-            elif self.fsmstate == PatientAgent.STATE_JUSTARRIVED:
-                rQAddr = self.ward.fac.reqQueues[0].getGblAddr()
-                self.patch.launch(ArrivalMsg(self.name + '_arvMsg',
-                                             self.patch,
-                                             self.ward.fac.getMsgPayload(ArrivalMsg, self),
-                                             rQAddr),
-                                  timeNow)
-                self.fsmstate = PatientAgent.STATE_ATWARD
-                if self.debug:
-                    self.logger.debug('%s point 7: status %s day %s'
-                                      % (self.name, str(self._status), timeNow))
-                timeNow = self.sleep(self.getPostArrivalPauseTime(timeNow))
-            if self.debug:
-                self.logger.debug('%s point 2: status %s'
-                                  % (self.name, str(self._status)))
+                    return self.newLocAddr, timeNow
+
+    def handleArrival(self, timeNow):
+        """
+        An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
+        locked the interactant self.loc.
+        """
+        self.tier = self.loc.tier
 
     def __getstate__(self):
-        d = patches.Agent.__getstate__(self)
+        d = Person.__getstate__(self)
         d['tier'] = self.tier
-        d['ward'] = self.ward
-        d['newWardAddr'] = self.newWardAddr
-        d['fsmstate'] = self.fsmstate
         return d
 
     def __setstate__(self, d):
-        patches.Agent.__setstate__(self, d)
+        Person.__setstate__(self, d)
         self.tier = d['tier']
-        self.ward = d['ward']
-        self.newWardAddr = d['newWardAddr']
-        self.fsmstate = d['fsmstate']
