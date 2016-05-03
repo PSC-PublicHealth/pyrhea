@@ -457,7 +457,7 @@ class DateChangeAgent(Agent):
                     raise RuntimeError("%s unexpectedly got the message %s" %
                                        (self.name, msg.name))
             if bumpTime:
-                self.logger.info('%s BUMPING TIME' % self.name)
+                self.logger.debug('%s BUMPING TIME' % self.name)
                 self.patch.loop.sequencer.bumpTime()
             timeNow = self.sleep(0)
 

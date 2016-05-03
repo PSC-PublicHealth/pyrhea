@@ -16,7 +16,6 @@
 ###################################################################################
 
 import logging
-from random import shuffle
 import patches
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Location(patches.MultiInteractant):
     def __init__(self, name, patch, nCapacity, checkInterval=1):
-        patches.MultiInteractant.__init__(self, name, nCapacity, patch)
+        super(Location, self).__init__(name, nCapacity, patch)
         self.checkInterval = checkInterval
 
     def getDepartureMsgPayload(self, person):
@@ -39,7 +38,7 @@ class Location(patches.MultiInteractant):
 
 class HoldQueue(patches.Interactant):
     def __init__(self, name, patch, debug=False):
-        patches.Interactant.__init__(self, name, patch, debug=debug)
+        super(HoldQueue, self).__init__(name, patch, debug=debug)
         self.keyCounter = 0
         self.heldDict = {}
 
@@ -66,7 +65,7 @@ class HoldQueue(patches.Interactant):
 
 class Manager(patches.Agent):
     def __init__(self, name, patch, managementBase):
-        patches.Agent.__init__(self, name, patch)
+        super(Manager, self).__init__(name, patch)
         self.timeless = True
         self.toManage = managementBase
         self.logger = logger.getChild('Manager')
@@ -98,7 +97,7 @@ class SimpleMsg(patches.Agent):
     STATE_ARRIVED = 1
 
     def __init__(self, name, patch, payload, destAddr, debug=False):
-        patches.Agent.__init__(self, name, patch, debug=debug)
+        super(SimpleMsg, self).__init__(name, patch, debug=debug)
         self.payload = payload
         self.destAddr = destAddr
         self.fsmstate = self.STATE_MOVING
@@ -142,6 +141,7 @@ class RequestQueue(patches.Interactant):
 
 class ManagementBase(object):
     def __init__(self, name, patch, managerClass=None, reqQueueClasses=None):
+        super(ManagementBase, self).__init__()
         if managerClass is None:
             managerClass = Manager
         if reqQueueClasses is None:
@@ -166,6 +166,13 @@ class ManagementBase(object):
     def handleIncomingMsg(self, msgType, payload, timeNow):
         return timeNow
 
+    def getAllQueues(self):
+        """
+        Queues are interactants and must be added to the patch, so this method provides an
+        easy-to-access list.
+        """
+        return [self.holdQueue] + self.reqQueues
+
 
 class Person(patches.Agent):
     STATE_ATLOC = 0
@@ -174,11 +181,12 @@ class Person(patches.Agent):
 
     def __init__(self, name, patch, loc, debug=False):
         """
-        loc is the current location, an interactant to which the Person instance is locked.
+        loc is the current location, an interactant to which the Person instance will be locked.
         """
-        patches.Agent.__init__(self, name, patch, debug=debug)
+        super(Person, self).__init__(name, patch, debug=debug)
         self.fsmstate = Person.STATE_ATLOC
         self.loc = loc
+        self.loc.lock(self)
         self.locAddr = loc.getGblAddr()
         self.newLocAddr = None
         self.logger = logging.getLogger(__name__ + '.Person')
@@ -210,11 +218,19 @@ class Person(patches.Agent):
         """
         pass
 
+    def handleDeparture(self, timeNow):
+        """
+        An opportunity to do bookkeeping on departure from self.loc.  The Person has not yet
+        unlocked self.loc .  This call happens even if departure is via death.
+        """
+        pass
+
     def handleDeath(self, timeNow):
         """
         The name says it all.  Do any bookkeeping needed to deal with the death of this Person.
         After this method returns, a DepartureMessage will be sent to inform its current location
-        of departure and the agent's run method will exit.
+        of departure and the agent's run method will exit.  handleDeparture will also be called
+        for this event.
         """
         pass
 
@@ -234,6 +250,7 @@ class Person(patches.Agent):
                     if self.debug:
                         self.logger.debug('%s point 5: agent dies' %
                                           self.name)
+                    self.handleDeparture(timeNow)
                     self.handleDeath(timeNow)
                     self.patch.launch(DepartureMsg(self.name + '_depMsg',
                                                    self.patch,
@@ -254,6 +271,7 @@ class Person(patches.Agent):
                                                    self.loc.getReqQueueAddr()),
                                       timeNow)
                     self.newLocAddr = newLocAddr
+                    self.handleDeparture(timeNow)
                     timeNow = self.loc.unlock(self)
                     self.fsmstate = Person.STATE_MOVING
 
