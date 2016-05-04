@@ -22,7 +22,7 @@ This provides a simple test routine for patches.
 """
 
 import sys
-from random import choice, seed
+from random import choice, seed, random
 
 import patches
 import peopleplaces
@@ -85,6 +85,8 @@ class Walker(peopleplaces.Person):
         a new location to become available.
         """
         wantLocType = locTypeCycle[timeNow % len(locTypeCycle)]
+        if random() < 0.01:
+            return None, timeNow
         if isinstance(self.loc, wantLocType):
             return self.locAddr, timeNow
         else:
@@ -98,14 +100,14 @@ class Walker(peopleplaces.Person):
         An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
         locked the interactant self.loc.
         """
-        pass
+        self.loc.grp.altPop += 1
 
     def handleDeparture(self, timeNow):
         """
         An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
         locked the interactant self.loc.
         """
-        pass
+        self.loc.grp.altPop -= 1
 
     def handleDeath(self, timeNow):
         """
@@ -113,7 +115,7 @@ class Walker(peopleplaces.Person):
         After this method returns, a DepartureMessage will be sent to inform its current location
         of departure and the agent's run method will exit.
         """
-        pass
+        self.loc.grp.nDead += 1
 
     def getPostArrivalPauseTime(self, timeNow):
         """
@@ -124,11 +126,11 @@ class Walker(peopleplaces.Person):
         return 0
 
     def __getstate__(self):
-        d = patches.Agent.__getstate__(self)
+        d = super(Walker, self).__getstate__()
         return d
 
     def __setstate__(self, d):
-        patches.Agent.__setstate__(self, d)
+        super(Walker, self).__setstate__(d)
 
 
 class LocManager(peopleplaces.Manager):
@@ -139,6 +141,8 @@ class LocGroup(peopleplaces.ManagementBase):
     def __init__(self, name, patch):
         super(LocGroup, self).__init__(name, patch, LocManager)
         self.locs = []
+        self.altPop = 0
+        self.nDead = 0
 
     def addLocs(self, locList):
         self.locs.extend(locList)
@@ -153,33 +157,36 @@ class MyPatch(patches.Patch):
     def __init__(self, group, name=None, patchId=None):
         super(MyPatch, self).__init__(group, name, patchId)
         self.locGroups = []
+        self.termsList = []  # used in printing output
 
     def addAgents(self, agentList):
         super(MyPatch, self).addAgents(agentList)
         for a in agentList:
             if isinstance(a, LocManager):
                 self.locGroups.append(a.toManage)
+            elif isinstance(a, Walker):
+                a.loc.grp.altPop += 1
 
 
-def createPerDayCB(patch, runDurationDays):
-    def perDayCB(loop, timeNow):
-        assert isinstance(patch, MyPatch), 'You forgot to use MyPatch instances for patches'
-        if timeNow > runDurationDays:
-            patch.group.stop()
-    return perDayCB
-
-
-def createPerTickCB(patch):
+def createPerTickCB(patch, runDurationDays):
     def perTickCB(loop, timeNow, newTimeNow):
         assert isinstance(patch, MyPatch), 'You forgot to use MyPatch instances for patches'
-        print 'time is %s -> %s' % (timeNow, newTimeNow)
+        # Print the output terms from the last tick *before* the date change
+        if timeNow != newTimeNow:
+            print 'time is %s -> %s' % (timeNow, newTimeNow)
+            for nm, ct, altPop, nDead in patch.termsList[-2]:
+                print ('%s: %2d %2d %2d' % (nm, ct, altPop, nDead)),
+            print ""   # newline
         terms = []
         for gp in patch.locGroups:
-            terms.append((gp.name, sum([loc.getNClients() for loc in gp.locs])))
+            terms.append((gp.name,
+                          sum([loc.getNClients() for loc in gp.locs]),
+                          gp.altPop, gp.nDead))
         terms.sort()
-        for nm, ct in terms:
-            print ('%s: %2d' % (nm, ct)),
-        print ""   # newline
+        # Keep the last two terms
+        patch.termsList = patch.termsList[-1:].append(terms)
+        if newTimeNow > runDurationDays:
+            patch.group.stop()
     return perTickCB
 
 
@@ -232,7 +239,7 @@ def main():
         itrList = []
         groupList = []
         for i, LocTp in enumerate(locTypeCycle):
-            locGroup = LocGroup('LocGroup_%d_%d' % (j, i), patch)
+            locGroup = LocGroup('Grp_%d_%d' % (j, i), patch)
             theseLocs = [LocTp('loc_%s_%d_%d_%d' % (LocTp.__name__, j, i, k), patch, locCapacity)
                          for k in xrange(locsPerPatch)]
             locGroup.addLocs(theseLocs)
@@ -246,8 +253,8 @@ def main():
             agentList.append(Walker('walker_%d_%d' % (j, i), patch, choice(locList)))
         patch.addAgents(agentList)
 
-        patch.loop.addPerTickCallback(createPerTickCB(patch))
-        patch.loop.addPerDayCallback(createPerDayCB(patch, runDuration))
+        # Use a PerTick callback rather than PerDay to make sure we catch the exact edge of the day
+        patch.loop.addPerTickCallback(createPerTickCB(patch, runDuration))
         patchGroup.addPatch(patch)
     logger.info('starting main loop')
     msg = patchGroup.start()
