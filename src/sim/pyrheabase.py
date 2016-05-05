@@ -284,39 +284,39 @@ class PatientAgent(peopleplaces.Person):
     def getNewLocAddr(self, timeNow):
         tier = self.handleTierUpdate(timeNow)
         if tier == self.tier:
-            return self.locAddr, timeNow  # things stay the same
+            return self.locAddr  # things stay the same
         elif tier is None:
-            return None, timeNow  # signal death
+            return None  # signal death
         else:
-            while True:
-                facAddrList = self.getCandidateFacilityList(timeNow, tier)
-                key = self.ward.fac.holdQueue.getUniqueKey()
-                self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
-                                             tier, self.ward.getGblAddr(),
-                                             key, facAddrList,
-                                             self.ward.fac.getBedRequestPayload(self, tier)),
-                                  timeNow)
+            facAddrList = self.getCandidateFacilityList(timeNow, tier)
+            key = self.ward.fac.holdQueue.getUniqueKey()
+            self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
+                                         tier, self.ward.getGblAddr(),
+                                         key, facAddrList,
+                                         self.ward.fac.getBedRequestPayload(self, tier)),
+                              timeNow)
+            if self.debug:
+                self.logger.debug('%s point 3: launched req for tier %s'
+                                  % (self.name, tier))
+            newTime = self.ward.fac.holdQueue.lock(self, key=key)
+            assert newTime == timeNow, "%s: BedRequest journey was not instantaneous"
+            if self.debug:
+                self.logger.debug('%s point 4: day %s'
+                                  % (self.name, timeNow))
+            # The BedRequest will have updated the value of self.newLocAddr before exiting.
+            # Just be sure not to return it if the new value is None, or the calling loop
+            # will interpret it as a signal that the agent has died!
+            if self.newLocAddr is None:
+                # Nowhere to go; try again tomorrow
+                # print ('%s is stuck at %s; going back to sleep at %s' %
+                #        (self.name, self.ward, timeNow))
                 if self.debug:
-                    self.logger.debug('%s point 3: launched req for tier %s'
-                                      % (self.name, tier))
-                timeNow = self.ward.fac.holdQueue.lock(self, key=key)
-                if self.debug:
-                    self.logger.debug('%s point 4: day %s'
+                    self.logger.debug('%s point 8: stuck here day %s'
                                       % (self.name, timeNow))
-                # The BedRequest will have updated the value of self.newLocAddr before exiting.
-                # Just be sure not to return it if the new value is None, or the calling loop
-                # will interpret it as a signal that the agent has died!
-                if self.newLocAddr is None:
-                    # Nowhere to go; try again tomorrow
-                    # print ('%s is stuck at %s; going back to sleep at %s' %
-                    #        (self.name, self.ward, timeNow))
-                    if self.debug:
-                        self.logger.debug('%s point 8: stuck here day %s'
-                                          % (self.name, timeNow))
-                    timeNow = self.sleep(1)
-                    # state is unchanged
-                else:
-                    return self.newLocAddr, timeNow
+                return self.locAddr  # Stay put; we'll try next timeslice
+                # state is unchanged
+            else:
+                return self.newLocAddr
 
     def handleArrival(self, timeNow):
         """

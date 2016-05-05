@@ -201,15 +201,16 @@ class Person(patches.Agent):
 
     def getNewLocAddr(self, timeNow):
         """
-        This method is called once each time the Person agent is active and returns a tuple
-        of the form (newLocGlobalAddr, updatedTimeNow).  Returning a newLocGlobalAddr of
+        This method is called once each time the Person agent is active and returns newLocGblAddr,
+        the GblAddr() of a Location.  Returning a newLocGlobalAddr of
         self.locAddr (that is, the current value) indicates that the Person stays attached
         to the same location for this time slice.  Returning a newLocGlobalAddr
         of None signals 'death' and will result in self.handleDeath being called and the agent's
-        thread exiting.  This method may not return for a long time as the agent waits for
-        a new location to become available.
+        thread exiting.  Typically if a new location is not available this routine will return
+        self.locAddr, causing the Person to stay in place so that another search can be done on
+        the next timeslice.
         """
-        return self.locAddr, timeNow
+        return self.locAddr
 
     def handleArrival(self, timeNow):
         """
@@ -242,7 +243,7 @@ class Person(patches.Agent):
                 self.logger.debug('%s point 0: state %s day %s' %
                                   (self.name, self.fsmstate, timeNow))
             if self.fsmstate == Person.STATE_ATLOC:
-                newLocAddr, timeNow = self.getNewLocAddr(timeNow)
+                newLocAddr = self.getNewLocAddr(timeNow)
                 if self.debug:
                     self.logger.debug('%s point 1: new addr %s vs current %s' %
                                       (self.name, newLocAddr, self.locAddr))

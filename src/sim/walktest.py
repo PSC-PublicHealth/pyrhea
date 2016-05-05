@@ -76,24 +76,25 @@ locTypeCycle = [LocType0, LocType1, LocType2, LocType3, LocType4, LocType5, LocT
 class Walker(peopleplaces.Person):
     def getNewLocAddr(self, timeNow):
         """
-        This method is called once each time the Person agent is active and returns a tuple
-        of the form (newLocGlobalAddr, updatedTimeNow).  Returning a newLocGlobalAddr of
+        This method is called once each time the Person agent is active and returns newLocGblAddr,
+        the GblAddr() of a Location.  Returning a newLocGlobalAddr of
         self.locAddr (that is, the current value) indicates that the Person stays attached
         to the same location for this time slice.  Returning a newLocGlobalAddr
         of None signals 'death' and will result in self.handleDeath being called and the agent's
-        thread exiting.  This method may not return for a long time as the agent waits for
-        a new location to become available.
+        thread exiting.  Typically if a new location is not available this routine will return
+        self.locAddr, causing the Person to stay in place so that another search can be done on
+        the next timeslice.
         """
         wantLocType = locTypeCycle[timeNow % len(locTypeCycle)]
         if random() < 0.01:
-            return None, timeNow
+            return None
         if isinstance(self.loc, wantLocType):
-            return self.locAddr, timeNow
+            return self.locAddr
         else:
             facAddrList = [tpl[1] for tpl in self.patch.serviceLookup(wantLocType.__name__)
                            if tpl[1] != self.locAddr]
             newAddr = choice(facAddrList)
-            return newAddr, timeNow
+            return newAddr
 
     def handleArrival(self, timeNow):
         """
@@ -184,7 +185,8 @@ def createPerTickCB(patch, runDurationDays):
                           gp.altPop, gp.nDead))
         terms.sort()
         # Keep the last two terms
-        patch.termsList = patch.termsList[-1:].append(terms)
+        patch.termsList = patch.termsList[-1:]
+        patch.termsList.append(terms)
         if newTimeNow > runDurationDays:
             patch.group.stop()
     return perTickCB
