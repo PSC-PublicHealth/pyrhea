@@ -23,10 +23,10 @@ loggers:
   __main__:
     level: WARNING
     handlers: []
-  patches:
-    level: WARNING
+  quilt.patches:
+    level: INFO
     handlers: []
-  agent:
+  quilt.agent:
     level: INFO
     handlers: []
   facilitybase:

@@ -31,7 +31,7 @@ import pickle
 import re
 import signal
 
-import patches
+import quilt.patches as patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 import schemautils

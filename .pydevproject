@@ -9,5 +9,6 @@
 </pydev_pathproperty>
 <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
 <path>/home/welling/git/phacsl/phacsl-utils/src</path>
+<path>/home/welling/git/quilt/src</path>
 </pydev_pathproperty>
 </pydev_project>
