@@ -44,6 +44,8 @@ loggers:
     level: INFO
   transferbycapacity:
     level: INFO
+  community:
+    level: INFO
   netinterface:
     level: WARNING
 root:

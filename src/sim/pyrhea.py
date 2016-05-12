@@ -328,6 +328,53 @@ def findPolicies(policyClassList,
                 l.append(pCl)
     return l
 
+
+def initializeFacilities(patchList, myFacList, facImplDict, policyClassList, policyRules,
+                         PthClass, noteHolderGroup, comm, totalRunDays):
+    # Share the facilities out over the patches
+    offset = 0
+    tupleList = [(p, [], [], []) for p in patchList]
+    for facDescription in myFacList:
+        patch, allIter, allAgents, allFacilities = tupleList[offset]
+        if facDescription['category'] in facImplDict:
+            facImpl = facImplDict[facDescription['category']]
+            facilities, wards, patients = \
+                facImpl.generateFull(facDescription, patch,
+                                     policyClasses=findPolicies(policyClassList,
+                                                                policyRules,
+                                                                facImpl.category))
+            for w in wards:
+                w.setInfectiousAgent(PthClass(w))
+                w.initializePatientPthState()
+            for fac in facilities:
+                nh = noteHolderGroup.createNoteHolder()
+                nh.addNote({'rank': comm.rank})
+                fac.setNoteHolder(nh)
+            for rQList in [fac.reqQueues for fac in facilities]:
+                allIter.extend(rQList)
+            allIter.extend([fac.holdQueue for fac in facilities])
+            allIter.extend(wards)
+            allAgents.extend([fac.manager for fac in facilities])
+            allAgents.extend(patients)
+            allFacilities.extend(facilities)
+        else:
+            raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %
+                               facDescription)
+        offset = (offset + 1) % len(tupleList)
+
+    for patch, allIter, allAgents, allFacilities in tupleList:
+        patch.addInteractants(allIter)
+        patch.addAgents(allAgents)
+        patch.allFacilities = allFacilities
+        logger.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
+                    (comm.rank, patch.name, len(allIter), len(allAgents), len(allFacilities)))
+        patchNH = noteHolderGroup.createNoteHolder()
+        patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays))
+        patchNH.addNote({'name': patch.name,
+                         'occupancy': [buildFacOccupancyDict(patch, 0)],
+                         'rank': comm.rank})
+
+
 def main():
 
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -425,48 +472,8 @@ def main():
     patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
                                         inputDict['burnInDays'], noteHolderGroup)])
 
-    # Share the facilities out over the patches
-    offset = 0
-    tupleList = [(p, [], [], []) for p in patchList]
-    for facDescription in myFacList:
-        patch, allIter, allAgents, allFacilities = tupleList[offset]
-        if facDescription['category'] in facImplDict:
-            facImpl = facImplDict[facDescription['category']]
-            facilities, wards, patients = \
-                facImpl.generateFull(facDescription, patch,
-                                     policyClasses=findPolicies(policyClassList,
-                                                                policyRules,
-                                                                facImpl.category))
-            for w in wards:
-                w.setInfectiousAgent(PthClass(w))
-                w.initializePatientPthState()
-            for fac in facilities:
-                nh = noteHolderGroup.createNoteHolder()
-                nh.addNote({'rank': comm.rank})
-                fac.setNoteHolder(nh)
-            for rQList in [fac.reqQueues for fac in facilities]:
-                allIter.extend(rQList)
-            allIter.extend([fac.holdQueue for fac in facilities])
-            allIter.extend(wards)
-            allAgents.extend([fac.manager for fac in facilities])
-            allAgents.extend(patients)
-            allFacilities.extend(facilities)
-        else:
-            raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %
-                               facDescription)
-        offset = (offset + 1) % len(tupleList)
-
-    for patch, allIter, allAgents, allFacilities in tupleList:
-        patch.addInteractants(allIter)
-        patch.addAgents(allAgents)
-        patch.allFacilities = allFacilities
-        logger.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
-                    (comm.rank, patch.name, len(allIter), len(allAgents), len(allFacilities)))
-        patchNH = noteHolderGroup.createNoteHolder()
-        patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays))
-        patchNH.addNote({'name': patch.name,
-                         'occupancy': [buildFacOccupancyDict(patch, 0)],
-                         'rank': comm.rank})
+    initializeFacilities(patchList, myFacList, facImplDict, policyClassList, policyRules,
+                         PthClass, noteHolderGroup, comm, totalRunDays)
 
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     try:
@@ -476,21 +483,22 @@ def main():
         logger.error('%s exception %s; traceback follows' % (patchGroup.name, e))
         import traceback
         traceback.print_exc(file=sys.stderr)
-        logger.error('%s writing notes and exiting' % patchGroup.name)
+    finally:
+        logger.info('%s writing notes and exiting' % patchGroup.name)
 
-    allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
-    if comm.rank == 0:
-        d = {}
-        for nh in allNotesGroup.getnotes():
-            d[nh['name']] = nh.getDict()
-#             if 'occupancy' in nh:
-#                 recs = nh['occupancy']
-#                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
-#                     csv_tools.writeCSV(f, recs[1].keys(), recs)
-        with open('notes.pkl', 'w') as f:
-            pickle.dump(d, f)
+        allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
+        if comm.rank == 0:
+            d = {}
+            for nh in allNotesGroup.getnotes():
+                d[nh['name']] = nh.getDict()
+    #             if 'occupancy' in nh:
+    #                 recs = nh['occupancy']
+    #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
+    #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
+            with open('notes.pkl', 'w') as f:
+                pickle.dump(d, f)
 
-    logging.shutdown()
+        logging.shutdown()
 
 ############
 # Main hook

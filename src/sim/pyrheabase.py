@@ -260,7 +260,8 @@ class PatientAgent(peopleplaces.Person):
 
     @ward.setter
     def ward(self, value):
-        self.loc = value
+        self._loc = None
+        self.locAddr = value.getGblAddr()
 
     @property
     def newWardAddr(self):
