@@ -139,8 +139,7 @@ class CommunityWard(Ward):
         assert agent in self._lockQueue, 'It is not there!'
         self._lockQueue.remove(agent)
         d = agent.__getstate__()
-#         print d
-#         agent.kill()
+        agent.kill()
 #         if d['loc'] == self:
 #             del d['loc']
 #         else:
@@ -181,6 +180,7 @@ class CommunityWard(Ward):
         d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
         assert not leftovers, ('%s had %s left over unfreezing agent'
                                % (self._name, leftovers))
+        d['locAddr'] = self.getGblAddr()
         d['newLocAddr'] = self.getGblAddr()
         d['loggerName'] = self.frozenAgentLoggerName
         agent = self.frozenAgentClass.__new__(self.frozenAgentClass)
@@ -309,7 +309,8 @@ def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Community description %(abbrev)s is missing the expected field 'meanPop'" % descr
     meanPop = float(descr['meanPop']['value'])
-    logger.info('Generating the population for %s (%s freeze-dried people)' % (descr['abbrev'], meanPop))
+    logger.info('Generating the population for %s (%s freeze-dried people)'
+                % (descr['abbrev'], meanPop))
     agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOME)
