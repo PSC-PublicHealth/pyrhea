@@ -19,7 +19,7 @@ import logging
 from random import shuffle
 import quilt.patches as patches
 import quilt.peopleplaces as peopleplaces
-from quilt.peopleplaces import SimpleMsg, ArrivalMsg, DepartureMsg  # So we can export it @UnusedImport
+from quilt.peopleplaces import SimpleMsg, ArrivalMsg, DepartureMsg  # to export it @UnusedImport
 
 logger = logging.getLogger(__name__)
 

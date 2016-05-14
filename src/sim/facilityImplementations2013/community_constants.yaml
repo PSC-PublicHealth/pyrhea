@@ -23,7 +23,8 @@
   'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
   
 'communityPatientCheckInterval':
-  'value': 30
+  #'value': 30
+  'value': 1
   'prov': 'arbitrary'
   
   

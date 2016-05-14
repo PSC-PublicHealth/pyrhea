@@ -33,12 +33,12 @@ loggers:
     level: WARNING
     handlers: []
   pyrheabase.PatientAgent:
-    #level: DEBUG
-    level: WARNING
+    level: DEBUG
+    #level: WARNING
     handlers: []
   facilitybase.PatientAgent:
-    #level: DEBUG
-    level: WARNING
+    level: DEBUG
+    #level: WARNING
     handlers: []
   transferdestination:
     level: INFO

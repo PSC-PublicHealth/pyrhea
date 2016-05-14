@@ -166,7 +166,7 @@ class CommunityWard(Ward):
             self.frozenAgentTypePattern = typeTpl
         elif typeTpl != self.frozenAgentTypePattern:
             raise CommunityWard.FreezerError('%s has the wrong type pattern' % d['name'])
-        return valL
+        return tuple(valL)
 
     def unFreezeDry(self, frozenAgent):
         # NEED to check locking agent count
@@ -176,7 +176,7 @@ class CommunityWard(Ward):
 #         self._lockingAgentList.append(agent)
 #         return agent
 
-        valL = frozenAgent
+        valL = list(frozenAgent)
         d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
         assert not leftovers, ('%s had %s left over unfreezing agent'
                                % (self._name, leftovers))
@@ -192,6 +192,12 @@ class CommunityWard(Ward):
         self._lockingAgentList.append(agent)
         return agent
 
+    def flushNewArrivals(self):
+        """
+        Forget any new arrivals- this prevents them from being freezedried (possibly redundantly).
+        """
+        self.newArrivals = []
+
     def lock(self, lockingAgent):
         # print 'new lock %s next wake %s' % (lockingAgent.name, lockingAgent.nextWakeTime())
         self.newArrivals.append(lockingAgent)
@@ -205,15 +211,21 @@ class CommunityManager(FacilityManager):
         for ward in self.fac.getWards():
             for agent in ward.newArrivals:
                 ward.frozenAgents.append(ward.freezeDry(agent))
+                if agent.debug:
+                    agent.logger.debug('%s unfreezedried %s at %s'
+                                       % (ward._name, agent.name, timeNow))
             ward.newArrivals = []
             if dT != 0:
                 r = self.fac.cachedCDF.intervalProb(0, dT)
                 nFroz = len(ward.frozenAgents)
                 nThawed = binom.rvs(nFroz, r)
-                changedList = random.sample(ward.frozenAgents, nThawed)
+                changedList = random.sample(ward.frozenAgents, nThawed)[:]
                 for a in changedList:
                     ward.frozenAgents.remove(a)
-                    ward.unFreezeDry(a)
+                    thawedAgent = ward.unFreezeDry(a)
+                    if thawedAgent.debug:
+                        thawedAgent.logger.debug('%s unfreezedried %s at %s'
+                                                 % (ward._name, thawedAgent.name, timeNow))
 
                 self.fac.collectiveStatusStartDate = timeNow
 
@@ -320,6 +332,7 @@ def _populate(fac, descr, patch):
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               0)
+        ward.flushNewArrivals()  # since we are about to manually freeze-dry.
         ward.frozenAgents.append(ward.freezeDry(a))
     return agentList
 
