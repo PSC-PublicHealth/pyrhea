@@ -15,7 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-import sys
 import os.path
 import random
 from scipy.stats import expon, binom
@@ -124,14 +123,6 @@ class CommunityWard(Ward):
         self.newArrivals = []
 
     def freezeDry(self, agent):
-#         if agent in self._lockingAgentList:
-#             self._lockingAgentList.remove(agent)
-#         self.suspend(agent)
-#         assert agent not in self._lockingAgentList, 'It is still there!'
-#         assert agent in self._lockQueue, 'It is not there!'
-#         self._lockQueue.remove(agent)
-#         return agent
-
         if agent in self._lockingAgentList:
             self._lockingAgentList.remove(agent)
         self.suspend(agent)
@@ -140,11 +131,6 @@ class CommunityWard(Ward):
         self._lockQueue.remove(agent)
         d = agent.__getstate__()
         agent.kill()
-#         if d['loc'] == self:
-#             del d['loc']
-#         else:
-#             raise CommunityWard.FreezerError('%s got patient intended for %s'
-#                                              % (self._name, d['loc']._name))
         if d['newLocAddr'] is None or d['newLocAddr'] == self.getGblAddr():
             del d['newLocAddr']
         else:
@@ -169,13 +155,6 @@ class CommunityWard(Ward):
         return tuple(valL)
 
     def unFreezeDry(self, frozenAgent):
-        # NEED to check locking agent count
-#         agent = frozenAgent
-#         self._lockQueue.append(agent)
-#         self.awaken(agent)
-#         self._lockingAgentList.append(agent)
-#         return agent
-
         valL = list(frozenAgent)
         d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
         assert not leftovers, ('%s had %s left over unfreezing agent'
@@ -343,13 +322,7 @@ def generateFull(facilityDescr, patch, policyClasses=None):
 
 
 def estimateWork(facRec):
-    if 'meanPop' in facRec:
-        return facRec['meanPop']['value'] / _constants['communityPatientCheckInterval']['value']
-    elif 'nBeds' in facRec:
-        return facRec['nBeds']['value'] / _constants['communityPatientCheckInterval']['value']
-    else:
-        logger.warning('Cannot estimate work for %(abbrev)s' % facRec)
-        return 0
+    return 1  # Because everyone is freeze-dried
 
 
 def checkSchema(facilityDescr):

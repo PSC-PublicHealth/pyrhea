@@ -2,11 +2,11 @@
   - '/home/welling/git/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
   - '/home/welling/git/pyrhea/models/OrangeCounty2013/communitiesTiny'
 
-'facilityImplementationDir': './facilityImplementations2013'
+'facilityImplementationDir': '../sim/facilityImplementations2013'
 
-'pathogenImplementationDir': './mrsaImplementation2013'
+'pathogenImplementationDir': '../sim/mrsaImplementation2013'
 
-'policyImplementationDir': './policyImplementations2013'
+'policyImplementationDir': '../sim/policyImplementations2013'
 'policySelectors':
   - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
     'policyClass': 'MinTravelTimeTransferDestinationPolicy'
