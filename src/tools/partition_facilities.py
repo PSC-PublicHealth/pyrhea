@@ -22,6 +22,7 @@ import math
 import optparse
 import logging
 import signal
+import types
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -87,12 +88,12 @@ def vecMinus(v1, v2):
     return (v1[0]-v2[0], v1[1]-v2[1], v1[2]-v2[2])
 
 
-def project(v, xVec, yVec, center):
-    """xVec and yVec are presumed to be normalized"""
-    vCtr = vecMinus(v, center)
-    vx = scale(xVec, dot(vCtr, xVec))
-    vy = scale(yVec, dot(vCtr, yVec))
-    return vecPlus(vx, vy)
+# def project(v, xVec, yVec, center):
+#     """xVec and yVec are presumed to be normalized"""
+#     vCtr = vecMinus(v, center)
+#     vx = scale(xVec, dot(vCtr, xVec))
+#     vy = scale(yVec, dot(vCtr, yVec))
+#     return vecPlus(vx, vy)
 
 
 class MapProjection(object):
@@ -127,29 +128,24 @@ class MapProjection(object):
         y = dot(sep, self.mapYVec)
         return (x, y)
 
-
-@profile
-def projPoly(poly, mapProj):
-    newCoords = []
-    lonSum = 0.0
-    latSum = 0.0
-    count = 0
-    for l1 in poly['coordinates']:
-        nl1 = []
-        for l2 in l1:
-            lon, lat = mapProj.project(l2[0], l2[1])
-            nl1.append([lon, lat])
-            lonSum += lon
-            latSum += lat
-            count += 1
-        newCoords.append(nl1)
-    newPoly = poly.copy()
-    newPoly['coordinates'] = newCoords
-    return newPoly, (lonSum/float(count), latSum/float(count))
-
-
-def categoryToColor(cat):
-    return {'HOSPITAL': 'red', 'LTAC': 'pink', 'NURSINGHOME': 'blue', 'COMMUNITY': 'pink'}[cat]
+    @profile
+    def projPoly(self, poly):
+        newCoords = []
+        lonSum = 0.0
+        latSum = 0.0
+        count = 0
+        for l1 in poly['coordinates']:
+            nl1 = []
+            for l2 in l1:
+                lon, lat = self.project(l2[0], l2[1])
+                nl1.append([lon, lat])
+                lonSum += lon
+                latSum += lat
+                count += 1
+            newCoords.append(nl1)
+        newPoly = poly.copy()
+        newPoly['coordinates'] = newCoords
+        return newPoly, (lonSum/float(count), latSum/float(count))
 
 
 def buildLclWorkVec(orderedFacList, facDict, implementationDir):
@@ -202,6 +198,155 @@ def checkInputFileSchema(fname, schemaFname):
         raise RuntimeError('Input file violates its schema')
 
 
+class WorkPartition(object):
+    """
+    This class embodies the work associated with a single partition of the parallel job.
+    """
+    def __init__(self, orderedFacList, workVec, transferMatrix):
+        self.idxFac = {idx: nm for idx, nm in enumerate(orderedFacList)}
+        self.facIdx = {nm: idx for idx, nm in enumerate(orderedFacList)}
+        self.wVec = workVec
+        self.tMatrix = transferMatrix
+
+    def swap(self, idx1, idx2):
+        """
+        Completely swap two indices.
+        """
+        self.wVec[[idx1, idx2]] = self.wVec[[idx2, idx1]]
+        self.tMatrix[[idx1, idx2], :] = self.tMatrix[[idx2, idx1], :]
+        self.tMatrix[:, [idx1, idx2]] = self.tMatrix[:, [idx2, idx1]]
+        fac1 = self.idxFac[idx1]
+        fac2 = self.idxFac[idx2]
+        self.facIdx[fac1] = idx2
+        self.facIdx[fac2] = idx1
+        self.idxFac[idx1] = fac2
+        self.idxFac[idx2] = fac1
+
+    def dump(self):
+        """
+        Print a representation for diagnostic purposes
+        """
+        for i, abbrev in self.idxFac.items():
+            wt = self.wVec[i]
+            iBack = self.facIdx[abbrev]
+            print '%d: %s: %f %d' % (i, abbrev, wt, iBack)
+        print self.tMatrix
+
+    def calcInternalWork(self):
+        """
+        Calculate the current total work for this partition
+        """
+        return np.sum(self.wVec)
+
+    def split(self, idx):
+        """
+        Split into two WorkPartitions, with the first idx indices in the first partition
+        and the remaining indices in the second.
+        """
+        sz = self.wVec.shape[0]
+        wp1 = WorkPartition([self.idxFac[i] for i in xrange(idx)],
+                            self.wVec[:idx],
+                            self.tMatrix[:idx, :idx])
+        wp2 = WorkPartition([self.idxFac[i] for i in xrange(idx, sz)],
+                            self.wVec[idx:],
+                            self.tMatrix[idx:, idx:])
+        return wp1, wp2
+
+    def calcTransferWork(self, splitIdx):
+        """
+        If this WorkPartition is split at splitIdx, calculate the work associated with transfers
+        across the split.
+        """
+        wp1, wp2 = self.split(splitIdx)
+        return self.calcInternalWork() - (wp1.calcInternalWork() + wp2.calcInternalWork())
+
+    def sortBy(self, func):
+        """
+        func(facAbbrev) is expected to return a scalar value.  The elements in this WorkPartition
+        are re-ordered according to that scalar in ascending order
+        """
+        sortVec = []
+        for abbrev in self.idxFac.values():
+            sortVec.append((func(abbrev), abbrev))
+        sortVec.sort()
+        reorderedAbbrevList = [abbrev for val, abbrev in sortVec]  # @UnusedVariable
+        for newIdx, abbrev in enumerate(reorderedAbbrevList):
+            oldIdx = self.facIdx[abbrev]
+            self.swap(newIdx, oldIdx)
+
+    def facIter(self):
+        """
+        Returns an iterator over the ordered facility abbreviations
+        """
+        for idx in xrange(len(self.idxFac)):
+            yield self.idxFac[idx]
+
+    def __len__(self):
+        return len(self.idxFac)
+
+
+class Map(object):
+    mrkSzDict = {'*': 15, '+': 15, 'o': 10}
+    mrkDefaultSz = 10
+
+    def __init__(self, geoDataPath, stateCodeStr, countyCodeStr, ctrLon, ctrLat, annotate=True):
+        self.tractPolyDict = {}
+        self.tractPropertyDict = {}
+        self.mrkCoordDict = {}
+        with open(geoDataPath, 'r') as f:
+            json_data = json.load(f)
+        for feature in json_data['features']:
+            if (feature['properties']['STATE'] == stateCodeStr
+                    and feature['properties']['COUNTY'] == countyCodeStr):
+                tract = feature['properties']['TRACT']
+                self.tractPolyDict[tract] = feature['geometry']
+                self.tractPropertyDict[tract] = feature['properties']
+
+        self.mapProj = MapProjection((ctrLon, ctrLat), 100.0)
+        self.fig = plt.figure()
+        self.ax = self.fig.gca()
+        self.annotate = annotate
+
+    def plotTract(self, tract, clr):
+        poly = self.tractPolyDict[tract]
+        if poly['type'] == 'Polygon':
+            poly, (ctrLon, ctrLat) = self.mapProj.projPoly(poly)
+            self.ax.add_patch(PolygonPatch(poly, fc=clr, ec=clr, alpha=0.5, zorder=2))
+            if self.annotate:
+                self.ax.annotate(self.tractPropertyDict[tract]['NAME'],
+                                 (ctrLon, ctrLat), (ctrLon, ctrLat),
+                                 fontsize=Map.mrkDefaultSz, ha='center', va='center')
+        elif poly['type'] == 'MultiPolygon':
+            print'MultiPolygon'
+            for v in poly['coordinates']:
+                print type(v).__name__
+        else:
+            print 'cannot handle %s poly type %s' % (tract, poly['type'])
+
+    def plotMarker(self, lon, lat, mark, label, clr):
+                coords = (self.mapProj.project(lon, lat), label)
+                if (mark, clr) in self.mrkCoordDict:
+                    self.mrkCoordDict[(mark, clr)].append(coords)
+                else:
+                    self.mrkCoordDict[(mark, clr)] = [coords]
+
+    def draw(self):
+        for (mrk, clr), coordList in self.mrkCoordDict.items():
+            if mrk in Map.mrkSzDict:
+                mrkSz = Map.mrkSzDict[mrk]
+            else:
+                mrkSz = Map.mrkDefaultSz
+            self.ax.scatter([x for (x, y), abbrev in coordList],
+                            [y for (x, y), abbrev in coordList],
+                            c=clr, marker=mrk)
+            if self.annotate:
+                for (x, y), abbrev in coordList:
+                    self.ax.annotate(abbrev, (x, y), (x, y),
+                                     ha='left', va='bottom', fontsize=mrkSz)
+        self.ax.axis('scaled')
+        plt.show()
+
+
 def main():
     global logger
 
@@ -212,7 +357,7 @@ def main():
         pdb.Pdb().set_trace(frame)
     signal.signal(signal.SIGUSR1, handle_pdb)
 
-    logging.basicConfig(format="%%(levelname)s:%%(name)s:%%(message)s")
+    logging.basicConfig()
 
     parser = optparse.OptionParser(usage="""
     %prog [-v][-d][-n notes1.pkl [-n notes2.pkl [...]] input.yaml
@@ -245,12 +390,11 @@ def main():
         parser.error("A YAML-format file specifying prototype model parameters must be specified.")
     parser.destroy()
 
-    geoData = '/home/welling/geo/tiger/tigr_2010_06.json'
+    geoDataPath = '/home/welling/geo/tiger/tigr_2010_06.json'
+    stateCode = '06'
+    countyCode = '059'
 
-    thisDir = os.path.dirname(__file__)
-    modelDir = os.path.join(thisDir, '../../models/OrangeCounty2013/')
     facDirList = inputDict['facilityDirs']
-    defaultNotesPath = os.path.join(thisDir, '../sim/notes.pkl')
     implementationDir = inputDict['facilityImplementationDir']
 
     facDict = parseFacilityData(facDirList)
@@ -268,54 +412,52 @@ def main():
 #             assert val == 0 or facDict[abbrev]['category'].upper() in ['HOSPITAL'], 'fail %s %s' % (abbrev, val)
 
     lclWorkVec = buildLclWorkVec(orderedFacList, facDict, implementationDir)
-    print transferMatrix
-    print lclWorkVec
 
-# 
-#     mapProj = MapProjection((sum([r['longitude'] for r in facDict.values()]) / len(facDict),
-#                              sum([r['latitude'] for r in facDict.values()]) / len(facDict)),
-#                             100.0)
-# 
-#     BLUE = '#6699cc'
-#     fig = plt.figure()
-#     ax = fig.gca()
-# 
-#     with open(geoData, 'r') as f:
-#         json_data = json.load(f)
-#     for feature in json_data['features']:
-#         if feature['properties']['COUNTY'] == '059':
-#         #if True:
-#             # print feature['properties']['TRACT']
-#             # print feature['properties']
-#             poly = feature['geometry']
-#             if poly['type'] == 'Polygon':
-#                 poly, (ctrLon, ctrLat) = projPoly(poly, mapProj)
-#                 ax.add_patch(PolygonPatch(poly, fc=BLUE, ec=BLUE, alpha=0.5, zorder=2))
-#                 ax.annotate(feature['properties']['NAME'], (ctrLon, ctrLat), (ctrLon, ctrLat),
-#                             fontsize=5, ha='center', va='center')
-#             else:
-#                 pass
-# 
-#     for cg, mrk, sz in {('HOSPITAL', '*', 15), ('LTAC', '+', 15), ('NURSINGHOME', 'o', 10)}:
-#         coordList = [(mapProj.project(rec['longitude'], rec['latitude']),
-#                      rec['abbrev'])
-#                      for rec in facDict.values() if rec['category'] == cg]
-#         coordList = [(x, y, abbrev) for (x, y), abbrev in coordList]
-#         ax.scatter([x for x, y, abbrev in coordList], [y for x, y, abbrev in coordList],
-#                    c=categoryToColor(cg), marker=mrk)
-#         for x, y, abbrev in coordList:
-#             ax.annotate(abbrev, (x, y), (x, y), ha='left', va='bottom', fontsize=sz)
-# 
-# 
-# #     for x, y, clr, abbrev in coordList:
-# #         ax.annotate(abbrev, xy=(x, y), xytext=(x, y))
-# #     for abbrev, offset in indexDict.items():
-# #         xy = (xVals[offset], yVals[offset])
-# #         xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
-# #         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
-# 
-#     ax.axis('scaled')
-#     plt.show()
+    fullWP = WorkPartition(orderedFacList, lclWorkVec, transferMatrix)
+
+    def mySortFun(abbrev):
+        return facDict[abbrev]['latitude']
+
+    fullWP.sortBy(mySortFun)
+
+    botWP, topWP = fullWP.split(len(fullWP)/2)
+    print 'full work: %s' % fullWP.calcInternalWork()
+    print 'transfers: %s' % fullWP.calcTransferWork(len(fullWP)/2)
+    print 'halves: %s %s' % (topWP.calcInternalWork(), botWP.calcInternalWork())
+
+    abbrevTractDict = {}
+    for abbrev, rec in facDict.items():
+        if rec['category'] == 'COMMUNITY':
+            tractStr = rec['name'].split()[-1]
+            abbrevTractDict[abbrev] = tractStr
+
+    ctrLon = sum([r['longitude'] for r in facDict.values()]) / len(facDict)
+    ctrLat = sum([r['latitude'] for r in facDict.values()]) / len(facDict)
+
+    myMap = Map(geoDataPath, stateCode, countyCode, ctrLon, ctrLat,
+                annotate=False)  # Map of Orange County
+    LTBLUE = '#6699cc'
+    BLUE = '#0000cc'
+    LTRED = '#cc9966'
+    RED = '#cc0000'
+    for wP, clr1, clr2 in [(topWP, LTRED, RED), (botWP, LTBLUE, BLUE)]:
+        for abbrev in wP.facIter():
+            if abbrev in abbrevTractDict:
+                tract = abbrevTractDict[abbrev]
+                myMap.plotTract(tract, clr1)
+            else:
+                rec = facDict[abbrev]
+                mrk = {'HOSPITAL': '*', 'LTAC': '+', 'NURSINGHOME': 'o'}[rec['category']]
+                myMap.plotMarker(rec['longitude'], rec['latitude'], mrk, rec['abbrev'], clr2)
+
+    myMap.draw()
+#     for x, y, clr, abbrev in coordList:
+#         ax.annotate(abbrev, xy=(x, y), xytext=(x, y))
+#     for abbrev, offset in indexDict.items():
+#         xy = (xVals[offset], yVals[offset])
+#         xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
+#         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
+ 
 
 
 if __name__ == "__main__":
