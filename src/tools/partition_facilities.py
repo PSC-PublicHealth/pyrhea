@@ -276,7 +276,7 @@ class WorkPartition(object):
         across the split.
         """
         wp1, wp2 = self.split(splitIdx)
-        return self.calcInternalWork() - (wp1.calcInternalWork() + wp2.calcInternalWork())
+        return self.tMatrix.sum() - (wp1.tMatrix.sum() + wp2.tMatrix.sum())
 
     def sortBy(self, func):
         """
@@ -365,6 +365,18 @@ class Map(object):
         self.ax.axis('scaled')
         plt.show()
 
+# blue:   8730368
+#
+# orange: 87303675
+
+
+def lossFunc(work1, work2, crossWork):
+    workDif = work1 - work2
+    #wt1 = 0.000008730368
+    wt1 = 1.0
+    wt2 = 0.002
+    return  wt1*(workDif*workDif) + wt2*(crossWork*crossWork)
+
 
 def main():
     global logger
@@ -439,10 +451,24 @@ def main():
 
     fullWP.sortBy(mySortFun)
 
-    botWP, topWP = fullWP.split(len(fullWP)/2)
-    print 'full work: %s' % fullWP.calcInternalWork()
-    print 'transfers: %s' % fullWP.calcTransferWork(len(fullWP)/2)
-    print 'halves: %s %s' % (topWP.calcInternalWork(), botWP.calcInternalWork())
+    bestSplit = None
+    minLoss = None
+    f = open('/tmp/junk.curve', 'w')
+    for splitHere in xrange(len(fullWP)):
+        botWP, topWP = fullWP.split(splitHere)
+#         print 'full work: %s' % fullWP.calcInternalWork()
+#         print 'transfers: %s' % fullWP.calcTransferWork(len(fullWP)/2)
+#         print 'halves: %s %s' % (topWP.calcInternalWork(), botWP.calcInternalWork())
+        lossVal = lossFunc(botWP.calcInternalWork(), topWP.calcInternalWork(),
+                           fullWP.calcTransferWork(splitHere))
+        f.write('%s %s\n' % (splitHere, lossVal))
+        if minLoss is None or lossVal < minLoss:
+            bestSplit = splitHere
+            minLoss = lossVal
+    f.close()
+    botWP, topWP = fullWP.split(bestSplit)
+    print 'bestSplit: %s  minLoss: %s' % (bestSplit, minLoss)
+
 
     abbrevTractDict = {}
     for abbrev, rec in facDict.items():
