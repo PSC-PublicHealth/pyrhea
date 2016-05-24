@@ -22,7 +22,6 @@ import math
 import optparse
 import logging
 import signal
-import types
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -129,12 +128,12 @@ class MapProjection(object):
         return (x, y)
 
     @profile
-    def projPoly(self, poly):
+    def projCoordList(self, coordL):
         newCoords = []
         lonSum = 0.0
         latSum = 0.0
         count = 0
-        for l1 in poly['coordinates']:
+        for l1 in coordL:
             nl1 = []
             for l2 in l1:
                 lon, lat = self.project(l2[0], l2[1])
@@ -143,9 +142,28 @@ class MapProjection(object):
                 latSum += lat
                 count += 1
             newCoords.append(nl1)
+        return newCoords, lonSum/float(count), latSum/float(count)
+
+    @profile
+    def projPoly(self, poly):
+        if poly['type'] == 'Polygon':
+            newCoords, lonMean, latMean = self.projCoordList(poly['coordinates'])
+        elif poly['type'] == 'MultiPolygon':
+            newCoords = []
+            lonVals = []
+            latVals = []
+            for coordList in poly['coordinates']:
+                nC, lonM, latM = self.projCoordList(coordList)
+                newCoords.append(nC)
+                lonVals.append(lonM)
+                latVals.append(latM)
+            lonMean = sum(lonVals)/float(len(lonVals))
+            latMean = sum(latVals)/float(len(latVals))
+        else:
+            logger.fatal('cannot handle poly type %s' % poly['type'])
         newPoly = poly.copy()
         newPoly['coordinates'] = newCoords
-        return newPoly, (lonSum/float(count), latSum/float(count))
+        return newPoly, (lonMean, latMean)
 
 
 def buildLclWorkVec(orderedFacList, facDict, implementationDir):
@@ -309,19 +327,20 @@ class Map(object):
 
     def plotTract(self, tract, clr):
         poly = self.tractPolyDict[tract]
+        poly, (ctrLon, ctrLat) = self.mapProj.projPoly(poly)
         if poly['type'] == 'Polygon':
-            poly, (ctrLon, ctrLat) = self.mapProj.projPoly(poly)
             self.ax.add_patch(PolygonPatch(poly, fc=clr, ec=clr, alpha=0.5, zorder=2))
-            if self.annotate:
-                self.ax.annotate(self.tractPropertyDict[tract]['NAME'],
-                                 (ctrLon, ctrLat), (ctrLon, ctrLat),
-                                 fontsize=Map.mrkDefaultSz, ha='center', va='center')
         elif poly['type'] == 'MultiPolygon':
-            print'MultiPolygon'
-            for v in poly['coordinates']:
-                print type(v).__name__
+            for cL in poly['coordinates']:
+                subPoly = {'type': 'Polygon', 'coordinates': cL}
+                self.ax.add_patch(PolygonPatch(subPoly, fc=clr, ec=clr, alpha=0.5, zorder=2))
         else:
-            print 'cannot handle %s poly type %s' % (tract, poly['type'])
+            logger.fatal('cannot handle poly type %s' % poly['type'])
+
+        if self.annotate:
+            self.ax.annotate(self.tractPropertyDict[tract]['NAME'],
+                             (ctrLon, ctrLat), (ctrLon, ctrLat),
+                             fontsize=Map.mrkDefaultSz, ha='center', va='center')
 
     def plotMarker(self, lon, lat, mark, label, clr):
                 coords = (self.mapProj.project(lon, lat), label)
