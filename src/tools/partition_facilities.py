@@ -194,25 +194,35 @@ class BinaryPartitionSet(PartitionSet):
         self.kid2 = None
 
     def partition(self, nParts):
-        self.fullWP.sortBy(self.sortFuncList[self.depth % len(self.sortFuncList)])
+        minMinLoss = None
+        for sortFunc in self.sortFuncList:
+            self.fullWP.sortBy(sortFunc)
 
-        bestSplit = None
-        minLoss = None
-#         f = open('/tmp/junk.curve', 'a')
-        for splitHere in xrange(len(self.fullWP)):
-            botWP, topWP = self.fullWP.split(splitHere)
-            lossVal = self.lossFunc(botWP.calcInternalWork(),
-                                    topWP.calcInternalWork(),
-                                    self.fullWP.calcTransferWork(splitHere))
-#             f.write('%s %s\n' % (splitHere, lossVal))
-            if minLoss is None or lossVal < minLoss:
-                bestSplit = splitHere
-                minLoss = lossVal
-#         f.write('\n')
-#         f.write('\n')
-#         f.close()
-        botWP, topWP = self.fullWP.split(bestSplit)
-        print 'bestSplit: %s of %s minLoss: %s' % (bestSplit, len(self.fullWP), minLoss)
+            bestSplit = None
+            minLoss = None
+    #         f = open('/tmp/junk.curve', 'a')
+            for splitHere in xrange(len(self.fullWP)):
+                botWP, topWP = self.fullWP.split(splitHere)
+                lossVal = self.lossFunc(botWP.calcInternalWork(),
+                                        topWP.calcInternalWork(),
+                                        self.fullWP.calcTransferWork(splitHere))
+    #             f.write('%s %s\n' % (splitHere, lossVal))
+                if minLoss is None or lossVal < minLoss:
+                    bestSplit = splitHere
+                    minLoss = lossVal
+    #         f.write('\n')
+    #         f.write('\n')
+    #         f.close()
+            if minMinLoss is None or minLoss < minMinLoss:
+                bestFunc = sortFunc
+                bestBestSplit = bestSplit
+                minMinLoss = minLoss
+        self.fullWP.sortBy(bestFunc)
+        botWP, topWP = self.fullWP.split(bestBestSplit)
+        print ('bestSplit %s of %s in direction %s -> minLoss: %s'
+               % (bestBestSplit, len(self.fullWP),
+                  self.sortFuncList.index(bestFunc),
+                  minMinLoss))
 
         subParts = nParts / 2
         if subParts > 1:
@@ -323,7 +333,7 @@ def main():
         return facDict[abbrev]['longitude']
 
     partitionSet = BinaryPartitionSet(fullWP, lossFunc, [latSortFun, lonSortFun])
-    partitionSet.partition(8)
+    partitionSet.partition(16)
 
     abbrevTractDict = {}
     for abbrev, rec in facDict.items():
@@ -336,16 +346,21 @@ def main():
 
     myMap = geomap.Map(geoDataPath, stateCode, countyCode, ctrLon, ctrLat,
                        annotate=False)  # Map of Orange County
-    LTBLUE = '#6699cc'
-    BLUE = '#0000cc'
-    LTRED = '#cc9966'
+    LTRED = '#cc6666'
     RED = '#cc0000'
-    LTGREEN = '#66cc99'
+    LTMAGENTA = '#cc66cc'
+    MAGENTA = '#cc00cc'
+    LTBLUE = '#6666cc'
+    BLUE = '#0000cc'
+    LTCYAN = '#66cccc'
+    CYAN = '#00cccc'
+    LTGREEN = '#66cc66'
     GREEN = '#00cc00'
-    LTYELLOW = '#aaaa00'
+    LTYELLOW = '#cccc66'
     YELLOW = '#cccc00'
 
-    clrTupleSeq = [(LTRED, RED), (LTBLUE, BLUE), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
+                   (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
     for idx, wP in enumerate(partitionSet.wPIter()):
         clr1, clr2 = clrTupleSeq[idx % len(clrTupleSeq)]
         for abbrev in wP.facIter():
