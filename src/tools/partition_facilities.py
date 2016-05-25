@@ -173,6 +173,72 @@ class WorkPartition(object):
         return len(self.idxFac)
 
 
+class PartitionSet(object):
+    def __init__(self, workPartition):
+        self.fullWP = workPartition
+
+    def partition(self, nParts):
+        pass
+
+    def wPIter(self):
+        yield self.fullWP
+
+
+class BinaryPartitionSet(PartitionSet):
+    def __init__(self, fullWP, lossFunc, sortFuncList, depth=0):
+        super(BinaryPartitionSet, self).__init__(fullWP)
+        self.lossFunc = lossFunc
+        self.sortFuncList = sortFuncList
+        self.depth = depth
+        self.kid1 = None
+        self.kid2 = None
+
+    def partition(self, nParts):
+        self.fullWP.sortBy(self.sortFuncList[self.depth % len(self.sortFuncList)])
+
+        bestSplit = None
+        minLoss = None
+#         f = open('/tmp/junk.curve', 'a')
+        for splitHere in xrange(len(self.fullWP)):
+            botWP, topWP = self.fullWP.split(splitHere)
+            lossVal = self.lossFunc(botWP.calcInternalWork(),
+                                    topWP.calcInternalWork(),
+                                    self.fullWP.calcTransferWork(splitHere))
+#             f.write('%s %s\n' % (splitHere, lossVal))
+            if minLoss is None or lossVal < minLoss:
+                bestSplit = splitHere
+                minLoss = lossVal
+#         f.write('\n')
+#         f.write('\n')
+#         f.close()
+        botWP, topWP = self.fullWP.split(bestSplit)
+        print 'bestSplit: %s of %s minLoss: %s' % (bestSplit, len(self.fullWP), minLoss)
+
+        subParts = nParts / 2
+        if subParts > 1:
+            self.kid1 = BinaryPartitionSet(botWP, self.lossFunc, self.sortFuncList,
+                                           depth=self.depth+1)
+        else:
+            self.kid1 = PartitionSet(botWP)
+        self.kid1.partition(subParts)
+
+        subParts = nParts - subParts
+        if subParts > 1:
+            self.kid2 = BinaryPartitionSet(topWP, self.lossFunc, self.sortFuncList,
+                                           depth=self.depth+1)
+        else:
+            self.kid2 = PartitionSet(topWP)
+        self.kid2.partition(subParts)
+
+    def wPIter(self):
+        if self.kid1 is None:
+            raise RuntimeError('Call partition first!')
+        for wP in self.kid1.wPIter():
+            yield wP
+        for wP in self.kid2.wPIter():
+            yield wP
+
+
 def lossFunc(work1, work2, crossWork):
     workDif = work1 - work2
     wt1 = 1.0
@@ -250,28 +316,14 @@ def main():
 
     fullWP = WorkPartition(orderedFacList, lclWorkVec, transferMatrix)
 
-    def mySortFun(abbrev):
+    def latSortFun(abbrev):
         return facDict[abbrev]['latitude']
 
-    fullWP.sortBy(mySortFun)
+    def lonSortFun(abbrev):
+        return facDict[abbrev]['longitude']
 
-    bestSplit = None
-    minLoss = None
-    f = open('/tmp/junk.curve', 'w')
-    for splitHere in xrange(len(fullWP)):
-        botWP, topWP = fullWP.split(splitHere)
-#         print 'full work: %s' % fullWP.calcInternalWork()
-#         print 'transfers: %s' % fullWP.calcTransferWork(len(fullWP)/2)
-#         print 'halves: %s %s' % (topWP.calcInternalWork(), botWP.calcInternalWork())
-        lossVal = lossFunc(botWP.calcInternalWork(), topWP.calcInternalWork(),
-                           fullWP.calcTransferWork(splitHere))
-        f.write('%s %s\n' % (splitHere, lossVal))
-        if minLoss is None or lossVal < minLoss:
-            bestSplit = splitHere
-            minLoss = lossVal
-    f.close()
-    botWP, topWP = fullWP.split(bestSplit)
-    print 'bestSplit: %s  minLoss: %s' % (bestSplit, minLoss)
+    partitionSet = BinaryPartitionSet(fullWP, lossFunc, [latSortFun, lonSortFun])
+    partitionSet.partition(8)
 
     abbrevTractDict = {}
     for abbrev, rec in facDict.items():
@@ -288,7 +340,14 @@ def main():
     BLUE = '#0000cc'
     LTRED = '#cc9966'
     RED = '#cc0000'
-    for wP, clr1, clr2 in [(topWP, LTRED, RED), (botWP, LTBLUE, BLUE)]:
+    LTGREEN = '#66cc99'
+    GREEN = '#00cc00'
+    LTYELLOW = '#aaaa00'
+    YELLOW = '#cccc00'
+
+    clrTupleSeq = [(LTRED, RED), (LTBLUE, BLUE), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    for idx, wP in enumerate(partitionSet.wPIter()):
+        clr1, clr2 = clrTupleSeq[idx % len(clrTupleSeq)]
         for abbrev in wP.facIter():
             if abbrev in abbrevTractDict:
                 tract = abbrevTractDict[abbrev]
