@@ -22,6 +22,7 @@ import optparse
 import logging
 import signal
 import yaml
+from datetime import datetime
 import numpy as np
 from map_transfer_matrix import parseFacilityData
 from notes_plotter import importNotes
@@ -256,6 +257,41 @@ def lossFunc(work1, work2, crossWork):
     return wt1*(workDif*workDif) + wt2*(crossWork*crossWork)
 
 
+def drawMap(partitionSet, abbrevTractDict, facDict, geoDataPath, stateCode, countyCode):
+    ctrLon = sum([r['longitude'] for r in facDict.values()]) / len(facDict)
+    ctrLat = sum([r['latitude'] for r in facDict.values()]) / len(facDict)
+
+    myMap = geomap.Map(geoDataPath, stateCode, countyCode, ctrLon, ctrLat,
+                       annotate=False)  # Map of Orange County
+    LTRED = '#cc6666'
+    RED = '#cc0000'
+    LTMAGENTA = '#cc66cc'
+    MAGENTA = '#cc00cc'
+    LTBLUE = '#6666cc'
+    BLUE = '#0000cc'
+    LTCYAN = '#66cccc'
+    CYAN = '#00cccc'
+    LTGREEN = '#66cc66'
+    GREEN = '#00cc00'
+    LTYELLOW = '#cccc66'
+    YELLOW = '#cccc00'
+
+    clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
+                   (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    for idx, wP in enumerate(partitionSet.wPIter()):
+        clr1, clr2 = clrTupleSeq[idx % len(clrTupleSeq)]
+        for abbrev in wP.facIter():
+            if abbrev in abbrevTractDict:
+                tract = abbrevTractDict[abbrev]
+                myMap.plotTract(tract, clr1)
+            else:
+                rec = facDict[abbrev]
+                mrk = {'HOSPITAL': '*', 'LTAC': '+', 'NURSINGHOME': 'o'}[rec['category']]
+                myMap.plotMarker(rec['longitude'], rec['latitude'], mrk, rec['abbrev'], clr2)
+
+    myMap.draw()
+
+
 def main():
     global logger
 
@@ -268,8 +304,10 @@ def main():
 
     logging.basicConfig()
 
+    defaultOutputName = "partition.yaml"
+
     parser = optparse.OptionParser(usage="""
-    %prog [-v][-d][-n notes1.pkl [-n notes2.pkl [...]] input.yaml
+    %prog [-v][-d][-n notes1.pkl [-n notes2.pkl [...]] [-o out.yaml] input.yaml
     """)
     parser.add_option("-v", "--verbose", action="store_true",
                       help="verbose output")
@@ -277,6 +315,8 @@ def main():
                       help="debugging output")
     parser.add_option("-n", "--notes", action="append",
                       help="pickled notes file to provide transfer data")
+    parser.add_option("-o", "--out", action="store", default=defaultOutputName,
+                      help="specifies output file name (default %s)" % defaultOutputName)
 
     opts, args = parser.parse_args()
 
@@ -294,10 +334,14 @@ def main():
         notesFileList = []
 
     if len(args) == 1:
-        inputDict = checkInputFileSchema(args[0], os.path.join(schemaDir, inputSchema))
+        inputPath = args[0]
     else:
         parser.error("A YAML-format file specifying prototype model parameters must be specified.")
+
+    outputPath = opts.out
     parser.destroy()
+
+    inputDict = checkInputFileSchema(inputPath, os.path.join(schemaDir, inputSchema))
 
     geoDataPath = '/home/welling/geo/tiger/tigr_2010_06.json'
     stateCode = '06'
@@ -335,51 +379,26 @@ def main():
     partitionSet = BinaryPartitionSet(fullWP, lossFunc, [latSortFun, lonSortFun])
     partitionSet.partition(16)
 
-    abbrevTractDict = {}
-    for abbrev, rec in facDict.items():
-        if rec['category'] == 'COMMUNITY':
-            tractStr = rec['name'].split()[-1]
-            abbrevTractDict[abbrev] = tractStr
+#     abbrevTractDict = {}
+#     for abbrev, rec in facDict.items():
+#         if rec['category'] == 'COMMUNITY':
+#             tractStr = rec['name'].split()[-1]
+#             abbrevTractDict[abbrev] = tractStr
+# 
+#     drawMap(partitionSet, abbrevTractDict, facDict,
+#             geoDataPath, stateCode, countyCode)
 
-    ctrLon = sum([r['longitude'] for r in facDict.values()]) / len(facDict)
-    ctrLat = sum([r['latitude'] for r in facDict.values()]) / len(facDict)
-
-    myMap = geomap.Map(geoDataPath, stateCode, countyCode, ctrLon, ctrLat,
-                       annotate=False)  # Map of Orange County
-    LTRED = '#cc6666'
-    RED = '#cc0000'
-    LTMAGENTA = '#cc66cc'
-    MAGENTA = '#cc00cc'
-    LTBLUE = '#6666cc'
-    BLUE = '#0000cc'
-    LTCYAN = '#66cccc'
-    CYAN = '#00cccc'
-    LTGREEN = '#66cc66'
-    GREEN = '#00cc00'
-    LTYELLOW = '#cccc66'
-    YELLOW = '#cccc00'
-
-    clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
-                   (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    partitionByAbbrev = {}
     for idx, wP in enumerate(partitionSet.wPIter()):
-        clr1, clr2 = clrTupleSeq[idx % len(clrTupleSeq)]
         for abbrev in wP.facIter():
-            if abbrev in abbrevTractDict:
-                tract = abbrevTractDict[abbrev]
-                myMap.plotTract(tract, clr1)
-            else:
-                rec = facDict[abbrev]
-                mrk = {'HOSPITAL': '*', 'LTAC': '+', 'NURSINGHOME': 'o'}[rec['category']]
-                myMap.plotMarker(rec['longitude'], rec['latitude'], mrk, rec['abbrev'], clr2)
-
-    myMap.draw()
-#     for x, y, clr, abbrev in coordList:
-#         ax.annotate(abbrev, xy=(x, y), xytext=(x, y))
-#     for abbrev, offset in indexDict.items():
-#         xy = (xVals[offset], yVals[offset])
-#         xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
-#         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
-
+            partitionByAbbrev[abbrev] = idx
+    allData = {'generatedBy': __file__,
+               'generatedTimeUTC': datetime.utcnow().isoformat(),
+               'notesInputs': notesFileList,
+               'modelInput': inputPath,
+               'partition': partitionByAbbrev}
+    with open(outputPath, 'w') as f:
+        yaml.dump(allData, f)
 
 if __name__ == "__main__":
     main()

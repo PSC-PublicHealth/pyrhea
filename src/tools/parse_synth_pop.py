@@ -26,8 +26,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 countyFIPS = '06059'
-srcDir = '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/epi_synth_pop_2'
-outDir = '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/synthCommunities'
+thisDir = os.path.dirname(__file__)
+srcDir = os.path.join(thisDir, '../../models/OrangeCounty2013/epi_synth_pop_2')
+outDir = os.path.join(thisDir, '../../models/OrangeCounty2013/synthCommunities')
 
 def importLOSTable(fname):
     with open(fname, 'r') as f:
@@ -133,7 +134,9 @@ def main():
                                     'longitude': meanLon,
                                     'latitude': meanLat,
                                     'lat_lon_prov': ('Means of lat and lon for all agents '
-                                                     'in this tract')
+                                                     'in this tract'),
+                                    'FIPS': countyFIPS,
+                                    'censusTract': tract
                                     })
                 comCount += 1
         else:

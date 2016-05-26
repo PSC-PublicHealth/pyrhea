@@ -34,6 +34,8 @@
       'longitude': {'type': 'number', 'minimum': -180.0, 'maximum': 180.0}
       'latitude':  { 'type': 'number', 'minimum': -90.0, 'maximum': 90.0}
       'lat_lon_prov': {'type': 'string'}
+      'FIPS': {'type': 'string'}
+      'censusTract': {'type': 'string'}
     'required': 
       - 'name'
       - 'abbrev'
