@@ -292,6 +292,14 @@ def drawMap(partitionSet, abbrevTractDict, facDict, geoDataPath, stateCode, coun
     myMap.draw()
 
 
+def isPowerOfTwo(num):
+    """
+    Thanks to http://code.activestate.com/recipes/577514-chek-if-a-number-is-a-power-of-two/ which
+    has a much nicer solution than I was contemplating.
+    """
+    return ((num & (num - 1)) == 0) and num != 0
+
+
 def main():
     global logger
 
@@ -305,6 +313,7 @@ def main():
     logging.basicConfig()
 
     defaultOutputName = "partition.yaml"
+    defaultNumParts = 16
 
     parser = optparse.OptionParser(usage="""
     %prog [-v][-d][-n notes1.pkl [-n notes2.pkl [...]] [-o out.yaml] input.yaml
@@ -317,6 +326,9 @@ def main():
                       help="pickled notes file to provide transfer data")
     parser.add_option("-o", "--out", action="store", default=defaultOutputName,
                       help="specifies output file name (default %s)" % defaultOutputName)
+    parser.add_option("-p", "--parts", action="store", type="int", default=defaultNumParts,
+                      help=(("Number of parts for the partition (default %d). Should be a"
+                            " power of 2.") % defaultNumParts))
 
     opts, args = parser.parse_args()
 
@@ -337,6 +349,11 @@ def main():
         inputPath = args[0]
     else:
         parser.error("A YAML-format file specifying prototype model parameters must be specified.")
+
+    if isPowerOfTwo(opts.parts):
+        numParts = opts.parts
+    else:
+        parser.error("The number of parts should be a power of two.")
 
     outputPath = opts.out
     parser.destroy()
@@ -377,16 +394,16 @@ def main():
         return facDict[abbrev]['longitude']
 
     partitionSet = BinaryPartitionSet(fullWP, lossFunc, [latSortFun, lonSortFun])
-    partitionSet.partition(16)
+    partitionSet.partition(numParts)
 
-#     abbrevTractDict = {}
-#     for abbrev, rec in facDict.items():
-#         if rec['category'] == 'COMMUNITY':
-#             tractStr = rec['name'].split()[-1]
-#             abbrevTractDict[abbrev] = tractStr
-# 
-#     drawMap(partitionSet, abbrevTractDict, facDict,
-#             geoDataPath, stateCode, countyCode)
+    abbrevTractDict = {}
+    for abbrev, rec in facDict.items():
+        if rec['category'] == 'COMMUNITY':
+            tractStr = rec['name'].split()[-1]
+            abbrevTractDict[abbrev] = tractStr
+
+    drawMap(partitionSet, abbrevTractDict, facDict,
+            geoDataPath, stateCode, countyCode)
 
     partitionByAbbrev = {}
     for idx, wP in enumerate(partitionSet.wPIter()):
