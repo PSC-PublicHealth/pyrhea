@@ -40,6 +40,8 @@ import pyrheautils
 schemaDir = '../schemata'
 inputSchema = 'rhea_input_schema.yaml'
 
+defaultOutputNotesName = 'notes.pkl'
+
 logger = None
 
 
@@ -107,30 +109,32 @@ def loadFacilityDescriptions(dirList, facImplDict):
     return facRecs
 
 
-def distributeFacilities(comm, facDirs, facImplDict):
+def distributeFacilities(comm, facDirs, facImplDict, partitionFile):
     """
     Estimate work associated with each facility and attempt to share it out fairly
     """
-    if comm.rank == 0:
+    if comm.size == 1:
         facRecs = loadFacilityDescriptions(facDirs, facImplDict)
-        assignments = defaultdict(list)
-        tots = {k: 0 for k in xrange(comm.size)}
-        pairL = [(facImplDict[rec['category']].estimateWork(rec), rec) for rec in facRecs]
-        pairL.sort(reverse=True)
-        for newWork, rec in pairL:
-            leastWork, leastBusy = min([(v, k) for k, v in tots.items()])  # @UnusedVariable
-            assignments[leastBusy].append(rec)
-            tots[leastBusy] += newWork
-        logger.info('Estimated work by rank: %s' % tots)
-        for targetRank in xrange(comm.size):
-            if targetRank == comm.rank:
-                myFacList = assignments[targetRank]
-            else:
-                comm.send(assignments[targetRank], dest=targetRank)
+        myFacList = facRecs
     else:
-        myFacList = comm.recv(source=0)
-    if comm.rank == 0:
-        logger.info('Finished distributing facilities')
+        assert partitionFile is not None, 'Expected a partition file'
+        if comm.rank == 0:
+            with open(partitionFile, 'rU') as f:
+                parentDict = yaml.safe_load(f)
+            partitionDict = parentDict['partition']
+            facRecs = loadFacilityDescriptions(facDirs, facImplDict)
+            assignments = defaultdict(list)
+            for r in facRecs:
+                assignments[partitionDict[r['abbrev']]].append(r)
+            for targetRank in xrange(comm.size):
+                if targetRank == comm.rank:
+                    myFacList = assignments[targetRank]
+                else:
+                    comm.send(assignments[targetRank], dest=targetRank)
+        else:
+            myFacList = comm.recv(source=0)
+        if comm.rank == 0:
+            logger.info('Finished distributing facilities')
     return myFacList
 
 
@@ -389,7 +393,7 @@ def main():
 
     if comm.rank == 0:
         parser = TweakedOptParser(usage="""
-        %prog [-v][-d][-t][-D][-p=npatch][-C][-L=loglevel] input.yaml
+        %prog [-v][-d][-t][-D][-p=npatch][-C][-L=loglevel][-P=partitionfile.yaml] input.yaml
         """)
         parser.setComm(comm)
         parser.add_option("-v", "--verbose", action="store_true",
@@ -408,6 +412,12 @@ def main():
                           help=("Set logging level "
                                 "('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')"),
                           default=None)
+        parser.add_option("-o", "--out", action="store", type="string",
+                          default=defaultOutputNotesName,
+                          help=("Set output file name (default '%s')" % defaultOutputNotesName))
+        parser.add_option("-P", "--partition", action="store", type="string",
+                          help=("yaml file defining the partition of locations to ranks"
+                                " (no default)"))
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -416,6 +426,8 @@ def main():
                 parser.error("Invalid log level: %s" % opts.log)
         else:
             numLogLevel = None
+        if opts.partition is None and comm.size > 1:
+            parser.error('A partition file is required for parallel runs')
         clData = {'verbose': opts.verbose,
                   'debug': opts.debug,
                   'trace': opts.trace,
@@ -423,7 +435,8 @@ def main():
                   'patches': opts.patches,
                   'printCensus': opts.census,
                   'logCfgDict': getLoggerConfig(),
-                  'loggingExtra': numLogLevel
+                  'loggingExtra': numLogLevel,
+                  'partitionFile': opts.partition
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -431,6 +444,7 @@ def main():
                                                    comm)
         else:
             parser.error("A YAML-format file specifying run parameters must be specified.")
+        outputNotesName = opts.out  # Defined only in rank 0!
         parser.destroy()
     else:
         clData = None
@@ -458,7 +472,8 @@ def main():
     policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
                    for rule in inputDict['policySelectors']]
 
-    myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict)
+    myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict,
+                                     clData['partitionFile'])
     logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
 
     patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
@@ -495,7 +510,7 @@ def main():
     #                 recs = nh['occupancy']
     #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
     #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
-            with open('notes.pkl', 'w') as f:
+            with open(outputNotesName, 'w') as f:
                 pickle.dump(d, f)
 
         logging.shutdown()
