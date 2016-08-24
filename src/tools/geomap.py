@@ -20,6 +20,7 @@ import logging
 import matplotlib.pyplot as plt
 from descartes import PolygonPatch
 import json
+import re
 import __builtin__
 # http://stackoverflow.com/questions/18229628/python-profiling-using-line-profiler-clever-way-to-remove-profile-statements
 try:
@@ -146,19 +147,39 @@ class MapProjection(object):
 class Map(object):
     mrkSzDict = {'*': 15, '+': 15, 'o': 10}
     mrkDefaultSz = 10
+#     mrkSzDict = {'*': 60, '+': 60, 'o': 60}
+#     mrkDefaultSz = 30
+    tractLabelDefaultSz = 10
 
-    def __init__(self, geoDataPath, stateCodeStr, countyCodeStr, ctrLon, ctrLat, annotate=True):
+    def __init__(self, geoDataPath, stateCodeStr, countyCodeStr, ctrLon, ctrLat, 
+                 annotate=True,
+                 nameMap={'STATE':'STATE', 'COUNTY':'COUNTY', 'TRACT':'TRACT', 'NAME':'NAME'},
+                 regexCodes=False):
+        self.nameMap = nameMap.copy()
         self.tractPolyDict = {}
         self.tractPropertyDict = {}
         self.mrkCoordDict = {}
         with open(geoDataPath, 'r') as f:
             json_data = json.load(f)
-        for feature in json_data['features']:
-            if (feature['properties']['STATE'] == stateCodeStr
-                    and feature['properties']['COUNTY'] == countyCodeStr):
-                tract = feature['properties']['TRACT']
-                self.tractPolyDict[tract] = feature['geometry']
-                self.tractPropertyDict[tract] = feature['properties']
+        stateKey = self.nameMap['STATE']
+        countyKey = self.nameMap['COUNTY']
+        tractKey = self.nameMap['TRACT']
+        if regexCodes:
+            stateRe = re.compile(stateCodeStr)
+            countyRe = re.compile(countyCodeStr)
+            for feature in json_data['features']:
+                if (stateRe.match(feature['properties'][stateKey])
+                        and countyRe.match(feature['properties'][countyKey])):
+                    tract = feature['properties'][tractKey]
+                    self.tractPolyDict[tract] = feature['geometry']
+                    self.tractPropertyDict[tract] = feature['properties']
+        else:
+            for feature in json_data['features']:
+                if (feature['properties'][stateKey] == stateCodeStr
+                        and feature['properties'][countyKey] == countyCodeStr):
+                    tract = feature['properties'][tractKey]
+                    self.tractPolyDict[tract] = feature['geometry']
+                    self.tractPropertyDict[tract] = feature['properties']
 
         self.mapProj = MapProjection((ctrLon, ctrLat), 100.0)
         self.fig = plt.figure()
@@ -178,9 +199,10 @@ class Map(object):
             logger.fatal('cannot handle poly type %s' % poly['type'])
 
         if self.annotate:
-            self.ax.annotate(self.tractPropertyDict[tract]['NAME'],
+            self.ax.annotate(self.tractPropertyDict[tract][self.nameMap['NAME']],
                              (ctrLon, ctrLat), (ctrLon, ctrLat),
-                             fontsize=Map.mrkDefaultSz, ha='center', va='center')
+                             fontsize=Map.tractLabelDefaultSz,
+                             ha='center', va='center')
 
     def plotMarker(self, lon, lat, mark, label, clr):
                 coords = (self.mapProj.project(lon, lat), label)
@@ -199,6 +221,7 @@ class Map(object):
                             [y for (x, y), abbrev in coordList],
                             c=clr, marker=mrk)
             if self.annotate:
+#                 pass
                 for (x, y), abbrev in coordList:
                     self.ax.annotate(abbrev, (x, y), (x, y),
                                      ha='left', va='bottom', fontsize=mrkSz)
