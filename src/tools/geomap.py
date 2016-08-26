@@ -17,17 +17,20 @@
 
 import math
 import logging
-import matplotlib.pyplot as plt
-from descartes import PolygonPatch
 import json
 import re
-import __builtin__
+import types
+import matplotlib.pyplot as plt
+from descartes import PolygonPatch
+
 # http://stackoverflow.com/questions/18229628/python-profiling-using-line-profiler-clever-way-to-remove-profile-statements
 try:
-    profile = __builtin__.profile
+    profile = __builtins__.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
-    def profile(func): return func
+    def profile(func):
+        """Dummy profile in case it is not present in __builtin__"""
+        return func
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +53,9 @@ def scale(v, fac):
 
 
 def normalize(v):
-    scale = math.sqrt(dot(v, v))
-    assert scale > 0.0, "Tried to normalize a zero-length vector"
-    return (v[0]/scale, v[1]/scale, v[2]/scale)
+    scl = math.sqrt(dot(v, v))
+    assert scl > 0.0, "Tried to normalize a zero-length vector"
+    return (v[0]/scl, v[1]/scl, v[2]/scl)
 
 
 def mapTo3D(longitude, latitude, worldRadius):
@@ -138,56 +141,77 @@ class MapProjection(object):
             lonMean = sum(lonVals)/float(len(lonVals))
             latMean = sum(latVals)/float(len(latVals))
         else:
-            logger.fatal('cannot handle poly type %s' % poly['type'])
+            logger.fatal('cannot handle poly type %s', poly['type'])
         newPoly = poly.copy()
         newPoly['coordinates'] = newCoords
         return newPoly, (lonMean, latMean)
 
 
 class Map(object):
-    mrkSzDict = {'*': 15, '+': 15, 'o': 10}
     mrkDefaultSz = 10
 #     mrkSzDict = {'*': 60, '+': 60, 'o': 60}
 #     mrkDefaultSz = 30
     tractLabelDefaultSz = 10
 
-    def __init__(self, geoDataPath, stateCodeStr, countyCodeStr, ctrLon, ctrLat, 
+    def __init__(self, geoDataPathList, stateCodeStr, countyCodeStr, ctrLon, ctrLat,
                  annotate=True,
-                 nameMap={'STATE':'STATE', 'COUNTY':'COUNTY', 'TRACT':'TRACT', 'NAME':'NAME'},
-                 regexCodes=False):
+                 nameMap=None,
+                 regexCodes=False,
+                 mrkSzDict=None):
+        if isinstance(geoDataPathList, types.StringTypes):
+            geoDataPathList = [geoDataPathList]
+        if nameMap is None:
+            nameMap = {'STATE': 'STATE', 'COUNTY': 'COUNTY', 'TRACT': 'TRACT', 'NAME': 'NAME',
+                       'GEOKEY': 'GEO_ID'}
         self.nameMap = nameMap.copy()
+        if mrkSzDict is None:
+            mrkSzDict = {'*': 15, '+': 15, 'o': 10}
+        self.mrkSzDict = mrkSzDict.copy()
         self.tractPolyDict = {}
         self.tractPropertyDict = {}
         self.mrkCoordDict = {}
-        with open(geoDataPath, 'r') as f:
-            json_data = json.load(f)
         stateKey = self.nameMap['STATE']
         countyKey = self.nameMap['COUNTY']
-        tractKey = self.nameMap['TRACT']
+        geoKey = self.nameMap['GEOKEY']
         if regexCodes:
             stateRe = re.compile(stateCodeStr)
             countyRe = re.compile(countyCodeStr)
-            for feature in json_data['features']:
-                if (stateRe.match(feature['properties'][stateKey])
-                        and countyRe.match(feature['properties'][countyKey])):
-                    tract = feature['properties'][tractKey]
-                    self.tractPolyDict[tract] = feature['geometry']
-                    self.tractPropertyDict[tract] = feature['properties']
         else:
-            for feature in json_data['features']:
-                if (feature['properties'][stateKey] == stateCodeStr
-                        and feature['properties'][countyKey] == countyCodeStr):
-                    tract = feature['properties'][tractKey]
-                    self.tractPolyDict[tract] = feature['geometry']
-                    self.tractPropertyDict[tract] = feature['properties']
+            stateRe = None
+            countyRe = None
+        for geoDataPath in geoDataPathList:
+            with open(geoDataPath, 'r') as f:
+                json_data = json.load(f)
+            if regexCodes:
+                for feature in json_data['features']:
+                    if (stateRe.match(feature['properties'][stateKey]) and
+                            countyRe.match(feature['properties'][countyKey])):
+                        geoID = feature['properties'][geoKey]
+                        self.tractPolyDict[geoID] = feature['geometry']
+                        self.tractPropertyDict[geoID] = feature['properties']
+            else:
+                for feature in json_data['features']:
+                    if (feature['properties'][stateKey] == stateCodeStr and
+                            feature['properties'][countyKey] == countyCodeStr):
+                        geoID = feature['properties'][geoKey]
+                        if geoID in self.tractPolyDict:
+                            logger.fatal('Tract ID collision for ID %s', geoID)
+                        self.tractPolyDict[geoID] = feature['geometry']
+                        self.tractPropertyDict[geoID] = feature['properties']
 
         self.mapProj = MapProjection((ctrLon, ctrLat), 100.0)
         self.fig = plt.figure()
         self.ax = self.fig.gca()
         self.annotate = annotate
 
-    def plotTract(self, tract, clr):
-        poly = self.tractPolyDict[tract]
+    def tractIDList(self):
+        return self.tractPolyDict.keys()
+
+    def getTractProperties(self, geoID):
+        return self.tractPropertyDict[geoID]
+
+    def plotTract(self, geoID, clr):
+        poly = self.tractPolyDict[geoID]
         poly, (ctrLon, ctrLat) = self.mapProj.projPoly(poly)
         if poly['type'] == 'Polygon':
             self.ax.add_patch(PolygonPatch(poly, fc=clr, ec=clr, alpha=0.5, zorder=2))
@@ -196,32 +220,31 @@ class Map(object):
                 subPoly = {'type': 'Polygon', 'coordinates': cL}
                 self.ax.add_patch(PolygonPatch(subPoly, fc=clr, ec=clr, alpha=0.5, zorder=2))
         else:
-            logger.fatal('cannot handle poly type %s' % poly['type'])
+            logger.fatal('cannot handle poly type %s', poly['type'])
 
         if self.annotate:
-            self.ax.annotate(self.tractPropertyDict[tract][self.nameMap['NAME']],
+            self.ax.annotate(self.tractPropertyDict[geoID][self.nameMap['NAME']],
                              (ctrLon, ctrLat), (ctrLon, ctrLat),
                              fontsize=Map.tractLabelDefaultSz,
                              ha='center', va='center')
 
     def plotMarker(self, lon, lat, mark, label, clr):
-                coords = (self.mapProj.project(lon, lat), label)
-                if (mark, clr) in self.mrkCoordDict:
-                    self.mrkCoordDict[(mark, clr)].append(coords)
-                else:
-                    self.mrkCoordDict[(mark, clr)] = [coords]
+        coords = (self.mapProj.project(lon, lat), label)
+        if (mark, clr) in self.mrkCoordDict:
+            self.mrkCoordDict[(mark, clr)].append(coords)
+        else:
+            self.mrkCoordDict[(mark, clr)] = [coords]
 
     def draw(self):
         for (mrk, clr), coordList in self.mrkCoordDict.items():
-            if mrk in Map.mrkSzDict:
-                mrkSz = Map.mrkSzDict[mrk]
+            if mrk in self.mrkSzDict:
+                mrkSz = self.mrkSzDict[mrk]
             else:
                 mrkSz = Map.mrkDefaultSz
             self.ax.scatter([x for (x, y), abbrev in coordList],
                             [y for (x, y), abbrev in coordList],
                             c=clr, marker=mrk)
             if self.annotate:
-#                 pass
                 for (x, y), abbrev in coordList:
                     self.ax.annotate(abbrev, (x, y), (x, y),
                                      ha='left', va='bottom', fontsize=mrkSz)

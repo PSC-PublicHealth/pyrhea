@@ -15,183 +15,202 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id: map_facilities.py 133 2016-03-07 20:12:44Z welling $"
-
 import os.path
-import math
-import matplotlib.pyplot as plt
+import signal
+import optparse
+
 from map_transfer_matrix import parseFacilityData
-from descartes import PolygonPatch
-import json
-import __builtin__
+import phacsl.utils.formats.yaml_tools as yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
+
+
+import geomap
+
 # http://stackoverflow.com/questions/18229628/python-profiling-using-line-profiler-clever-way-to-remove-profile-statements
 try:
-    profile = __builtin__.profile
+    profile = __builtins__.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
-    def profile(func): return func
-
-
-def dot(v1, v2):
-    return (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2])
-
-
-def cross(v1, v2):
-    v1x, v1y, v1z = v1
-    v2x, v2y, v2z = v2
-    v3x = v1y * v2z - v1z * v2y
-    v3y = v1z * v2x - v1x * v2z
-    v3z = v1x * v2y - v1y * v2x
-    return (v3x, v3y, v3z)
-
-
-def scale(v, fac):
-    return (fac*v[0], fac*v[1], fac*v[2])
-
-
-def normalize(v):
-    scale = math.sqrt(dot(v, v))
-    assert scale > 0.0, "Tried to normalize a zero-length vector"
-    return (v[0]/scale, v[1]/scale, v[2]/scale)
-
-
-def mapTo3D(longitude, latitude, worldRadius):
-    """Project from latitude and longitude to (x,y,z)"""
-    lonRad = math.pi * longitude / 180.0
-    latRad = math.pi * latitude / 180.0
-    z = worldRadius * math.sin(latRad)
-    x = worldRadius * math.cos(latRad) * math.sin(lonRad)
-    y = worldRadius * math.cos(latRad) * math.cos(lonRad)
-    return (x, y, z)
-
-
-def vecPlus(v1, v2):
-    return (v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2])
-
-
-def vecMinus(v1, v2):
-    return (v1[0]-v2[0], v1[1]-v2[1], v1[2]-v2[2])
-
-
-def project(v, xVec, yVec, center):
-    """xVec and yVec are presumed to be normalized"""
-    vCtr = vecMinus(v, center)
-    vx = scale(xVec, dot(vCtr, xVec))
-    vy = scale(yVec, dot(vCtr, yVec))
-    return vecPlus(vx, vy)
-
-
-class MapProjection(object):
-    def __init__(self, mapCtr, worldRadius):
+    def profile(func):
         """
-        mapCtr should be a (lon, lat) tuple.  worldRadius scales the final projection.
+        Dummy substitute for __builtin__.profile line profiler
         """
-        self.worldRadius = worldRadius
-        self.mapCtr3D = mapTo3D(mapCtr[0], mapCtr[1], worldRadius)
-
-        ctrLatRad = math.asin(self.mapCtr3D[2] / worldRadius)
-        ctrLonRad = math.atan2(self.mapCtr3D[0], self.mapCtr3D[1])
-        print 'Input map center longitude and latitude: %s' % str(mapCtr)
-        print 'Map Center: %s' % str(self.mapCtr3D)
-        print 'Map Center longitude and latitude: %s %s' % (180.*ctrLonRad/math.pi,
-                                                            180.*ctrLatRad/math.pi)
-
-        # X and Y vectors are normalized vectors in the longitude and latitude directions
-        self.mapXVec = (math.cos(ctrLatRad) * math.cos(ctrLonRad),
-                        -math.cos(ctrLatRad) * math.sin(ctrLonRad),
-                        0.0)
-        self.mapYVec = (-math.sin(ctrLatRad) * math.sin(ctrLonRad),
-                        -math.sin(ctrLatRad) * math.cos(ctrLonRad),
-                        math.cos(ctrLatRad))
-        print 'mapXVec: %s' % str(self.mapXVec)
-        print 'mapYVec: %s' % str(self.mapYVec)
-
-    @profile
-    def project(self, lon, lat):
-        sep = vecMinus(mapTo3D(lon, lat, self.worldRadius), self.mapCtr3D)
-        x = dot(sep, self.mapXVec)
-        y = dot(sep, self.mapYVec)
-        return (x, y)
+        return func
 
 
-@profile
-def projPoly(poly, mapProj):
-    newCoords = []
-    lonSum = 0.0
-    latSum = 0.0
-    count = 0
-    for l1 in poly['coordinates']:
-        nl1 = []
-        for l2 in l1:
-            lon, lat = mapProj.project(l2[0], l2[1])
-            nl1.append([lon, lat])
-            lonSum += lon
-            latSum += lat
-            count += 1
-        newCoords.append(nl1)
-    newPoly = poly.copy()
-    newPoly['coordinates'] = newCoords
-    return newPoly, (lonSum/float(count), latSum/float(count))
+LTRED = '#cc6666'
+RED = '#cc0000'
+LTMAGENTA = '#cc66cc'
+MAGENTA = '#cc00cc'
+LTBLUE = '#6666cc'
+BLUE = '#0000cc'
+ALTBLUE = '#6699cc'
+LTCYAN = '#66cccc'
+CYAN = '#00cccc'
+LTGREEN = '#66cc66'
+GREEN = '#00cc00'
+LTYELLOW = '#cccc66'
+YELLOW = '#cccc00'
 
 
 def categoryToColor(cat):
-    return {'HOSPITAL': 'red', 'LTAC': 'pink', 'NURSINGHOME': 'blue', 'COMMUNITY': 'pink'}[cat]
+    return {'HOSPITAL': 'red', 'LTAC': 'green', 'NURSINGHOME': 'blue', 'COMMUNITY': 'pink',
+            'SNF': 'blue', 'VSNF': 'purple'}[cat]
+
+
+def loadCountyCodes(fname):
+    with open(fname, 'rU') as f:
+        keys, recs = csv_tools.parseCSV(f)
+    for k in ['STATE', 'STATEFP', 'COUNTYNAME', 'COUNTYFP']:
+        assert k in keys, "%s is missing the required column %s" % k
+    result = {}
+    for r in recs:
+        countyNm = r['COUNTYNAME'].strip()
+        if countyNm.lower().endswith('county'):
+            countyNm = countyNm[:-len('county')].strip().lower()
+        stateNm = r['STATE'].strip().upper()
+        key = (stateNm, countyNm)
+        result[key] = (r['STATEFP'], r['COUNTYFP'])
+    print result
+    return result
+
+
+def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
+
+    sumLon = 0.0
+    sumLat = 0.0
+    for r in locRecs:
+        if len(r['name']) > 0:
+            try:
+                sumLon += float(r['longitude'])
+                sumLat += float(r['latitude'])
+            except Exception, e:
+                print 'Got exception %s on %s' % (e, r)
+
+    ctrLon = sumLon / len(locRecs)
+    ctrLat = sumLat / len(locRecs)
+
+    myMap = geomap.Map(geoDataPathList,
+                       stateFIPSRE,
+                       countyFIPSRE,
+                       ctrLon, ctrLat,
+                       annotate=True,
+                       nameMap={'STATE': 'STATE', 'COUNTY': 'COUNTY',
+                                'TRACT': 'TRACT', 'NAME': 'NAME',
+                                'GEOKEY': 'GEO_ID'},
+                       regexCodes=True,
+                       mrkSzDict={'*': 15, '+': 15, 'o': 10})
+    clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
+                   (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    for geoID in myMap.tractIDList():
+        propRec = myMap.getTractProperties(geoID)
+        countyKey = (int(propRec['STATE']), int(propRec['COUNTY']))
+        if countyKey in countySet:
+            clr, dummy = clrTupleSeq[int(propRec['COUNTY']) % len(clrTupleSeq)]
+            myMap.plotTract(geoID, clr)
+
+    for r in locRecs:
+        name = r['abbrev']
+        try:
+            mrk = {'SNF': '+', 'VSNF': '+', 'NURSINGHOME': '+', 'HOSPITAL': '*',
+                   'LTAC': 'o', 'LTACH': 'o', 'CHILDREN': 'x'}[r['category']]
+        except KeyError:
+            print 'No marker type for %s' % r['category']
+            mrk = 'x'
+        if name:
+            myMap.plotMarker(float(r['longitude']), float(r['latitude']), mrk, name, 'black')
+
+    myMap.draw()
+
 
 def main():
-    geoData = '/home/welling/geo/tiger/tigr_2010_06.json'
-    #facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
-    #                            'facilityfactsCurrent')
-    modelDir = os.path.join(os.path.dirname(__file__), '../../models/OrangeCounty2013/')
+    verbose = False
+    debug = False
+    # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
+    # handy trick to enable attachment of pdb to a running program
+    def handle_pdb(sig, frame):
+        import pdb
+        pdb.Pdb().set_trace(frame)
+    signal.signal(signal.SIGUSR1, handle_pdb)
+
+    geoDataDir = '/home/welling/geo/USA'
+    geoDataPathList = [os.path.join(geoDataDir, 'IL/tigr_2010_17.geojson'),
+                       os.path.join(geoDataDir, 'IN/tigr_2010_18.geojson'),
+                       os.path.join(geoDataDir, 'IA/tigr_2010_19.geojson'),
+                       os.path.join(geoDataDir, 'WI/tigr_2010_55.geojson'),
+                       ]
+    countyCodePath = os.path.join(geoDataDir, 'fips_county_codes.csv')
+
+    modelDir = os.path.join(os.path.dirname(__file__), '../../models/ChicagoLand/')
     facDict = parseFacilityData([
-                                 os.path.join(modelDir, 'facilityfactsCurrent2013'),
-                                 os.path.join(modelDir, 'synthCommunities')
+                                 os.path.join(modelDir, 'facilityfacts'),
+#                                  os.path.join(modelDir, 'synthCommunities')
                                  ])
+    countyCodeDict = loadCountyCodes(countyCodePath)
+    cL = []
+    for rec in facDict.values():
+        line = rec['address']
+        strs = line.split(',')
+        stateStr = strs[3].split()[0].upper()
+        countyStr = strs[2].split()[0].lower()
+        cL.append((stateStr, countyStr))
+    countiesInPlay = list(set(cL))
+    print countiesInPlay
+    countySet = set()
+    for sname, cname in countiesInPlay:
+        if (sname, cname) in countyCodeDict:
+            countySet.add(countyCodeDict[(sname, cname)])
+        else:
+            print 'No code for <%s><%s>' % (sname, cname)
+#     countyFIPSList = list(countySet)
+#     countyFIPSRE = r'((' + r')|('.join(["%03d" % cF for cF in countyFIPSList]) + r'))'
+#     stateFIPSRE = r'17'
+    countyFIPSRE = r'.*'
+    stateFIPSRE = r'.*'
 
-    mapProj = MapProjection((sum([r['longitude'] for r in facDict.values()]) / len(facDict),
-                             sum([r['latitude'] for r in facDict.values()]) / len(facDict)),
-                            100.0)
+    parser = optparse.OptionParser(usage="""
+    %prog [-v][-d] input.csv
+    """)
+    parser.add_option("-v", "--verbose", action="store_true",
+                      help="verbose output")
+    parser.add_option("-d", "--debug", action="store_true",
+                      help="debugging output")
 
-    BLUE = '#6699cc'
-    fig = plt.figure()
-    ax = fig.gca()
+    opts, args = parser.parse_args()
 
-    with open(geoData, 'r') as f:
-        json_data = json.load(f)
-    for feature in json_data['features']:
-        if feature['properties']['COUNTY'] == '059':
-        #if True:
-            # print feature['properties']['TRACT']
-            # print feature['properties']
-            poly = feature['geometry']
-            if poly['type'] == 'Polygon':
-                poly, (ctrLon, ctrLat) = projPoly(poly, mapProj)
-                ax.add_patch(PolygonPatch(poly, fc=BLUE, ec=BLUE, alpha=0.5, zorder=2))
-                ax.annotate(feature['properties']['NAME'], (ctrLon, ctrLat), (ctrLon, ctrLat),
-                            fontsize=5, ha='center', va='center')
-            else:
-                pass
+    if opts.debug:
+        debug = True
+    elif opts.verbose:
+        verbose = True
 
-    for cg, mrk, sz in {('HOSPITAL', '*', 15), ('LTAC', '+', 15), ('NURSINGHOME', 'o', 10)}:
-        coordList = [(mapProj.project(rec['longitude'], rec['latitude']),
-                     rec['abbrev'])
-                     for rec in facDict.values() if rec['category'] == cg]
-        coordList = [(x, y, abbrev) for (x, y), abbrev in coordList]
-        ax.scatter([x for x, y, abbrev in coordList], [y for x, y, abbrev in coordList],
-                   c=categoryToColor(cg), marker=mrk)
-        for x, y, abbrev in coordList:
-            ax.annotate(abbrev, (x, y), (x, y), ha='left', va='bottom', fontsize=sz)
+#     if len(args) == 1:
+#         inputPath = args[0]
+#     else:
+#         parser.error("A single CSV file containing coordinate data must be specified.")
 
 
-#     for x, y, clr, abbrev in coordList:
-#         ax.annotate(abbrev, xy=(x, y), xytext=(x, y))
-#     for abbrev, offset in indexDict.items():
-#         xy = (xVals[offset], yVals[offset])
-#         xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
-#         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
-    ax.axis('scaled')
-    plt.show()
+#     for cg, mrk, sz in {('HOSPITAL', '*', 15), ('LTAC', '+', 15), ('NURSINGHOME', 'o', 10)}:
+#         coordList = [(mapProj.project(rec['longitude'], rec['latitude']),
+#                      rec['abbrev'])
+#                      for rec in facDict.values() if rec['category'] == cg]
+#         coordList = [(x, y, abbrev) for (x, y), abbrev in coordList]
+#         ax.scatter([x for x, y, abbrev in coordList], [y for x, y, abbrev in coordList],
+#                    c=categoryToColor(cg), marker=mrk)
+#         for x, y, abbrev in coordList:
+#             ax.annotate(abbrev, (x, y), (x, y), ha='left', va='bottom', fontsize=sz)
 
+
+#     with open(inputPath, 'rU') as f:
+#         keys, recs = parseCSV(inputPath)
+#     for k in ['location ID', 'latitude', 'longitude']:
+#         assert k in keys, "Required CSV column %s is missing" % k
+#         
+#     geoDataPath = '/home/welling/geo/India/india.geojson'
+#     stateCode = '06'
+#     countyCode = '059'
+
+    drawMap(geoDataPathList, facDict.values(), stateFIPSRE, countyFIPSRE, countySet)
 
 if __name__ == "__main__":
     main()
