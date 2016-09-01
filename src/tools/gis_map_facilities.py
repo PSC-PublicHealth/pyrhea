@@ -71,7 +71,6 @@ def loadCountyCodes(fname):
         stateNm = r['STATE'].strip().upper()
         key = (stateNm, countyNm)
         result[key] = (r['STATEFP'], r['COUNTYFP'])
-    print result
     return result
 
 
@@ -95,6 +94,7 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
                        countyFIPSRE,
                        ctrLon, ctrLat,
                        annotate=True,
+                       annotateTracts=False,
                        nameMap={'STATE': 'STATE', 'COUNTY': 'COUNTY',
                                 'TRACT': 'TRACT', 'NAME': 'NAME',
                                 'GEOKEY': 'GEO_ID'},
@@ -155,7 +155,6 @@ def main():
         countyStr = strs[2].split()[0].lower()
         cL.append((stateStr, countyStr))
     countiesInPlay = list(set(cL))
-    print countiesInPlay
     countySet = set()
     for sname, cname in countiesInPlay:
         if (sname, cname) in countyCodeDict:

@@ -155,9 +155,14 @@ class Map(object):
 
     def __init__(self, geoDataPathList, stateCodeStr, countyCodeStr, ctrLon, ctrLat,
                  annotate=True,
+                 annotateTracts=True,
                  nameMap=None,
                  regexCodes=False,
                  mrkSzDict=None):
+        """
+        Annotation of tracts requires that both annotate and annotateTracts be True.
+        Annotation of markers requires only that annotate be True.
+        """
         if isinstance(geoDataPathList, types.StringTypes):
             geoDataPathList = [geoDataPathList]
         if nameMap is None:
@@ -202,7 +207,8 @@ class Map(object):
         self.mapProj = MapProjection((ctrLon, ctrLat), 100.0)
         self.fig = plt.figure()
         self.ax = self.fig.gca()
-        self.annotate = annotate
+        self.annotateMarkers = annotate
+        self.annotateTracts = annotateTracts and annotate
 
     def tractIDList(self):
         return self.tractPolyDict.keys()
@@ -222,7 +228,7 @@ class Map(object):
         else:
             logger.fatal('cannot handle poly type %s', poly['type'])
 
-        if self.annotate:
+        if self.annotateTracts:
             self.ax.annotate(self.tractPropertyDict[geoID][self.nameMap['NAME']],
                              (ctrLon, ctrLat), (ctrLon, ctrLat),
                              fontsize=Map.tractLabelDefaultSz,
@@ -244,7 +250,7 @@ class Map(object):
             self.ax.scatter([x for (x, y), abbrev in coordList],
                             [y for (x, y), abbrev in coordList],
                             c=clr, marker=mrk)
-            if self.annotate:
+            if self.annotateMarkers:
                 for (x, y), abbrev in coordList:
                     self.ax.annotate(abbrev, (x, y), (x, y),
                                      ha='left', va='bottom', fontsize=mrkSz)
