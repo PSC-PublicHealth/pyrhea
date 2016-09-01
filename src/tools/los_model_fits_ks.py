@@ -23,6 +23,8 @@ import math
 import sys
 import os.path
 import phacsl.utils.formats.csv_tools as csv_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
+from map_transfer_matrix import parseFacilityData
 
 import numpy as np
 import scipy.optimize as op
@@ -73,30 +75,47 @@ def importLOSHistoTable(fname):
         losHistoDict[key] = newLst
     return losHistoDict
 
-def fullPDF(fitParms, xVec):
-    xArr = np.asarray(xVec, np.float64)
-    mu = fitParms[0]
-    sigma = fitParms[1]
-    # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
-    pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-    return pVec
 
+class LOSModel(object):
+    """
+    Base class for a collection of possible statistical models for LOS distributions
+    """
+    def fullPDF(self, fitParms, xVec):
+        raise RuntimeError('base fullPDF method called')
+    def fullLogPDF(self, fitParms, xVec):
+        raise RuntimeError('base fullLogPDF method called')
+    def fullCDF(self, fitParms, xVec):
+        raise RuntimeError('base fullCDF method called')
 
-def fullLogPDF(fitParms, xVec):
-    xArr = np.asarray(xVec, np.float64)
-    mu = fitParms[0]
-    sigma = fitParms[1]
-    # print "fullLogPDF: sigma= %s, mu= %s" % (sigma, mu)
-    lnTerm = lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-    return lnTerm
-
-
-def fullCDF(fitParms, limVec):
-    limArr = np.asarray(limVec, np.float64)
-    mu = fitParms[0]
-    sigma = fitParms[1]
-    cdfVec = lognorm.cdf(limArr, sigma, scale=math.exp(mu), loc=0.0)
-    return cdfVec
+    
+class LogNormLOSModel(LOSModel):
+    """
+    A simple log-normal distribution
+    """
+    def fullPDF(self, fitParms, xVec):
+        xArr = np.asarray(xVec, np.float64)
+        mu = fitParms[0]
+        sigma = fitParms[1]
+        # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
+        pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        return pVec
+    
+    
+    def fullLogPDF(self, fitParms, xVec):
+        xArr = np.asarray(xVec, np.float64)
+        mu = fitParms[0]
+        sigma = fitParms[1]
+        # print "fullLogPDF: sigma= %s, mu= %s" % (sigma, mu)
+        lnTerm = lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        return lnTerm
+    
+    
+    def fullCDF(self, fitParms, limVec):
+        limArr = np.asarray(limVec, np.float64)
+        mu = fitParms[0]
+        sigma = fitParms[1]
+        cdfVec = lognorm.cdf(limArr, sigma, scale=math.exp(mu), loc=0.0)
+        return cdfVec
 
 
 def lnLik(fitParms, xVec, dummy):
@@ -117,7 +136,8 @@ def truncatedLnLik(fitParms, xVec, truncLim):
 
 gblDebug = False
 
-def kSScore(fitParms, losHistoList, truncLim=None):
+
+def kSScore(fitParms, losHistoList, losModel, truncLim=None):
     """
     This is actually the maximum difference between the predicted number
     of counts in a histo band and the actual number of counts.  It would
@@ -133,8 +153,8 @@ def kSScore(fitParms, losHistoList, truncLim=None):
                             np.float64) + 0.0001
         highVec = np.asarray([float(hlim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
                              np.float64) + 0.9999
-        lowCDFs = fullCDF(fitParms, lowVec)
-        highCDFs = fullCDF(fitParms, highVec)
+        lowCDFs = losModel.fullCDF(fitParms, lowVec)
+        highCDFs = losModel.fullCDF(fitParms, highVec)
         predictedVec = (highCDFs - lowCDFs)
         maxSep = np.max(np.fabs(predictedVec - fracVec))
         if gblDebug:
@@ -162,7 +182,7 @@ def kSScore(fitParms, losHistoList, truncLim=None):
     return maxSep
 
 
-def modelFit(losHistoList, fun=kSScore, truncLim=None):
+def modelFit(losHistoList, losModel, fun=kSScore, truncLim=None):
     initialGuess = [3.246, 0.5]
     bounds = [(0.05, 400.0), (0.05, None)]
 #     initialGuess = [math.log(33.843041745424408), 1.0689299528774443]
@@ -174,7 +194,7 @@ def modelFit(losHistoList, fun=kSScore, truncLim=None):
 
     try:
         result = op.minimize(minimizeMe, initialGuess,
-                             args=(losHistoList, truncLim),
+                             args=(losHistoList, losModel, truncLim),
                              bounds=bounds)
         print ("success %s: min val = %s for %s on %d bands" %
                (result.success, result.fun, result.x, len(losHistoList)))
@@ -186,14 +206,15 @@ def modelFit(losHistoList, fun=kSScore, truncLim=None):
         raise
 
 
-def truncatedModelFit(sampVec, fun=truncatedLnLik):
-    return modelFit([s for s in sampVec if s <= truncLim], fun=fun, truncLim=truncLim)
+def truncatedModelFit(sampVec, losModel, fun=truncatedLnLik):
+    return modelFit([s for s in sampVec if s <= truncLim], losModel,
+                    fun=fun, truncLim=truncLim)
 
 
-def plotCurve(axes, parmVec, scale, rng, nbins, pattern='r-'):
+def plotCurve(axes, parmVec, losModel, scale, rng, nbins, pattern='r-'):
     curveX = np.linspace(rng[0], rng[1], nbins)
 #     curveY = (fullPDF(parmVec, curveX) * scale * ((rng[1]-rng[0])/nbins))
-    curveY = fullPDF(parmVec, curveX) * scale
+    curveY = losModel.fullPDF(parmVec, curveX) * scale
     axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
@@ -243,20 +264,22 @@ def main():
     modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
     losHistoPath = os.path.join(modelDir, 'HistogramTable_ActualLOS_PROTECT_082516.csv')
     losHistoDict = importLOSHistoTable(losHistoPath)
+    facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
 
     tblRecs = []
     indexDict = {}
     valVecList = []
     offset = 0
     for abbrev, losHistoList in losHistoDict.items():
+        nSamples = sum([band[2] for band in losHistoList])
+        nBins = len(losHistoList)
         if len(losHistoList) >= 2:
             indexDict[abbrev] = offset
             print '%s:' % abbrev,
-            fitVec, accuracyMeasure, success = modelFit(losHistoList)
+            losModel = LogNormLOSModel()
+            fitVec, accuracyMeasure, success = modelFit(losHistoList, losModel)
             valVecList.append(fitVec)
             offset += 1
-            nSamples = sum([band[2] for band in losHistoList])
-            nBins = len(losHistoList)
             note = "" if success else "fitting iteration did not converge"
             tblRecs.append({'abbrev': abbrev, 'KSScore': accuracyMeasure,
                             'mu': fitVec[0], 'sigma': fitVec[1],
@@ -266,6 +289,11 @@ def main():
         else:
             print ('No fit for %s: %s histo bins is not enough' %
                    (abbrev, len(losHistoList)))
+            note = "Not enough histogram bins to estimate LOS"
+            tblRecs.append({'abbrev': abbrev,
+                            'nsamples': nSamples, 'nbins': nBins,
+                            'notes': note})
+            
 
 #     ofName = 'nh_los_model_fit_parms.csv'
     ofName = 'los_model_fit_parms_ks.csv'
@@ -359,8 +387,10 @@ def main():
             global gblDebug
             gblDebug = (i == 0)
             print '%s:' % clrs[i],
-            fitVec, accuracyMeasure, success = modelFit(allSampList)  # @UnusedVariable
-            plotCurve(histoAxes[i], fitVec, np.sum(vec), rng=histoRange,
+            losModel = LogNormLOSModel()
+            fitVec, accuracyMeasure, success = modelFit(allSampList,  # @UnusedVariable
+                                                        losModel)
+            plotCurve(histoAxes[i], fitVec, losModel, np.sum(vec), rng=histoRange,
                       nbins=vec.shape[0])
         histoAxes[i].set_title('locations in ' + clrs[i])
 
@@ -373,7 +403,8 @@ def main():
         plotAsHistogram(vec, locAxes[i])
         locAxes[i].set_title(abbrev)
         fitParms = valVecList[indexDict[abbrev]]
-        plotCurve(locAxes[i], fitParms, np.sum(vec),
+        losModel = LogNormLOSModel()
+        plotCurve(locAxes[i], fitParms, losModel, np.sum(vec),
                   rng=histoRange, nbins=nbins)
 
     fig1.tight_layout()
