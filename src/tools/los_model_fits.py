@@ -21,9 +21,9 @@ Estimate LOS model distribution parameters by optimizing the Kolomogorov-Smirnov
 
 import math
 import sys
+import traceback
 import os.path
 import phacsl.utils.formats.csv_tools as csv_tools
-import phacsl.utils.formats.yaml_tools as yaml_tools
 from map_transfer_matrix import parseFacilityData
 
 import numpy as np
@@ -80,61 +80,252 @@ class LOSModel(object):
     """
     Base class for a collection of possible statistical models for LOS distributions
     """
-    def fullPDF(self, fitParms, xVec):
-        raise RuntimeError('base fullPDF method called')
-    def fullLogPDF(self, fitParms, xVec):
-        raise RuntimeError('base fullLogPDF method called')
-    def fullCDF(self, fitParms, xVec):
-        raise RuntimeError('base fullCDF method called')
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = []
+        if not optimizationBounds:
+            optimizationBounds = [(0.05, 400.0), (0.05, None)]
+        self.fitParms = np.asarray(initialVals, np.float64)
+        self.optBounds = optimizationBounds[:]
 
+    def fullPDF(self, xVec, fitParms=None):
+        raise RuntimeError('base fullPDF method called')
+    def fullLogPDF(self, xVec, fitParms=None):
+        raise RuntimeError('base fullLogPDF method called')
+    def fullCDF(self, xVec, fitParms=None):
+        raise RuntimeError('base fullCDF method called')
+    def strDesc(self):
+        raise RuntimeError('base strDesc method called')
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        if funToMinimize:
+            if funToMaximize:
+                raise RuntimeError('Only one of funToMinimize and'
+                                   ' funToMaximize can be specified')
+            else:
+                minimizeMe = funToMinimize
+        else:
+            if funToMaximize:
+                def minimizeMe(*args):
+                    return -funToMaximize(*args)
+            else:
+                raise RuntimeError('Must specify either funToMinimize'
+                                   ' or funToMaximize')
     
+        try:
+            initialGuess = self.fitParms.copy()
+            bounds = self.optBounds[:]
+            result = op.minimize(minimizeMe, initialGuess,
+                                 args=(losHistoList, self, truncLim, debug),
+                                 bounds=bounds)
+            nSamp = sum([ct for lo, hi, ct in losHistoList])  # @UnusedVariable
+            if not result.success:
+                print result
+                # On failure the min value seen is not set; fix that
+                result.fun = minimizeMe(result.x, losHistoList, self, truncLim)
+            self.fitParms = result.x.copy()
+            if minimizeMe == funToMinimize:
+                bestVal = result.fun
+            else:
+                bestVal = -result.fun
+            print ("success %s: min val = %s per sample for %s on %d bands, %d samples" %
+                   (result.success, bestVal/nSamp, result.x,
+                    len(losHistoList), nSamp))
+            return result.x, bestVal, result.success
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+            sys.exit('Exception during minimization')
+
+
 class LogNormLOSModel(LOSModel):
     """
     A simple log-normal distribution
     """
-    def fullPDF(self, fitParms, xVec):
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [3.246, 0.5]
+        if not optimizationBounds:
+            optimizationBounds = [(0.05, 400.0), (0.05, None)]
+        super(LogNormLOSModel, self).__init__(initialVals=initialVals,
+                                              optimizationBounds=optimizationBounds)
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         mu = fitParms[0]
         sigma = fitParms[1]
         # print "fullPDF: sigma= %s, mu= %s" % (sigma, mu)
         pVec = lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
         return pVec
-    
-    
-    def fullLogPDF(self, fitParms, xVec):
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         mu = fitParms[0]
         sigma = fitParms[1]
         # print "fullLogPDF: sigma= %s, mu= %s" % (sigma, mu)
         lnTerm = lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
         return lnTerm
-    
-    
-    def fullCDF(self, fitParms, limVec):
-        limArr = np.asarray(limVec, np.float64)
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
         mu = fitParms[0]
         sigma = fitParms[1]
-        cdfVec = lognorm.cdf(limArr, sigma, scale=math.exp(mu), loc=0.0)
+        cdfVec = lognorm.cdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
         return cdfVec
 
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        mu = fitParms[0]
+        sigma = fitParms[1]
+        xMean = lognorm.mean(sigma, scale=math.exp(mu), loc=0.0)
+        lowHighFlags = lowVec >= xMean
+        highLowFlags = highVec < xMean
+        bothLowFlags = highLowFlags  # since low must be lower
+        bothHighFlags = lowHighFlags  # ditto
+        lowCDFVec = lognorm.cdf(lowVec, sigma, scale=math.exp(mu), loc=0.0)
+        highCDFVec = lognorm.cdf(highVec, sigma, scale=math.exp(mu), loc=0.0)
+        bothLowCDFVec = highCDFVec - lowCDFVec
+        lowSFVec = lognorm.sf(lowVec, sigma, scale=math.exp(mu), loc=0.0)
+        highSFVec = lognorm.sf(highVec, sigma, scale=math.exp(mu), loc=0.0)
+        bothHighCDFVec = lowSFVec - highSFVec
+        mixedCDFVec = 1.0 - (highSFVec + lowCDFVec)
+        dCDFVec = np.select([bothLowFlags, bothHighFlags],
+                            [bothLowCDFVec, bothHighCDFVec],
+                            default=mixedCDFVec)
+        return dCDFVec
 
-def lnLik(fitParms, xVec, dummy):
+    def strDesc(self):
+        return "lognorm(mu=$0,sigma=$1)"
+
+
+class TwoPopLOSModel(LOSModel):
     """
-    model is lognorm( sampVec, shape=sigma, scale=exp(mu), loc=0.0 )
+    The population is divided between a group following a log normal LOS
+    distribution and a group with a slow exponential LOS distribution
     """
-    result = np.sum(fullLogPDF(fitParms, xVec))
-    return result
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.8, 3.246, 0.5, 0.0015]
+        if not optimizationBounds:
+            optimizationBounds = [(0.001, 0.999), (0.05, None), (0.05, None), (0.00001, 0.1)]
+        super(TwoPopLOSModel, self).__init__(initialVals=initialVals,
+                                              optimizationBounds=optimizationBounds)
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        mu = fitParms[1]
+        sigma = fitParms[2]
+        lmda = fitParms[3]
+        # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+        pVec = ((k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0))
+                + ((1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)))
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        mu = fitParms[1]
+        sigma = fitParms[2]
+        lmda = fitParms[3]
+        # print "fullLogPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+        lnTerm = k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
+        oldErrInfo = np.seterr(all='ignore')
+        lnVersion = (math.log(k) + lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+                     + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
+        expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
+                      + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
+        np.seterr(**oldErrInfo)
+        lpVec = np.where(lnTerm > expTerm, lnVersion, expVersion)
+        return lpVec
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        mu = fitParms[1]
+        sigma = fitParms[2]
+        lmda = fitParms[3]
+        lnTerm = k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
+        oldErrInfo = np.seterr(all='ignore')
+        lnVersion = (math.log(k) + lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+                     + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
+        expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
+                      + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
+        np.seterr(**oldErrInfo)
+        lpVec = np.where(lnTerm > expTerm, lnVersion, expVersion)
+        return lpVec
+
+    def strDesc(self):
+        return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
 
-def truncatedLnLik(fitParms, xVec, truncLim):
-    cdfAtBound = fullCDF(fitParms, truncLim)
-    lpVec = np.log(fullPDF(fitParms, xVec))
-    result = np.sum(lpVec) - len(xVec) * np.log(cdfAtBound)
-    # print '%s -> %s %s -> %s' % \
-    #   (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
-    return result
+# def lnLik(fitParms, xVec, dummy):
+#     """
+#     model is lognorm( sampVec, shape=sigma, scale=exp(mu), loc=0.0 )
+#     """
+#     result = np.sum(fullLogPDF(xVec, fitParms))
+#     return result
+# 
+# 
+# def truncatedLnLik(fitParms, xVec, truncLim):
+#     cdfAtBound = fullCDF(truncLim, fitParms)
+#     lpVec = np.log(fullPDF(xVec, fitParms))
+#     result = np.sum(lpVec) - len(xVec) * np.log(cdfAtBound)
+#     # print '%s -> %s %s -> %s' % \
+#     #   (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
+#     return result
 
-gblDebug = False
+
+def lnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
+    ctVec = lowVec = highVec = None
+    if truncLim:
+        losHistoList = [(llim, hlim, ct) for llim, hlim, ct in losHistoList
+                        if hlim <= truncLim]
+    try:
+        ctVec = np.asarray([float(ct) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                           np.float64)
+        lowVec = (np.asarray([float(llim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                            np.float64)
+                  + 0.0001)
+        highVec = (np.asarray([float(hlim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                             np.float64)
+                   + 0.9999)
+        lnLikVal = np.sum(ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms)))
+        if truncLim is not None:
+            cdfAtBound = losModel.fullCDF(truncLim, fitParms)
+            lnLikVal -= np.sum(ctVec) * np.log(cdfAtBound)
+        if debug:
+            print fitParms
+            print ctVec
+            print lowVec
+            print highVec
+            print losModel.intervalCDF(lowVec, highVec, fitParms)
+            print ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms))
+            print 'log likelihood %s' % lnLikVal
+        return lnLikVal
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        print fitParms
+        print ctVec
+        print lowVec
+        print highVec
+        print losModel.intervalCDF(lowVec, highVec, fitParms)
+        sys.exit('lnLik failed')
 
 
 def kSScore(fitParms, losHistoList, losModel, truncLim=None):
@@ -144,6 +335,9 @@ def kSScore(fitParms, losHistoList, losModel, truncLim=None):
     become a Kolomagorov-Smirnov score if we knew there were no gaps
     between bands and the bands were suitably narrow.
     """
+    if truncLim is not None:
+        raise RuntimeError('kSScore: truncLim is not implemented')
+    ctVec = fracVec = lowVec = highVec = lowCDFs = highCDFs = predictedVec = maxSep = None
     try:
         ctVec = np.asarray([float(ct) for llim, hlim, ct in losHistoList],  # @UnusedVariable
                            np.float64)
@@ -153,23 +347,12 @@ def kSScore(fitParms, losHistoList, losModel, truncLim=None):
                             np.float64) + 0.0001
         highVec = np.asarray([float(hlim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
                              np.float64) + 0.9999
-        lowCDFs = losModel.fullCDF(fitParms, lowVec)
-        highCDFs = losModel.fullCDF(fitParms, highVec)
+        lowCDFs = losModel.fullCDF(lowVec, fitParms)
+        highCDFs = losModel.fullCDF(highVec, fitParms)
         predictedVec = (highCDFs - lowCDFs)
         maxSep = np.max(np.fabs(predictedVec - fracVec))
-        if gblDebug:
-            print '------------------'
-            print fitParms
-            print fracVec[:8]
-            print lowVec[:8]
-            print highVec[:8]
-            print lowCDFs[:8]
-            print highCDFs[:8]
-            print predictedVec[:8]
-            print maxSep
-            
     except Exception, e:
-        print 'Exception: %s' % e
+        traceback.print_exc(file=sys.stdout)
         print fitParms
         print ctVec
         print lowVec
@@ -178,49 +361,25 @@ def kSScore(fitParms, losHistoList, losModel, truncLim=None):
         print highCDFs
         print predictedVec
         print maxSep
-        sys.exit('failed')
+        sys.exit('kSScore failed')
     return maxSep
 
 
-def modelFit(losHistoList, losModel, fun=kSScore, truncLim=None):
-    initialGuess = [3.246, 0.5]
-    bounds = [(0.05, 400.0), (0.05, None)]
-#     initialGuess = [math.log(33.843041745424408), 1.0689299528774443]
-#     bounds = [(0.05, None), (0.05, None)]
-
-    def minimizeMe(*args):
-        """Construct the function to be minimized"""
-        return fun(*args)
-
-    try:
-        result = op.minimize(minimizeMe, initialGuess,
-                             args=(losHistoList, losModel, truncLim),
-                             bounds=bounds)
-        print ("success %s: min val = %s for %s on %d bands" %
-               (result.success, result.fun, result.x, len(losHistoList)))
-        if not result.success:
-            print result
-        return result.x, result.fun, result.success
-    except Exception, e:
-        print 'Exception: %s' % e
-        raise
-
-
-def truncatedModelFit(sampVec, losModel, fun=truncatedLnLik):
-    return modelFit([s for s in sampVec if s <= truncLim], losModel,
-                    fun=fun, truncLim=truncLim)
+# def truncatedModelFit(sampVec, losModel, fun=truncatedLnLik):
+#     return modelFit([s for s in sampVec if s <= truncLim], losModel,
+#                     fun=fun, truncLim=truncLim)
 
 
 def plotCurve(axes, parmVec, losModel, scale, rng, nbins, pattern='r-'):
     curveX = np.linspace(rng[0], rng[1], nbins)
 #     curveY = (fullPDF(parmVec, curveX) * scale * ((rng[1]-rng[0])/nbins))
-    curveY = losModel.fullPDF(parmVec, curveX) * scale
+    curveY = losModel.fullPDF(curveX, parmVec) * scale
     axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
 def resampleBand(bandTuple, sampVec):
     lo, hi, ct = bandTuple
-    if hi > sampVec.shape[0]:
+    if hi >= sampVec.shape[0]:
         sampVec = np.pad(sampVec, (0, hi + 1 - sampVec.shape[0]),
                          'constant',
                          constant_values=(0.0, 0.0))
@@ -259,6 +418,52 @@ def plotAsHistogram(vec, axes):
     axes.set_ylim(bottom.min(), top.max())
     
 
+def performClustering(valVecList, nClusters=3):
+    """
+    Given a list of fit parameter values, separate into nClusters groups
+    by k-means clustering.  Returns a vector of cluster codes and a vector
+    of cluster center information
+    """
+    features = whiten(valVecList)
+    book, distortion = kmeans(features, nClusters)  # @UnusedVariable
+#     print 'Book: %s' % book
+#     print 'Distortion: %s' % distortion
+    code, dist = vq(features, book)  # @UnusedVariable
+#     print 'code: %s' % code
+    unwhitenedBook = book * np.std(valVecList, axis=0)[None, :]
+    return code, unwhitenedBook
+
+
+def codeByCategory(reverseMap, facDict):
+    """
+    For those facilities listed in reverseMap, make up an integer code
+    representing its facility type.  Returns a vector of those codes and
+    a dictionary of category names by code.
+    """
+    codeDict = {}
+    codes = []
+    curCode = 0
+    for i in xrange(len(reverseMap)):
+        abbrev = reverseMap[i]
+        category = facDict[abbrev]['category']
+        if category not in codeDict:
+            codeDict[category] = curCode
+            curCode += 1
+        codes.append(codeDict[category])
+    return codes, codeDict
+
+
+def makeScatterPlot(ax, markerTupleList):
+    for tuple in markerTupleList:
+        if len(tuple) == 5:
+            xVals, yVals, cVals, mrk, sz = tuple
+            ax.scatter(xVals, yVals, marker=mrk, c=cVals, s=sz)
+        elif len(tuple) == 6:
+            xVals, yVals, cVals, mrk, sz, label = tuple
+            ax.scatter(xVals, yVals, marker=mrk, c=cVals, s=sz, label=label)
+        else:
+            raise RuntimeError('Cannot parse a tuple of length %d' % len(tuple))
+
 def main():
 
     modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
@@ -277,14 +482,16 @@ def main():
             indexDict[abbrev] = offset
             print '%s:' % abbrev,
             losModel = LogNormLOSModel()
-            fitVec, accuracyMeasure, success = modelFit(losHistoList, losModel)
+            fitVec, accuracyMeasure, success = losModel.modelFit(losHistoList,
+                                                                 funToMaximize=lnLik)
             valVecList.append(fitVec)
             offset += 1
             note = "" if success else "fitting iteration did not converge"
-            tblRecs.append({'abbrev': abbrev, 'KSScore': accuracyMeasure,
+            tblRecs.append({'abbrev': abbrev,
+                            'lnLikPerSample': accuracyMeasure/nSamples,
                             'mu': fitVec[0], 'sigma': fitVec[1],
                             'nsamples': nSamples, 'nbins': nBins,
-                            'notes': note})
+                            'notes': note, 'pdf': losModel.strDesc()})
             print tblRecs[-1]
         else:
             print ('No fit for %s: %s histo bins is not enough' %
@@ -292,86 +499,99 @@ def main():
             note = "Not enough histogram bins to estimate LOS"
             tblRecs.append({'abbrev': abbrev,
                             'nsamples': nSamples, 'nbins': nBins,
-                            'notes': note})
+                            'notes': note, 'pdf': 'NA'})
             
 
-#     ofName = 'nh_los_model_fit_parms.csv'
-    ofName = 'los_model_fit_parms_ks.csv'
+    ofName = 'los_model_fit_parms.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
-        csv_tools.writeCSV(f, ['abbrev', 'mu', 'sigma', 'KSScore',
+        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'lnLikPerSample',
                                'nsamples', 'nbins', 'notes'],
                            tblRecs)
 
-#     for losList in losListDict.values():
-#         for v in losList:
-#             aggregateLosList.append(v)
-#     print 'aggregated: ',
-#     aggregateFitVec, aggregateNllPerSamp = modelFit(aggregateLosList)  # @UnusedVariable
-
     reverseMap = {val: key for key, val in indexDict.items()}
 
-    features = whiten(valVecList)
-    book, distortion = kmeans(features, 3)  # @UnusedVariable
-    print 'Book: %s' % book
-    print 'Distortion: %s' % distortion
-    code, dist = vq(features, book)  # @UnusedVariable
-    print 'code: %s' % code
+    nTrackers = 5
+    nClusters = 3
 
-    trackers = []
-    pairs = [(rec['KSScore'], rec['abbrev']) for rec in tblRecs]
+    pairs = [(-rec['lnLikPerSample'], rec['abbrev']) for rec in tblRecs]
     pairs = sorted(pairs, reverse=True)
     print 'Top six pairs:'
-    for val, key in pairs[:6]:
-        print '  %s: %s' % (key, val)
+    for val, key in pairs[:nTrackers]:
+        print '  %s: %s' % (key, -val)
 
-    trackers = [key for val, key in pairs[:6]]
-#     trackers = ['GGCH', 'STAN', 'TOWN', 'NEWO', 'ELIZ', 'LAKE', 'TERR']
-
-    clrs = ['red', 'blue', 'green', 'yellow']
-    fig1, scatterAx = plt.subplots()
-    fig2, histoAxes = plt.subplots(nrows=1, ncols=3)
-    fig3, locAxes = plt.subplots(nrows=1, ncols=len(trackers))
+    trackers = [key for val, key in pairs[:nTrackers]]  # @UnusedVariable
 
     xIndex = 0
     yIndex = 1
     labels = ['mu', 'sigma']
 
+    clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
+    
     histoRange = (0.0, 400.0)
 
     xVals = [v[xIndex] for v in valVecList]
 
     yVals = [v[yIndex] for v in valVecList]
 
+    code, codeDict = codeByCategory(reverseMap, facDict)
+    print codeDict
+    assert len(clrs) >= len(codeDict), 'Define more colors!'
     cVals = [clrs[code[i]] for i in xrange(len(valVecList))]
-    scatterAx.scatter(xVals, yVals, c=cVals)
+    trackedVals = [(x, y, c)
+                   for i, x, y, c in zip(xrange(len(valVecList)), xVals, yVals, cVals)
+                   if reverseMap[i] in trackers]
+    trXVals, trYVals, trCVals = [list(x) for x in zip(*trackedVals)]
+    fig1, scatterAx = plt.subplots()
+    scatterAx.grid(True)
+    scatterAx.set_title("LOS distribution characteristics by facility\n"
+                        "colored by category")
+    scatterAx.set_xlabel(labels[xIndex])
+    scatterAx.set_ylabel(labels[yIndex])
+    scatterAx.grid(True)
+    scatterSets = []
+    for category, codeInt in codeDict.items():
+        scatterSets.append(([x for i, x in zip(code, xVals) if i == codeInt],
+                            [y for i, y in zip(code, yVals) if i == codeInt],
+                            [clrs[codeInt] for i in code if i == codeInt],
+                            'o', 20, category))
+    scatterSets.append((trXVals, trYVals, trCVals, '+', 200))
+    makeScatterPlot(scatterAx, scatterSets)
+    scatterAx.legend(loc='upper center', shadow=True)
+    fig1.tight_layout()
+    fig1.canvas.set_window_title("By Categories")
+
+    clCode, unwhitenedBook = performClustering(valVecList, nClusters=nClusters)
+    cVals = [clrs[clCode[i]] for i in xrange(len(valVecList))]
+    xCtr = unwhitenedBook[:, xIndex]
+    yCtr = unwhitenedBook[:, yIndex]
+    cCtr = [clrs[i] for i in xrange(xCtr.shape[0])]
+    trackedVals = [(x, y, c)
+                   for i, x, y, c in zip(xrange(len(valVecList)), xVals, yVals, cVals)
+                   if reverseMap[i] in trackers]
+    trXVals, trYVals, trCVals = [list(x) for x in zip(*trackedVals)]
+    fig2, clusterAx = plt.subplots()
+    clusterAx.grid(True)
+    clusterAx.set_title("LOS distribution characteristics by facility\n"
+                        "colored by cluster")
+    clusterAx.set_xlabel(labels[xIndex])
+    clusterAx.set_ylabel(labels[yIndex])
+    clusterAx.grid(True)
+    makeScatterPlot(clusterAx, [(xVals, yVals, cVals, 'o', 20),
+                                (xCtr, yCtr, cCtr, '^', 200),
+                                (trXVals, trYVals, trCVals, '+', 200)
+                                ])
+    fig2.tight_layout()
+    fig2.canvas.set_window_title("By Cluster")
 
     for abbrev, offset in indexDict.items():
         xy = (xVals[offset], yVals[offset])
         xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
-        scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
+#         clusterAx.annotate(abbrev, xy=xy, xytext=xytext)
+#         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
-    xT = []
-    yT = []
-    cT = []
-    for i, x, y, c in zip(xrange(len(valVecList)), xVals, yVals, cVals):
-        if reverseMap[i] in trackers:
-            xT.append(x)
-            yT.append(y)
-            cT.append(c)
-    scatterAx.scatter(xT, yT, c=cT, marker='+', s=200)
-
-    unwhitenedBook = book * np.std(valVecList, axis=0)[None, :]
-    xCtr = unwhitenedBook[:, xIndex]
-    yCtr = unwhitenedBook[:, yIndex]
-    clrCtr = [clrs[i] for i in xrange(xCtr.shape[0])]
-    scatterAx.scatter(xCtr, yCtr, marker='^', c=clrCtr, s=200)
-    scatterAx.grid(True)
-    scatterAx.set_title("LOS distribution characteristics by facility")
-    scatterAx.set_xlabel(labels[xIndex])
-    scatterAx.set_ylabel(labels[yIndex])
-
-    for i in xrange(xCtr.shape[0]):
+    fig3, histoAxes = plt.subplots(nrows=1, ncols=len(codeDict))
+    for category, i in codeDict.items():
         samples = []
         for abbrev, offset in indexDict.items():
             if code[offset] == i:
@@ -380,20 +600,22 @@ def main():
         if samples:
             for samp in samples:
                 vec = resampleBand(samp, vec)
-            plotAsHistogram(vec, histoAxes[i])
-            allSampList = []
-            for step in xrange(vec.shape[0]):
-                allSampList.append((step, step, vec[step]))
-            global gblDebug
-            gblDebug = (i == 0)
-            print '%s:' % clrs[i],
-            losModel = LogNormLOSModel()
-            fitVec, accuracyMeasure, success = modelFit(allSampList,  # @UnusedVariable
-                                                        losModel)
-            plotCurve(histoAxes[i], fitVec, losModel, np.sum(vec), rng=histoRange,
-                      nbins=vec.shape[0])
-        histoAxes[i].set_title('locations in ' + clrs[i])
+        plotAsHistogram(vec, histoAxes[i])
+        allSampList = []
+        for step in xrange(vec.shape[0]):
+            allSampList.append((step, step, vec[step]))
+        print '%s:' % category,
+        losModel = LogNormLOSModel()
+        fitVec, accuracyMeasure, success = losModel.modelFit(allSampList,  # @UnusedVariable
+                                                             funToMaximize=lnLik)
+#                                                              funToMinimize=kSScore)
+        plotCurve(histoAxes[i], fitVec, losModel, np.sum(vec), rng=histoRange,
+                  nbins=vec.shape[0])
+        histoAxes[i].set_title(category)
+    fig3.tight_layout()
+    fig3.canvas.set_window_title("Category LOS Histograms")
 
+    fig4, locAxes = plt.subplots(nrows=1, ncols=len(trackers))
     nbins = 50
     for i in xrange(len(trackers)):
         abbrev = trackers[i]
@@ -406,12 +628,8 @@ def main():
         losModel = LogNormLOSModel()
         plotCurve(locAxes[i], fitParms, losModel, np.sum(vec),
                   rng=histoRange, nbins=nbins)
-
-    fig1.tight_layout()
-    fig1.canvas.set_window_title("Clustering")
-    fig2.tight_layout()
-    fig2.canvas.set_window_title("Cluster LOS Histograms")
-    fig3.canvas.set_window_title("Tracked Locations")
+    fig4.canvas.set_window_title("Tracked Locations")
+    
     plt.show()
 
 ############

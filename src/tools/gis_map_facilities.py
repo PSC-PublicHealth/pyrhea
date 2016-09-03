@@ -20,7 +20,6 @@ import signal
 import optparse
 
 from map_transfer_matrix import parseFacilityData
-import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.formats.csv_tools as csv_tools
 
 
