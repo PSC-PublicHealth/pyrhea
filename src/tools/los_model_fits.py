@@ -96,6 +96,8 @@ class LOSModel(object):
         raise RuntimeError('base fullCDF method called')
     def strDesc(self):
         raise RuntimeError('base strDesc method called')
+    def setFitParms(self, fitParms):
+        self.fitParms = fitParms.copy()
 
     def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
                  truncLim=None, debug=False):
@@ -124,7 +126,7 @@ class LOSModel(object):
                 print result
                 # On failure the min value seen is not set; fix that
                 result.fun = minimizeMe(result.x, losHistoList, self, truncLim)
-            self.fitParms = result.x.copy()
+            self.setFitParms(result.x)
             if minimizeMe == funToMinimize:
                 bestVal = result.fun
             else:
@@ -214,7 +216,9 @@ class TwoPopLOSModel(LOSModel):
         if not initialVals:
             initialVals = [0.8, 3.246, 0.5, 0.0015]
         if not optimizationBounds:
-            optimizationBounds = [(0.001, 0.999), (0.05, None), (0.05, None), (0.00001, 0.1)]
+            optimizationBounds = [(0.001, 0.999), (0.05, 400.0), (0.05, None), (0.00001, 0.1)]
+        self.innerLNModel = LogNormLOSModel(initialVals=initialVals[1:3],
+                                            optimizationBounds=optimizationBounds[1:3])
         super(TwoPopLOSModel, self).__init__(initialVals=initialVals,
                                               optimizationBounds=optimizationBounds)
 
@@ -223,11 +227,8 @@ class TwoPopLOSModel(LOSModel):
             fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         k = fitParms[0]
-        mu = fitParms[1]
-        sigma = fitParms[2]
         lmda = fitParms[3]
-        # print "fullPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-        pVec = ((k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0))
+        pVec = ((k * self.innerLNModel.fullPDF(xVec, fitParms[1:3]))
                 + ((1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)))
         return pVec
 
@@ -236,14 +237,12 @@ class TwoPopLOSModel(LOSModel):
             fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         k = fitParms[0]
-        mu = fitParms[1]
-        sigma = fitParms[2]
         lmda = fitParms[3]
         # print "fullLogPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
-        lnTerm = k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        lnTerm = k * self.innerLNModel.fullPDF(xArr, fitParms[1:3])
         expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
         oldErrInfo = np.seterr(all='ignore')
-        lnVersion = (math.log(k) + lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
+        lnVersion = (math.log(k) + self.innerLNModel.fullLogPDF(xArr, fitParms[1:3])
                      + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
         expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
                       + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
@@ -256,20 +255,50 @@ class TwoPopLOSModel(LOSModel):
             fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         k = fitParms[0]
+        lmda = fitParms[3]
+        lnTerm = k * self.innerLNModel.fullCDF(xArr, fitParms[1:3])
+        expTerm = (1.0 - k) * expon.cdf(xArr, scale=1.0/lmda)
+        return lnTerm + expTerm
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        k = fitParms[0]
         mu = fitParms[1]
         sigma = fitParms[2]
         lmda = fitParms[3]
-        lnTerm = k * lognorm.pdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-        expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
-        oldErrInfo = np.seterr(all='ignore')
-        lnVersion = (math.log(k) + lognorm.logpdf(xArr, sigma, scale=math.exp(mu), loc=0.0)
-                     + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
-        expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
-                      + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
-        np.seterr(**oldErrInfo)
-        lpVec = np.where(lnTerm > expTerm, lnVersion, expVersion)
-        return lpVec
+        lnTerm = k * self.innerLNModel.intervalCDF(lowVec, highVec, fitParms[1:3])
+        
+        xMean = lmda
+        lowHighFlags = lowVec >= xMean
+        highLowFlags = highVec < xMean
+        bothLowFlags = highLowFlags  # since low must be lower
+        bothHighFlags = lowHighFlags  # ditto
+        
+        lowCDFVec = expon.cdf(lowVec, scale=1.0/lmda)
+        highCDFVec = expon.cdf(highVec, scale=1.0/lmda)
+        bothLowCDFVec = highCDFVec - lowCDFVec
 
+        lowSFVec = expon.sf(lowVec, scale=1.0/lmda)
+        highSFVec = expon.sf(highVec, scale=1.0/lmda)
+        bothHighCDFVec = lowSFVec - highSFVec
+        mixedCDFVec = 1.0 - (highSFVec + lowCDFVec)
+        dCDFVec = np.select([bothLowFlags, bothHighFlags],
+                            [bothLowCDFVec, bothHighCDFVec],
+                            default=mixedCDFVec)
+        return ((1.0 - k) * dCDFVec) + (k * lnTerm)
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        resultX, bestVal, resultSuccess = \
+            super(TwoPopLOSModel, self).modelFit(losHistoList,
+                                                 funToMinimize=funToMinimize,
+                                                 funToMaximize=funToMaximize,
+                                                 truncLim=truncLim,
+                                                 debug=debug)
+        self.innerLNModel.setFitParms(resultX[1:3])
+        return resultX, bestVal, resultSuccess
+        
     def strDesc(self):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
@@ -481,15 +510,22 @@ def main():
         if len(losHistoList) >= 2:
             indexDict[abbrev] = offset
             print '%s:' % abbrev,
-            losModel = LogNormLOSModel()
+#             losModel = LogNormLOSModel()
+            losModel = TwoPopLOSModel()
             fitVec, accuracyMeasure, success = losModel.modelFit(losHistoList,
                                                                  funToMaximize=lnLik)
             valVecList.append(fitVec)
             offset += 1
             note = "" if success else "fitting iteration did not converge"
+#             tblRecs.append({'abbrev': abbrev,
+#                             'lnLikPerSample': accuracyMeasure/nSamples,
+#                             'mu': fitVec[0], 'sigma': fitVec[1],
+#                             'nsamples': nSamples, 'nbins': nBins,
+#                             'notes': note, 'pdf': losModel.strDesc()})
             tblRecs.append({'abbrev': abbrev,
                             'lnLikPerSample': accuracyMeasure/nSamples,
-                            'mu': fitVec[0], 'sigma': fitVec[1],
+                            'mu': fitVec[1], 'sigma': fitVec[2],
+                            'k': fitVec[0], 'lmda': fitVec[3],
                             'nsamples': nSamples, 'nbins': nBins,
                             'notes': note, 'pdf': losModel.strDesc()})
             print tblRecs[-1]
@@ -522,9 +558,12 @@ def main():
 
     trackers = [key for val, key in pairs[:nTrackers]]  # @UnusedVariable
 
-    xIndex = 0
-    yIndex = 1
-    labels = ['mu', 'sigma']
+#     xIndex = 0
+#     yIndex = 1
+#     labels = ['mu', 'sigma']
+    xIndex = 1
+    yIndex = 2
+    labels = ['k', 'mu', 'sigma', 'lmda']
 
     clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
     
@@ -605,7 +644,8 @@ def main():
         for step in xrange(vec.shape[0]):
             allSampList.append((step, step, vec[step]))
         print '%s:' % category,
-        losModel = LogNormLOSModel()
+#         losModel = LogNormLOSModel()
+        losModel = TwoPopLOSModel()
         fitVec, accuracyMeasure, success = losModel.modelFit(allSampList,  # @UnusedVariable
                                                              funToMaximize=lnLik)
 #                                                              funToMinimize=kSScore)
@@ -625,7 +665,8 @@ def main():
         plotAsHistogram(vec, locAxes[i])
         locAxes[i].set_title(abbrev)
         fitParms = valVecList[indexDict[abbrev]]
-        losModel = LogNormLOSModel()
+#         losModel = LogNormLOSModel()
+        losModel = TwoPopLOSModel()
         plotCurve(locAxes[i], fitParms, losModel, np.sum(vec),
                   rng=histoRange, nbins=nbins)
     fig4.canvas.set_window_title("Tracked Locations")
