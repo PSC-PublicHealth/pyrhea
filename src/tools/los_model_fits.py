@@ -87,6 +87,7 @@ class LOSModel(object):
             optimizationBounds = [(0.05, 400.0), (0.05, None)]
         self.fitParms = np.asarray(initialVals, np.float64)
         self.optBounds = optimizationBounds[:]
+        self.nameToIndexMap = {}
 
     def fullPDF(self, xVec, fitParms=None):
         raise RuntimeError('base fullPDF method called')
@@ -151,6 +152,7 @@ class LogNormLOSModel(LOSModel):
             optimizationBounds = [(0.05, 400.0), (0.05, None)]
         super(LogNormLOSModel, self).__init__(initialVals=initialVals,
                                               optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'mu': 0, 'sigma': 1})
 
     def fullPDF(self, xVec, fitParms=None):
         if fitParms is None:
@@ -221,6 +223,7 @@ class TwoPopLOSModel(LOSModel):
                                             optimizationBounds=optimizationBounds[1:3])
         super(TwoPopLOSModel, self).__init__(initialVals=initialVals,
                                               optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'lmda': 3})        
 
     def fullPDF(self, xVec, fitParms=None):
         if fitParms is None:
@@ -303,23 +306,6 @@ class TwoPopLOSModel(LOSModel):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
 
-# def lnLik(fitParms, xVec, dummy):
-#     """
-#     model is lognorm( sampVec, shape=sigma, scale=exp(mu), loc=0.0 )
-#     """
-#     result = np.sum(fullLogPDF(xVec, fitParms))
-#     return result
-# 
-# 
-# def truncatedLnLik(fitParms, xVec, truncLim):
-#     cdfAtBound = fullCDF(truncLim, fitParms)
-#     lpVec = np.log(fullPDF(xVec, fitParms))
-#     result = np.sum(lpVec) - len(xVec) * np.log(cdfAtBound)
-#     # print '%s -> %s %s -> %s' % \
-#     #   (fitParms, np.sum(lpVec),  len(xVec) * np.log(cdfAtBound), result)
-#     return result
-
-
 def lnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
     ctVec = lowVec = highVec = None
     if truncLim:
@@ -392,11 +378,6 @@ def kSScore(fitParms, losHistoList, losModel, truncLim=None):
         print maxSep
         sys.exit('kSScore failed')
     return maxSep
-
-
-# def truncatedModelFit(sampVec, losModel, fun=truncatedLnLik):
-#     return modelFit([s for s in sampVec if s <= truncLim], losModel,
-#                     fun=fun, truncLim=truncLim)
 
 
 def plotCurve(axes, parmVec, losModel, scale, rng, nbins, pattern='r-'):
@@ -483,15 +464,15 @@ def codeByCategory(reverseMap, facDict):
 
 
 def makeScatterPlot(ax, markerTupleList):
-    for tuple in markerTupleList:
-        if len(tuple) == 5:
-            xVals, yVals, cVals, mrk, sz = tuple
+    for tpl in markerTupleList:
+        if len(tpl) == 5:
+            xVals, yVals, cVals, mrk, sz = tpl
             ax.scatter(xVals, yVals, marker=mrk, c=cVals, s=sz)
-        elif len(tuple) == 6:
-            xVals, yVals, cVals, mrk, sz, label = tuple
+        elif len(tpl) == 6:
+            xVals, yVals, cVals, mrk, sz, label = tpl
             ax.scatter(xVals, yVals, marker=mrk, c=cVals, s=sz, label=label)
         else:
-            raise RuntimeError('Cannot parse a tuple of length %d' % len(tuple))
+            raise RuntimeError('Cannot parse a tuple of length %d' % len(tpl))
 
 def main():
 
@@ -499,6 +480,8 @@ def main():
     losHistoPath = os.path.join(modelDir, 'HistogramTable_ActualLOS_PROTECT_082516.csv')
     losHistoDict = importLOSHistoTable(losHistoPath)
     facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
+#     LOSModelType = LogNormLOSModel
+    LOSModelType = TwoPopLOSModel
 
     tblRecs = []
     indexDict = {}
@@ -510,24 +493,18 @@ def main():
         if len(losHistoList) >= 2:
             indexDict[abbrev] = offset
             print '%s:' % abbrev,
-#             losModel = LogNormLOSModel()
-            losModel = TwoPopLOSModel()
+            losModel = LOSModelType()
             fitVec, accuracyMeasure, success = losModel.modelFit(losHistoList,
                                                                  funToMaximize=lnLik)
             valVecList.append(fitVec)
             offset += 1
             note = "" if success else "fitting iteration did not converge"
-#             tblRecs.append({'abbrev': abbrev,
-#                             'lnLikPerSample': accuracyMeasure/nSamples,
-#                             'mu': fitVec[0], 'sigma': fitVec[1],
-#                             'nsamples': nSamples, 'nbins': nBins,
-#                             'notes': note, 'pdf': losModel.strDesc()})
-            tblRecs.append({'abbrev': abbrev,
+            newRec = {'abbrev': abbrev,
                             'lnLikPerSample': accuracyMeasure/nSamples,
-                            'mu': fitVec[1], 'sigma': fitVec[2],
-                            'k': fitVec[0], 'lmda': fitVec[3],
                             'nsamples': nSamples, 'nbins': nBins,
-                            'notes': note, 'pdf': losModel.strDesc()})
+                            'notes': note, 'pdf': losModel.strDesc()}
+            newRec.update({k: fitVec[v] for k, v in losModel.nameToIndexMap.items()})
+            tblRecs.append(newRec)
             print tblRecs[-1]
         else:
             print ('No fit for %s: %s histo bins is not enough' %
@@ -549,6 +526,11 @@ def main():
 
     nTrackers = 5
     nClusters = 3
+    xLabel = 'mu'
+    yLabel = 'sigma'
+    annotateScatterPts = False
+    clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
+    histoRange = (0.0, 400.0)
 
     pairs = [(-rec['lnLikPerSample'], rec['abbrev']) for rec in tblRecs]
     pairs = sorted(pairs, reverse=True)
@@ -558,35 +540,29 @@ def main():
 
     trackers = [key for val, key in pairs[:nTrackers]]  # @UnusedVariable
 
-#     xIndex = 0
-#     yIndex = 1
-#     labels = ['mu', 'sigma']
-    xIndex = 1
-    yIndex = 2
-    labels = ['k', 'mu', 'sigma', 'lmda']
+    for lbl in [xLabel, yLabel]:
+        assert lbl in losModel.nameToIndexMap, '%s is not a parameter name' % lbl
+    xIndex = losModel.nameToIndexMap[xLabel]
+    yIndex = losModel.nameToIndexMap[yLabel]
 
-    clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
-    
-    histoRange = (0.0, 400.0)
+    xVals = [val[xIndex] for val in valVecList]
 
-    xVals = [v[xIndex] for v in valVecList]
-
-    yVals = [v[yIndex] for v in valVecList]
+    yVals = [val[yIndex] for val in valVecList]
 
     code, codeDict = codeByCategory(reverseMap, facDict)
     print codeDict
     assert len(clrs) >= len(codeDict), 'Define more colors!'
     cVals = [clrs[code[i]] for i in xrange(len(valVecList))]
-    trackedVals = [(x, y, c)
-                   for i, x, y, c in zip(xrange(len(valVecList)), xVals, yVals, cVals)
+    trackedVals = [(x, y, clr)
+                   for i, x, y, clr in zip(xrange(len(valVecList)), xVals, yVals, cVals)
                    if reverseMap[i] in trackers]
     trXVals, trYVals, trCVals = [list(x) for x in zip(*trackedVals)]
     fig1, scatterAx = plt.subplots()
     scatterAx.grid(True)
     scatterAx.set_title("LOS distribution characteristics by facility\n"
                         "colored by category")
-    scatterAx.set_xlabel(labels[xIndex])
-    scatterAx.set_ylabel(labels[yIndex])
+    scatterAx.set_xlabel(xLabel)
+    scatterAx.set_ylabel(yLabel)
     scatterAx.grid(True)
     scatterSets = []
     for category, codeInt in codeDict.items():
@@ -613,8 +589,8 @@ def main():
     clusterAx.grid(True)
     clusterAx.set_title("LOS distribution characteristics by facility\n"
                         "colored by cluster")
-    clusterAx.set_xlabel(labels[xIndex])
-    clusterAx.set_ylabel(labels[yIndex])
+    clusterAx.set_xlabel(xLabel)
+    clusterAx.set_ylabel(yLabel)
     clusterAx.grid(True)
     makeScatterPlot(clusterAx, [(xVals, yVals, cVals, 'o', 20),
                                 (xCtr, yCtr, cCtr, '^', 200),
@@ -623,11 +599,12 @@ def main():
     fig2.tight_layout()
     fig2.canvas.set_window_title("By Cluster")
 
-    for abbrev, offset in indexDict.items():
-        xy = (xVals[offset], yVals[offset])
-        xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
-#         clusterAx.annotate(abbrev, xy=xy, xytext=xytext)
-#         scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
+    if annotateScatterPts:
+        for abbrev, offset in indexDict.items():
+            xy = (xVals[offset], yVals[offset])
+            xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
+            clusterAx.annotate(abbrev, xy=xy, xytext=xytext)
+            scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
     fig3, histoAxes = plt.subplots(nrows=1, ncols=len(codeDict))
     for category, i in codeDict.items():
@@ -644,8 +621,7 @@ def main():
         for step in xrange(vec.shape[0]):
             allSampList.append((step, step, vec[step]))
         print '%s:' % category,
-#         losModel = LogNormLOSModel()
-        losModel = TwoPopLOSModel()
+        losModel = LOSModelType()
         fitVec, accuracyMeasure, success = losModel.modelFit(allSampList,  # @UnusedVariable
                                                              funToMaximize=lnLik)
 #                                                              funToMinimize=kSScore)
@@ -665,8 +641,7 @@ def main():
         plotAsHistogram(vec, locAxes[i])
         locAxes[i].set_title(abbrev)
         fitParms = valVecList[indexDict[abbrev]]
-#         losModel = LogNormLOSModel()
-        losModel = TwoPopLOSModel()
+        losModel = LOSModelType()
         plotCurve(locAxes[i], fitParms, losModel, np.sum(vec),
                   rng=histoRange, nbins=nbins)
     fig4.canvas.set_window_title("Tracked Locations")
