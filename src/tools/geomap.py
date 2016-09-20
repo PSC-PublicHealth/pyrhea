@@ -204,6 +204,32 @@ class Map(object):
                         self.tractPolyDict[geoID] = feature['geometry']
                         self.tractPropertyDict[geoID] = feature['properties']
 
+        if not (ctrLon and ctrLat):
+            if self.tractPolyDict:
+                ctrLon = 0.0
+                ctrLat = 0.0
+                count = 0
+                coordListList = []
+                for poly in self.tractPolyDict.values():
+                    if poly['type'] == 'Polygon':
+                        coordListList.append(poly['coordinates'][0])
+                    elif poly['type'] == 'MultiPolygon':
+                        coordListList.extend([elt[0] for elt in poly['coordinates']])
+                    else:
+                        logger.fatal('cannot handle poly type %s', poly['type'])
+                    for coordList in coordListList:
+                        sumLon = sum([lon for lon, lat in coordList])  # UnusedVariable
+                        sumLat = sum([lat for lon, lat in coordList])  # UnusedVariable
+                        lonMean = float(sumLon) / len(coordList)
+                        latMean = float(sumLat) / len(coordList)
+                    ctrLat += latMean
+                    ctrLon += lonMean
+                    count += 1
+                ctrLon /= count
+                ctrLat /= count
+            else:
+                logger.fatal('No projection center provided and I cannot calculate one')
+
         self.mapProj = MapProjection((ctrLon, ctrLat), 100.0)
         self.fig = plt.figure()
         self.ax = self.fig.gca()
