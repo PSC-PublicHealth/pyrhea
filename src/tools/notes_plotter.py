@@ -17,8 +17,14 @@
 
 _rhea_svn_id_ = "$Id$"
 
-import yaml
+import sys
 import os.path
+import os
+
+cwd = os.path.dirname(__file__)
+sys.path.append(os.path.join(cwd, "../sim"))
+
+import yaml
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
@@ -26,7 +32,6 @@ from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
 import pathogenbase as pth
 import map_transfer_matrix as mtm
-import sys
 import math
 import pickle
 import types
