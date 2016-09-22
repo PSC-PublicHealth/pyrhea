@@ -18,8 +18,8 @@
 _rhea_svn_id_ = "$Id$"
 
 import sys
-import csv_tools
-import yaml_tools
+import phacsl.utils.formats.csv_tools as csv_tools
+import phacsl.utils.formats.yaml_tools as yaml_tools
 import math
 from collections import defaultdict
 import types
@@ -82,13 +82,13 @@ def regressionLabel():
 #    return 'Hosp -> NH regression model'
 
 
-junkKeys, facRecs = yaml_tools.parse_all('/home/welling/workspace/pyRHEA/models/OrangeCounty/facilityfacts11')
+junkKeys, facRecs = yaml_tools.parse_all('/home/welling/git/pyrhea/models/OrangeCounty/facilityfactsCurrent')
 facDict = {r['abbrev']: defaultdict(lambda: None, r) for r in facRecs}
 
 directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
 
 try:
-    with open('/home/welling/workspace/pyRHEA/models/OrangeCounty/transitmatrix.csv', 'rU') as f:
+    with open('/home/welling/git/pyrhea/models/OrangeCounty/transitmatrix.csv', 'rU') as f:
         transitKeys, transitRecs = csv_tools.parseCSV(f)  #
 except Exception, e:
     print 'Could not parse input transitmatrix'
