@@ -306,6 +306,84 @@ class TwoPopLOSModel(LOSModel):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
 
+class TwoLogNormLOSModel(LOSModel):
+    """
+    The population is divided between two groups, each with its own log normal distribution.
+    """
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.5, 2.2, 0.5, 3.3, 0.5]
+        if not optimizationBounds:
+            optimizationBounds = [(0.001, 0.999), (0.05, 400.0), (0.05, None),
+                                  (0.05, 400.0), (0.05, None)]
+        self.leftInnerLN = LogNormLOSModel(initialVals=initialVals[1:3],
+                                           optimizationBounds=optimizationBounds[1:3])
+        self.rightInnerLN = LogNormLOSModel(initialVals=initialVals[3:],
+                                            optimizationBounds=optimizationBounds[3:])
+        super(TwoLogNormLOSModel, self).__init__(initialVals=initialVals,
+                                                 optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'mu2':3, 'sigma2': 4})        
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        pVec = ((k * self.leftInnerLN.fullPDF(xVec, fitParms[1:3]))
+                + ((1.0 - k) * self.rightInnerLN.fullPDF(xVec, fitParms[3:])))
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerLN.fullPDF(xArr, fitParms[1:3])
+        rightTerm = (1.0 - k) * self.rightInnerLN.fullPDF(xArr, fitParms[3:])
+        oldErrInfo = np.seterr(all='ignore')
+
+        leftVersion = (math.log(k) + self.leftInnerLN.fullLogPDF(xArr, fitParms[1:3])
+                       + np.log(1.0 + (rightTerm / np.where(leftTerm == 0.0, 1.0, leftTerm))))
+        rightVersion = (math.log(1.0 - k) + self.rightInnerLN.fullLogPDF(xArr, fitParms[3:])
+                        + np.log(1.0 + (leftTerm / np.where(rightTerm == 0.0, 1.0, rightTerm))))
+        np.seterr(**oldErrInfo)
+        lpVec = np.where(leftTerm > rightTerm, leftVersion, rightVersion)
+        return lpVec
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerLN.fullCDF(xArr, fitParms[1:3])
+        rightTerm = (1.0 - k) * self.rightInnerLN.fullCDF(xArr, fitParms[3:])
+        return leftTerm + rightTerm
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerLN.intervalCDF(lowVec, highVec, fitParms[1:3])
+        rightTerm = (1.0 - k) * self.rightInnerLN.intervalCDF(lowVec, highVec, fitParms[3:])
+        
+        return leftTerm + rightTerm
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        resultX, bestVal, resultSuccess = \
+            super(TwoLogNormLOSModel, self).modelFit(losHistoList,
+                                                     funToMinimize=funToMinimize,
+                                                     funToMaximize=funToMaximize,
+                                                     truncLim=truncLim,
+                                                     debug=debug)
+        self.leftInnerLN.setFitParms(resultX[1:3])
+        self.rightInnerLN.setFitParms(resultX[3:])
+        return resultX, bestVal, resultSuccess
+
+    def strDesc(self):
+        return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*lognorm(mu=$3, sigma=$4)"
+
+
 def lnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
     ctVec = lowVec = highVec = None
     if truncLim:
@@ -480,8 +558,9 @@ def main():
     losHistoPath = os.path.join(modelDir, 'HistogramTable_ActualLOS_PROTECT_082516.csv')
     losHistoDict = importLOSHistoTable(losHistoPath)
     facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
-    LOSModelType = LogNormLOSModel
+#     LOSModelType = LogNormLOSModel
 #     LOSModelType = TwoPopLOSModel
+    LOSModelType = TwoLogNormLOSModel
 
     tblRecs = []
     indexDict = {}
@@ -521,8 +600,8 @@ def main():
     ofName = 'los_model_fit_parms.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
-        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'lmda', 'lnLikPerSample',
-                               'nsamples', 'nbins', 'notes'],
+        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'mu2', 'sigma2', 
+                               'lmda', 'lnLikPerSample', 'nsamples', 'nbins', 'notes'],
                            tblRecs)
 
     reverseMap = {val: key for key, val in indexDict.items()}
@@ -551,7 +630,7 @@ def main():
     trackers = [
 #                 'ADVO_3435_L', 'PRES_100_L', 'RML_5601_L', 'THC_225_L', 'THC_2544_L',
 #                 'THC_365_L', 'THC_4058_L', 'THC_6130_L', 'VIBR_9509_L',
-                'PETE_520_S', 'LAR_E_C', 'ADVO_17800_H', 'MORR_150_H']
+                'PETE_520_S', 'ADVO_17800_H', 'MORR_150_H', 'THC_2544_L', 'THC_225_L']
 
     for lbl in [xLabel, yLabel]:
         assert lbl in losModel.nameToIndexMap, '%s is not a parameter name' % lbl
