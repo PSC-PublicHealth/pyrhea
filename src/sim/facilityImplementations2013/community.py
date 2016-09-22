@@ -260,13 +260,16 @@ class Community(Facility):
             deathRate = _constants['communityDeathRate']['value']
             verySickRate = _constants['communityVerySickRate']['value']
             needsLTACRate = _constants['communityNeedsLTACRate']['value']
-            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate)
+            needsRehabRate = _constants['communityNeedsRehabRate']['value']
+            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate)
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (sickRate,
                                                        ClassASetter(DiagClassA.SICK)),
                                                       (verySickRate,
                                                        ClassASetter(DiagClassA.VERYSICK)),
+                                                      (needsRehabRate,
+                                                       ClassASetter(DiagClassA.NEEDSREHAB)),
                                                       (needsLTACRate,
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       ]),

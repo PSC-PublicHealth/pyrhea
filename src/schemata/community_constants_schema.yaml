@@ -13,6 +13,7 @@
       'communityLOSModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
     'required':
@@ -20,6 +21,7 @@
       - 'communityDeathRate'
       - 'communityVerySickRate'
       - 'communityNeedsLTACRate'
+      - 'communityNeedsRehabRate'
       - 'communityPatientCheckInterval'
       
       

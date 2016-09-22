@@ -21,6 +21,10 @@
 'communityNeedsLTACRate':
   'value': 0.03
   'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
+
+'communityNeedsRehabRate':
+  'value': 0.00
+  'prov': 'DEBUGGING ONLY - putting something random in!'
   
 'communityPatientCheckInterval':
   #'value': 30
