@@ -77,8 +77,8 @@ def drawMap(geoDataPathList, stateFIPSRE, countyFIPSRE, countySet):
                        stateFIPSRE,
                        countyFIPSRE,
                        None, None,
-                       annotate=False,
-                       annotateTracts=False,
+                       annotate=True,
+                       annotateTracts=True,
                        nameMap={'STATE': 'STATE', 'COUNTY': 'COUNTY',
                                 'TRACT': 'TRACT', 'NAME': 'NAME',
                                 'GEOKEY': 'GEO_ID'},
@@ -112,7 +112,7 @@ def main():
 #                        os.path.join(geoDataDir, 'IN/tigr_2010_18.geojson'),
 #                        os.path.join(geoDataDir, 'IA/tigr_2010_19.geojson'),
 #                        os.path.join(geoDataDir, 'WI/tigr_2010_55.geojson'),
-                       os.path.join(geoDataDir, 'PA/tigr_2010_42.geojson'),
+                       os.path.join(geoDataDir, 'CA/tigr_2010_06.geojson'),
                        ]
     countyCodePath = os.path.join(geoDataDir, 'fips_county_codes.csv')
 
