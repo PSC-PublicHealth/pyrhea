@@ -97,10 +97,14 @@ def facToNodeAttrs(facRec):
     attrDict = {'label': facRec['abbrev']}
 
     if 'nBeds' in facRec:
-        if isinstance(facRec['nBeds'], (types.IntType, types.FloatType)):
-            szFac = facRec['nBeds']
-        else:
-            szFac = float(facRec['nBeds']['value'])
+        try:
+            if isinstance(facRec['nBeds'], (types.IntType, types.FloatType)):
+                szFac = facRec['nBeds']
+            else:
+                szFac = float(facRec['nBeds']['value'])
+        except ValueError:
+            print '%s has a bad nBeds value' % facRec['abbrev']
+            szFac = None
     elif 'meanPop' in facRec:
         if isinstance(facRec['meanPop'], (types.IntType, types.FloatType)):
             szFac = float(facRec['meanPop'])
@@ -146,7 +150,7 @@ def facToNodeAttrs(facRec):
     return attrDict
 
 
-def importTransferTable(fname, abbrevPrefix='To_'):
+def importTransferTable(fname, abbrevPrefix='To_', keyLabel=''):
     with open(fname, 'r') as f:
         keys, transferRecs = csv_tools.parseCSV(f)  # @UnusedVariable
 
@@ -160,7 +164,7 @@ def importTransferTable(fname, abbrevPrefix='To_'):
             else:
                 if len(k):
                     newR[k] = v
-        transferDict[r['']] = newR
+        transferDict[r[keyLabel]] = newR
     return transferDict
 
 
@@ -343,13 +347,18 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
 def main():
     # facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
     #                             'facilityfactsCurrent')
-    facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/'
-                                'facilityfactsCurrent')
+#     facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/'
+#                                 'facilityfactsCurrent')
+    facDict = parseFacilityData('/home/welling/git/pyrhea/models/ChicagoLand/'
+                                'facilityfacts')
 
 #     directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
 #     readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
-    directTransferDict = importTransferTable('Transferring_matrix_abbrev_9-18-2014_with-update-10-2-2014_copy_RHEA_Direct_fix_HSOU+silos+SCLE.csv',
-                                             abbrevPrefix=None)
+#     directTransferDict = importTransferTable('Transferring_matrix_abbrev_9-18-2014_with-update-10-2-2014_copy_RHEA_Direct_fix_HSOU+silos+SCLE.csv',
+#                                              abbrevPrefix=None)
+    directTransferDict = importTransferTable('/home/welling/git/pyrhea/models/ChicagoLand/'
+                                             'Matrices_LOS_08092016_Transfer3day.csv',
+                                             abbrevPrefix='To_', keyLabel='UNIQUE_ID')
     readmitTransferDict = {}
     transferDict = {}
     for k, rec in directTransferDict.items():
@@ -378,7 +387,7 @@ def main():
     transInDict, transOutDict = writeDotGraph('graph.dot', title,
                                               facDict, transferDict, inclusionSet)
 
-    orderedSources = transferDict.keys()[:]
+    orderedSources = facDict.keys()[:]
     orderedSources.sort()
     totalIn = 0
     totalOut = 0
@@ -389,40 +398,79 @@ def main():
     totBeds = 0
     totBedsHosp = 0
     totBedsNH = 0
+    totBedsHospFail = False
+    totBedsFail = False
+    totBedsNHFail = False
     for src in orderedSources:
-        print '%s (%s): %d %d' % (src, facDict[src]['category'], transInDict[src.lower()],
-                                  transOutDict[src.lower()])
+        key = None
+        bedCt = None
+        print ('%s (%s): %d %d;' %
+               (src, facDict[src]['category'], transInDict[src.lower()],
+                transOutDict[src.lower()])),
         totalIn += transInDict[src.lower()]
         totalOut += transOutDict[src.lower()]
-        if facDict[src]['category'] == 'NURSINGHOME':
+        if facDict[src]['category'] in ['NURSINGHOME', 'SNF', 'VSNF']:
             totalInNH += transInDict[src.lower()]
             totalOutNH += transOutDict[src.lower()]
             if 'nBeds' in facDict[src]:
-                if isinstance(facDict[src]['nBeds'], types.IntType):
-                    totBeds += facDict[src]['nBeds']
-                    totBedsNH += facDict[src]['nBeds']
-                else:
-                    totBeds += int(facDict[src]['nBeds']['value'])
-                    totBedsNH += int(facDict[src]['nBeds']['value'])
+                key = 'nBeds'
+            elif 'meanPop' in facDict[src]:
+                key = 'meanPop'
             else:
-                print '%s has no nBeds' % src
+                print ' no nBeds and no meanPop'
+            if key:
+                if isinstance(facDict[src][key], types.IntType):
+                    bedCt = facDict[src][key]
+                else:
+                    try:
+                        bedCt = int(facDict[src][key]['value'])
+                    except ValueError:
+                        pass
+            if bedCt:
+                totBeds += bedCt
+                totBedsNH += bedCt
+                print '%s beds' % bedCt
+            else:
+                print ' no nBeds and no meanPop'
+                totBedsNHFail = True
         else:
             totalInHosp += transInDict[src.lower()]
             totalOutHosp += transOutDict[src.lower()]
             if 'meanPop' in facDict[src]:
-                if isinstance(facDict[src]['meanPop'], types.FloatType):
-                    totBeds += facDict[src]['meanPop']
-                    totBedsHosp += facDict[src]['meanPop']
-                else:
-                    totBeds += float(facDict[src]['meanPop']['value'])
-                    totBedsHosp += float(facDict[src]['meanPop']['value'])
+                key = 'meanPop'
+            elif 'nBeds' in facDict[src]:
+                key = 'nBeds'
             else:
-                print '%s has no meanPop' % src
+                print ' no nBeds and no meanPop'
+            if key:
+                if isinstance(facDict[src][key], types.FloatType):
+                    bedCt = facDict[src][key]
+                else:
+                    try:
+                        bedCt = float(facDict[src][key]['value'])
+                    except ValueError:
+                        pass
+            if bedCt:
+                totBeds += bedCt
+                totBedsHosp += bedCt
+                print '%s beds' % bedCt
+            else:
+                print ' no nBeds and no meanPop'
+                totBedsHospFail = True
+
 
     print 'Total incoming transfers: %s (%s hospitals, %s NH)' % (totalIn, totalInHosp, totalInNH)
     print 'Total outgoing transfers: %s (%s hospitals, %s NH)' % (totalOut, totalOutHosp,
                                                                   totalOutNH)
-    print 'Total beds: %s (%s hospitals, %s NH)' % (totBeds, totBedsHosp, totBedsNH)
+    if totBedsHospFail:
+        if totBedsNHFail:
+            print 'Incomplete data; beds were not counted'
+        else:
+            print 'Tot NH beds: %s (others not counted)' % totBedsNH
+    elif totBedsNHFail:
+        print 'Tot HOSP beds: %s (others not counted)' % totBedsHosp
+    else:
+        print 'Total beds: %s (%s hospital beds, %s NH beds)' % (totBeds, totBedsHosp, totBedsNH)
 
     # fig, ax = plt.subplots()
     # ax.scatter(catchLocX, catchLocY, s=catchSize, c=catchColor, alpha=0.3)
