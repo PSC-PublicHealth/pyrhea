@@ -87,12 +87,14 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
 
     ctrLon = sumLon / len(locRecs)
     ctrLat = sumLat / len(locRecs)
+    ctrLatRad = 0.5*(41.615453 + 41.419047)
+    ctrLonRad = 0.5*(-87.575672 + -87.180045)
 
     myMap = geomap.Map(geoDataPathList,
                        stateFIPSRE,
                        countyFIPSRE,
                        ctrLon, ctrLat,
-                       annotate=True,
+                       annotate=False,
                        annotateTracts=False,
                        nameMap={'STATE': 'STATE', 'COUNTY': 'COUNTY',
                                 'TRACT': 'TRACT', 'NAME': 'NAME',

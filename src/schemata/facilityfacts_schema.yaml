@@ -52,6 +52,9 @@
         'type': 'array'
         'items': {'$ref': '#/definitions/categorycount'}
       'losModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'totalDischarges':
+        'description': 'Count of all discharges, including discharge via death'
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
     'required': 
       - 'name'
       - 'abbrev'
@@ -77,9 +80,6 @@
         'category': 
           'type': 'string'
           'enum': ['HOSPITAL', 'LTAC', 'LTACH']
-        'totalDischarges':
-          'description': 'Count of all discharges, including discharge via death'
-          '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
       'required':
       - 'totalDischarges'
           
