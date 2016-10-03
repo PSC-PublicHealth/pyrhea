@@ -555,7 +555,7 @@ def makeScatterPlot(ax, markerTupleList):
 def main():
 
     modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
-    losHistoPath = os.path.join(modelDir, 'HistogramTable_ActualLOS_PROTECT_082516.csv')
+    losHistoPath = os.path.join(modelDir, 'Histogram_09292016.csv')
     losHistoDict = importLOSHistoTable(losHistoPath)
     facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
 #     LOSModelType = LogNormLOSModel

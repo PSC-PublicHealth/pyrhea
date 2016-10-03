@@ -33,7 +33,7 @@ losModelProvStr = 'los_model_fits.py version fbb96209 using the given LOS model'
 
 newRecs = []
 for abbrev, rec in facDict.items():
-    modelToUse, modelNm = {'LTACH': (bimodalFits, 'bimodal'),
+    modelToUse, modelNm = {'LTACH': (lognormFits, 'lognorm'),
                            'HOSPITAL': (lognormFits, 'lognorm'),
                            'SNF': (twopopFits, 'twopop'),
                            'VSNF': (twopopFits, 'twopop')}[rec['category']]
