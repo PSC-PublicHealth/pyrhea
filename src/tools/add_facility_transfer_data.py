@@ -7,12 +7,13 @@ source of the data is a csv file in a particular format.
 
 import os.path
 import yaml
+from collections import Counter
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 
 modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
-transferCSVFileName = 'Matrices_LOS_08092016_Transfer3day.csv'
-losCSVFileName = 'HistogramTable_ActualLOS_PROTECT_082516.csv'
+transferCSVFileName = 'Matrices_LOS_09292016_Transfer3day.csv'
+losCSVFileName = 'Histogram_09292016.csv'
 
 allKeySet, recs = yaml_tools.parse_all(os.path.join(modelDir, 'facilityfacts'))
 facDict = {r['abbrev']:r for r in recs}
@@ -60,9 +61,11 @@ for rec in totTransRecs:
     print ('%s: %d total transfers out, %s total transfers in, %s LOS entries' %
            (abbrev, totTransfersOut, totTransfersIn, totDischarges))
 
-dischProvStr = 'HistogramTable_ActualLOS_PROTECT_082516.xlsx ra8b2c0a7b count by UNIQUE_ID'
-transProvStr = 'Matrices_LOS_08092016.xlsx:Transfer3day r0134f4795 grouped by category'
+dischProvStr = 'Histogram_09292016.xlsx ccda79e0 count by UNIQUE_ID'
+transProvStr = 'Matrices_LOS_09292016.xlsx:Transfer3day ccda79e0 grouped by category'
 newRecs = []
+transToNowhereCounts = Counter()
+goodTransCounts = Counter()
 for abbrev, rec in facDict.items():
     nR = rec.copy()
     if abbrev in cumTotDict:
@@ -78,12 +81,14 @@ for abbrev, rec in facDict.items():
                 if toAbbrev not in facDict:
                     print ('Transfer of %d patients from %s to excluded location %s' %
                            (ct, abbrev, toAbbrev))
+                    transToNowhereCounts[toAbbrev] += ct
                 else:
                     category = facDict[toAbbrev]['category']
                     if category in byCatDict:
                         byCatDict[category] += ct
                     else:
                         byCatDict[category] = ct
+                    goodTransCounts[toAbbrev] += ct
         nR['totalTransfersOut'] = []
         for category, ct in byCatDict.items():
             nR['totalTransfersOut'].append({'category': category,
@@ -91,6 +96,15 @@ for abbrev, rec in facDict.items():
                                                       'prov': transProvStr}})
     newRecs.append(nR)
 
+print 'Total transfers to excluded locations:'
+pairs = transToNowhereCounts.items()[:]
+pairs.sort()
+for loc, ct in pairs:
+    print '%s: %s' % (loc, ct)
+print '%d of %d total transfers went to excluded locations' % (sum(transToNowhereCounts.values()),
+                                                               sum((transToNowhereCounts +
+                                                                    goodTransCounts).values()))
+                                                               
 print '%d of %d records modified' % (len(newRecs), len(recs))
 yaml_tools.save_all(os.path.join(modelDir, 'facilityfactsUpdated'), newRecs)
 

@@ -22,11 +22,11 @@ modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
 allKeySet, recs = yaml_tools.parse_all(os.path.join(modelDir, 'facilityfacts'))
 facDict = {r['abbrev']:r for r in recs}
 
-infoFName = 'Matrices_LOS_08092016_Facilities_LOS.csv'
+infoFName = 'Matrices_LOS_09292016_Facilities_LOS.csv'
 infoDict = loadCSVByAbbrev(modelDir, infoFName, key='UNIQUE_ID')
 
 totDischProvStr = """
-Matrices_LOS_08092016_Facilities_LOS 415091df (which matches
+Matrices_LOS_08092016_Facilities_LOS ccda79e0 (which matches
 Matrices_LOS_08092016:Facilities_LOS), column 'N Obs'
 """
 

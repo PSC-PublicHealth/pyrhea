@@ -52,8 +52,8 @@ def main():
     lnRecs = fixNoneEntries(lnRecs)
     l = []
     lnDict = {r['abbrev']: r for r in lnRecs}
-#     with open(os.path.join(modelDir, 'los_model_fit_parms_twopop.csv')) as f:
-    with open(os.path.join(modelDir, 'los_model_fit_parms_bimodal.csv')) as f:
+    with open(os.path.join(modelDir, 'los_model_fit_parms_twopop.csv')) as f:
+#     with open(os.path.join(modelDir, 'los_model_fit_parms_bimodal.csv')) as f:
         keys, tpRecs = csv_tools.parseCSV(f)
     tpRecs = fixNoneEntries(tpRecs)
     tpDict = {r['abbrev']: r for r in tpRecs}

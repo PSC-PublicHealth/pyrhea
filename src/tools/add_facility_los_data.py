@@ -6,6 +6,7 @@ sources of the data are csv files; different sources are used by facility type.
 """
 
 import os.path
+import types
 import yaml
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools

@@ -127,7 +127,7 @@ for abbrev, rec in facDict.items():
             nR['nBedsICU'] = {'value': ilInfo[abbrev]['Peak_Beds_ICU'],
                               'prov': ilNBedsICUProvStr}
             changed = True
-        elif abbrev in remInfo and typeCheck(remInfo[abbrev]['Peak_Beds']):
+        elif abbrev in remInfo and typeCheck(remInfo[abbrev]['Peak_Beds_ICU']):
             nR['nBedsICU'] = {'value': remInfo[abbrev]['Peak_Beds_ICU'],
                               'prov': remNBedsICUProvStr}
             changed = True
