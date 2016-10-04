@@ -35,6 +35,7 @@ ilNBedsProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116.xlsx:BedLOS:
 ilNBedsICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116.xlsx:BedLOS:$Q"
 ilMeanPopProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116.xlsx:BedLOS:$T (includes ICU)"
 ilMeanPopICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116.xlsx:BedLOS:$R"
+ilMeanLOSICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116.xlsx:BedLOS:$W"
 
 remoteFName = 'PROTECT_WI_IN_Facility_BedSizes_091316_Facility.csv'
 remInfo = loadCSVByAbbrev(modelDir, remoteFName, key='UNIQUE_ID')
@@ -42,13 +43,14 @@ remNBedsProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility:$O (incl
 remNBedsICUProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility:$N'
 remMeanPopProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility Average_Daily_Census'
 remMeanPopICUProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility Average_Daily_Census_ICU'
+remMeanLOSICUProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility LOS_ICU'
 
 newRecs = []
 for abbrev, rec in facDict.items():
     nR = rec.copy()
     changed = False
     
-    for key in ['nBeds', 'meanPop', 'meanLOSICU']:
+    for key in ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']:
         if key in nR and not typeCheck(nR[key]['value']):
             del nR[key]
             changed = True
@@ -170,6 +172,27 @@ for abbrev, rec in facDict.items():
               typeCheck(remInfo[abbrev]['Avg_Daily_Census_ICU'])):
             nR['meanPopICU'] = {'value': remInfo[abbrev]['Avg_Daily_Census_ICU'],
                                 'prov': remMeanPopICUProvStr}
+            changed = True
+            
+        if 'meanLOSICU' in nR and typeCheck(nR['meanLOSICU']['value']):
+            oldVal = nR['meanLOSICU']['value']
+            print '%s %s %s' % (abbrev, changed, oldVal)
+            if abbrev in ilInfo:
+                assert ilInfo[abbrev]['LOS_ICU'] == oldVal, ("%s has value mismatch with %s" %
+                                                             (abbrev, illinoisFName))
+            elif abbrev in remInfo and 'LOS_ICU' in remInfo[abbrev]:
+                assert remInfo[abbrev]['LOS_ICU'] == oldVal, ('%s has a value mismatch with %s' %
+                                                              (abbrev, remoteFName))
+            else:
+                pass
+        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['LOS_ICU']):
+            nR['meanLOSICU'] = {'value': ilInfo[abbrev]['LOS_ICU'],
+                                'prov': ilMeanLOSICUProvStr}
+            changed = True
+        elif (abbrev in remInfo and 'LOS_ICU' in remInfo[abbrev] and
+              typeCheck(remInfo[abbrev]['LOS_ICU'])):
+            nR['meanLOSICU'] = {'value': remInfo[abbrev]['LOS_ICU'],
+                                'prov': remMeanLOSICUProvStr}
             changed = True
     
     else:
