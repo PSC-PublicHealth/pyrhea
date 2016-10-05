@@ -61,16 +61,12 @@ for rec in totTransRecs:
     print ('%s: %d total transfers out, %s total transfers in, %s LOS entries' %
            (abbrev, totTransfersOut, totTransfersIn, totDischarges))
 
-dischProvStr = 'Histogram_09292016.xlsx ccda79e0 count by UNIQUE_ID'
 transProvStr = 'Matrices_LOS_09292016.xlsx:Transfer3day ccda79e0 grouped by category'
 newRecs = []
 transToNowhereCounts = Counter()
 goodTransCounts = Counter()
 for abbrev, rec in facDict.items():
     nR = rec.copy()
-    if abbrev in cumTotDict:
-        nR['totalDischarges'] = {'value': cumTotDict[abbrev],
-                                 'prov': dischProvStr}
     if abbrev in transferInDict:
         nR['totalTransfersIn'] = {'value': transferInDict[abbrev],
                                   'prov': transProvStr}

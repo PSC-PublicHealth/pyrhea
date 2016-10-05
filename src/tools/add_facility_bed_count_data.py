@@ -45,166 +45,68 @@ remMeanPopProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility Averag
 remMeanPopICUProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility Average_Daily_Census_ICU'
 remMeanLOSICUProvStr = 'PROTECT_WI_IN_Facility_BedSizes_091316.xlsx:Facility LOS_ICU'
 
+srcList = [(ilInfo, illinoisFName), (remInfo, remoteFName)]
+
+nonHospTuples = [('nBeds', [('Peak_Beds', ilNBedsProvStr), ('Peak_Beds', remNBedsProvStr)]),
+                 ('meanPop', [('Avg_Daily_Census', ilMeanPopProvStr),
+                              ('Avg_Daily_Census', remMeanPopProvStr)])]
+
+hospTuples = ([tpl for tpl in nonHospTuples][:] +
+              [('nBedsICU', [('Peak_Beds_ICU', ilNBedsICUProvStr),
+                             ('Peak_Beds_ICU', remNBedsICUProvStr)]),
+               ('meanPopICU', [('Avg_Daily_Census_ICU', ilMeanPopICUProvStr),
+                               ('Avg_Daily_Census_ICU', remMeanPopICUProvStr)]),
+               ('meanLOSICU', [('LOS_ICU', ilMeanLOSICUProvStr),
+                               ('LOS_ICU', remMeanLOSICUProvStr)])
+              ])
+
+nonHospEraseInvalidsList = ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']
+hospEraseInvalidsList = ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']
+
+nonHospEraseUnconditionallyList = []
+hospEraseUnconditionallyList = ['meanPopICU']
+
 newRecs = []
 for abbrev, rec in facDict.items():
     nR = rec.copy()
     changed = False
-    
-    for key in ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']:
+
+    if rec['category'] in ['SNF', 'VSNF', 'NURSINGHOME', 'LTACH']:
+        eraseInvalidsList, eraseUnconditionallyList, tupleList = \
+            nonHospEraseInvalidsList, nonHospEraseUnconditionallyList, nonHospTuples
+    elif rec['category'] in ['HOSPITAL']:
+        eraseInvalidsList, eraseUnconditionallyList, tupleList = \
+            hospEraseInvalidsList, hospEraseUnconditionallyList, hospTuples
+    else:
+        sys.exit('%s has unknown category %s' % (abbrev, rec['category']))
+
+    for key in eraseInvalidsList:
         if key in nR and not typeCheck(nR[key]['value']):
             del nR[key]
             changed = True
-    
-    if rec['category'] in ['SNF', 'VSNF', 'NURSINGHOME', 'LTACH']:
-        if 'nBeds' in nR and typeCheck(nR['nBeds']['value']):
-            oldVal = nR['nBeds']['value']
-            if abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds']):
-                assert ilInfo[abbrev]['Peak_Beds'] == oldVal, ("%s has value mismatch with %s" %
-                                                               (abbrev, illinoisFName))
-            elif abbrev in remInfo:
-                assert remInfo[abbrev]['Peak_Beds'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds']):
-            nR['nBeds'] = {'value': ilInfo[abbrev]['Peak_Beds'],
-                           'prov': ilNBedsProvStr}
-            changed = True
-        elif abbrev in remInfo and typeCheck(remInfo[abbrev]['Peak_Beds']):
-            nR['nBeds'] = {'value': remInfo[abbrev]['Peak_Beds'],
-                           'prov': remNBedsProvStr}
-            changed = True
-                
-        if 'meanPop' in nR and typeCheck(nR['meanPop']['value']):
-            oldVal = nR['meanPop']['value']
-            if abbrev in ilInfo:
-                assert ilInfo[abbrev]['Avg_Daily_Census'] == oldVal, ("%s has value mismatch with %s" %
-                                                                      (abbrev, illinoisFName))
-            elif abbrev in remInfo:
-                assert remInfo[abbrev]['Avg_Daily_Census'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                       (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Avg_Daily_Census']):
-            nR['meanPop'] = {'value': ilInfo[abbrev]['Avg_Daily_Census'],
-                             'prov': ilMeanPopProvStr}
-            changed = True
-        elif (abbrev in remInfo and 'Avg_Daily_Census' in remInfo[abbrev] and
-              typeCheck(remInfo[abbrev]['Avg_Daily_Census'])):
-            nR['meanPop'] = {'value': remInfo[abbrev]['Avg_Daily_Census'],
-                             'prov': remMeanPopProvStr}
-            changed = True
-                
-    elif rec['category'] in ['HOSPITAL']:
-        if 'nBeds' in nR and typeCheck(nR['nBeds']['value']):
-            oldVal = nR['nBeds']['value']
-            if abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds']):
-                assert ilInfo[abbrev]['Peak_Beds'] == oldVal, ("%s has value mismatch with %s" %
-                                                               (abbrev, illinoisFName))
-            elif abbrev in remInfo:
-                assert remInfo[abbrev]['Peak_Beds'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds']):
-            nR['nBeds'] = {'value': ilInfo[abbrev]['Peak_Beds'],
-                           'prov': ilNBedsProvStr}
-            changed = True
-        elif abbrev in remInfo and typeCheck(remInfo[abbrev]['Peak_Beds']):
-            nR['nBeds'] = {'value': remInfo[abbrev]['Peak_Beds'],
-                           'prov': remNBedsProvStr}
+
+    for key in eraseUnconditionallyList:
+        if key in nR:
+            del nR[key]
             changed = True
 
-        if 'nBedsICU' in nR and typeCheck(nR['nBedsICU']['value']):
-            oldVal = nR['nBedsICU']['value']
-            if abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds_ICU']):
-                assert ilInfo[abbrev]['Peak_Beds_ICU'] == oldVal, ("%s has value mismatch with %s" %
-                                                                   (abbrev, illinoisFName))
-            elif abbrev in remInfo:
-                assert remInfo[abbrev]['Peak_Beds_ICU'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                    (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Peak_Beds_ICU']):
-            nR['nBedsICU'] = {'value': ilInfo[abbrev]['Peak_Beds_ICU'],
-                              'prov': ilNBedsICUProvStr}
-            changed = True
-        elif abbrev in remInfo and typeCheck(remInfo[abbrev]['Peak_Beds_ICU']):
-            nR['nBedsICU'] = {'value': remInfo[abbrev]['Peak_Beds_ICU'],
-                              'prov': remNBedsICUProvStr}
-            changed = True
-                
-        if 'meanPop' in nR and typeCheck(nR['meanPop']['value']):
-            oldVal = nR['meanPop']['value']
-            if abbrev in ilInfo:
-                assert ilInfo[abbrev]['Avg_Daily_Census'] == oldVal, ("%s has value mismatch with %s" %
-                                                                      (abbrev, illinoisFName))
-            elif abbrev in remInfo:
-                assert remInfo[abbrev]['Avg_Daily_Census'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                       (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Avg_Daily_Census']):
-            nR['meanPop'] = {'value': ilInfo[abbrev]['Avg_Daily_Census'],
-                             'prov': ilMeanPopProvStr}
-            changed = True
-        elif (abbrev in remInfo and 'Avg_Daily_Census' in remInfo[abbrev] and
-              typeCheck(remInfo[abbrev]['Avg_Daily_Census'])):
-            nR['meanPop'] = {'value': remInfo[abbrev]['Avg_Daily_Census'],
-                             'prov': remMeanPopProvStr}
-            changed = True
+    for key, pairList in tupleList:
 
-        if 'meanPopICU' in nR and typeCheck(nR['meanPopICU']['value']):
-            oldVal = nR['meanPopICU']['value']
-            if abbrev in ilInfo:
-                assert ilInfo[abbrev]['Avg_Daily_Census_ICU'] == oldVal, ("%s has value mismatch with %s" %
-                                                                          (abbrev, illinoisFName))
-            elif abbrev in remInfo and 'meanPopICU' in remInfo[abbrev]:
-                assert remInfo[abbrev]['Avg_Daily_Census_ICU'] == oldVal, ('%s has a value mismatch with %s' %
-                                                                           (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['Avg_Daily_Census_ICU']):
-            nR['meanPopICU'] = {'value': ilInfo[abbrev]['Avg_Daily_Census_ICU'],
-                                'prov': ilMeanPopICUProvStr}
-            changed = True
-        elif (abbrev in remInfo and 'Avg_Daily_Census_ICU' in remInfo[abbrev] and
-              typeCheck(remInfo[abbrev]['Avg_Daily_Census_ICU'])):
-            nR['meanPopICU'] = {'value': remInfo[abbrev]['Avg_Daily_Census_ICU'],
-                                'prov': remMeanPopICUProvStr}
-            changed = True
-            
-        if 'meanLOSICU' in nR and typeCheck(nR['meanLOSICU']['value']):
-            oldVal = nR['meanLOSICU']['value']
-            print '%s %s %s' % (abbrev, changed, oldVal)
-            if abbrev in ilInfo:
-                assert ilInfo[abbrev]['LOS_ICU'] == oldVal, ("%s has value mismatch with %s" %
-                                                             (abbrev, illinoisFName))
-            elif abbrev in remInfo and 'LOS_ICU' in remInfo[abbrev]:
-                assert remInfo[abbrev]['LOS_ICU'] == oldVal, ('%s has a value mismatch with %s' %
-                                                              (abbrev, remoteFName))
-            else:
-                pass
-        elif abbrev in ilInfo and typeCheck(ilInfo[abbrev]['LOS_ICU']):
-            nR['meanLOSICU'] = {'value': ilInfo[abbrev]['LOS_ICU'],
-                                'prov': ilMeanLOSICUProvStr}
-            changed = True
-        elif (abbrev in remInfo and 'LOS_ICU' in remInfo[abbrev] and
-              typeCheck(remInfo[abbrev]['LOS_ICU'])):
-            nR['meanLOSICU'] = {'value': remInfo[abbrev]['LOS_ICU'],
-                                'prov': remMeanLOSICUProvStr}
-            changed = True
-    
-    else:
-        sys.exit('%s has unknown category %s' % (abbrev, rec['category']))
-        
+        if key in nR and typeCheck(nR[key]['value']):
+            oldVal = nR[key]['value']
+            for (info, srcFName), (srcKey, provStr) in zip(srcList, pairList):
+                if abbrev in info and srcKey in info[abbrev] and typeCheck(info[abbrev][srcKey]):
+                    errStr = ('%s has value mismatch for %s with %s entry %s: %s vs %s' %
+                              (abbrev, key, srcFName, srcKey, oldVal, info[abbrev][srcKey]))
+                    assert (info[abbrev][srcKey] == oldVal), errStr
+        else:
+            for (info, srcFName), (srcKey, provStr) in zip(srcList, pairList):
+                if abbrev in info and srcKey in info[abbrev] and typeCheck(info[abbrev][srcKey]):
+                    nR[key] = {'value': info[abbrev][srcKey], 'prov': provStr}
+                    changed = True
+
     if changed:
         newRecs.append(nR)
-        
-                
+
 print '%d of %d records modified' % (len(newRecs), len(recs))
 yaml_tools.save_all(os.path.join(modelDir, 'facilityfactsUpdated'), newRecs)
-
-    
-    
-

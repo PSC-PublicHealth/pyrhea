@@ -32,11 +32,16 @@ Matrices_LOS_08092016:Facilities_LOS), column 'N Obs'
 
 newRecs = []
 for abbrev, rec in facDict.items():
+    nR = rec.copy()
+    if 'totalDischarges' in nR:
+        del nR['totalDischarges']
     if abbrev in infoDict:
-        nR = rec.copy()
         nR['totalDischarges'] = {'value': infoDict[abbrev]['N Obs'],
                                  'prov': totDischProvStr}
         newRecs.append(nR)
+        totTransfers = sum([d['count']['value'] for d in rec['totalTransfersOut']])
+        print '%s : %s were transferred' % (abbrev,
+                                            float(totTransfers)/float(infoDict[abbrev]['N Obs']))
 
 print '%d of %d records modified' % (len(newRecs), len(recs))
 yaml_tools.save_all(os.path.join(modelDir, 'facilityfactsUpdated'), newRecs)

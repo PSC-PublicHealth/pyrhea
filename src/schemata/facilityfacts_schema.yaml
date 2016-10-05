@@ -9,7 +9,7 @@
 
   'category':
     'type': 'string'
-    'enum': ['NURSINGHOME', 'HOSPITAL', 'LTAC', 'COMMUNITY', 'SNF', 'VSNF', 'LTACH']
+    'enum': ['NURSINGHOME', 'HOSPITAL', 'LTAC', 'COMMUNITY', 'SNF', 'VSNF', 'LTACH', 'CHILDREN']
 
   'LOSData':
     'type': 'object'
