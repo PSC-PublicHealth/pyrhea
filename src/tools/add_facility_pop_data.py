@@ -29,7 +29,7 @@ modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
 allKeySet, recs = yaml_tools.parse_all(os.path.join(modelDir, 'facilityfacts'))
 facDict = {r['abbrev']:r for r in recs}
 
-bedLosFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116_BedLOS.csv'
+bedLosFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716_BedLOS.csv'
 bedLosInfo = loadCSVByAbbrev(modelDir, bedLosFName, key='UNIQUE_ID')
 
 matLosFName = 'Matrices_LOS_09292016_Facilities_LOS.csv'
@@ -45,8 +45,14 @@ for abbrev, rec in facDict.items():
     if ('meanLOS' in nR and 'value' in nR['meanLOS'] and
             typeCheck(nR['meanLOS']['value'])):
         if (abbrev in bedLosInfo and typeCheck(bedLosInfo[abbrev]['LOS'])):
-            assert bedLosInfo[abbrev]['LOS'] == nR['meanLOS']['value'], ('mismatch on %s for %s' %
-                                                                         (bedLosFName, abbrev))
+#             if abbrev == 'EDWA_801_H':
+            if False:
+                nR['meanLOS'] = {'value': bedLosInfo[abbrev]['LOS'],
+                                 'prov': blMeanLOSProvStr}
+                changed = True
+            else:
+                assert bedLosInfo[abbrev]['LOS'] == nR['meanLOS']['value'], ('mismatch on %s for %s' %
+                                                                             (bedLosFName, abbrev))
         elif (abbrev in matLosInfo and typeCheck(matLosInfo[abbrev]['Mean'])):
             assert matLosInfo[abbrev]['Mean'] == nR['meanLOS']['value'], ('mismatch on %s for %s' %
                                                                           (matLosFName, abbrev))            

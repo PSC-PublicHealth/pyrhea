@@ -28,7 +28,7 @@ modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
 allKeySet, recs = yaml_tools.parse_all(os.path.join(modelDir, 'facilityfacts'))
 facDict = {r['abbrev']:r for r in recs}
 
-bedLosFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v082116_BedLOS.csv'
+bedLosFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716_BedLOS.csv'
 bedLosInfo = loadCSVByAbbrev(modelDir, bedLosFName, key='UNIQUE_ID')
 
 snfICUProvStr = 'SNFs do not have ICUs'
