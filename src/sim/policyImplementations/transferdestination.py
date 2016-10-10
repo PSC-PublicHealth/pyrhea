@@ -15,12 +15,11 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import logging
 
 import os.path
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 
@@ -34,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 class MinTravelTimeCore(object):
     """This is where we put things that are best shared across all instances"""
-    __metaclass__ = pyrheautils.SingletonMetaClass
+    __metaclass__ = SingletonMetaClass
 
     def __init__(self):
         transferMatrixFilePath = _constants['transitMatrixFilePath']
@@ -61,7 +60,7 @@ class MinTravelTimeTransferDestinationPolicy(BaseTransferDestinationPolicy):
         queueClass = tierToQueueMap[newTier]
         tplList = []
         for info, addr in self.patch.serviceLookup(queueClass.__name__):
-            innerInfo, destAbbrev = info  # @UnusedVariable
+            innerInfo, destAbbrev, destCoords = info  # @UnusedVariable
             travelTime = self.core.tbl[srcAbbrev][destAbbrev]['seconds']
             tplList.append((travelTime, info, addr))
         tplList.sort()

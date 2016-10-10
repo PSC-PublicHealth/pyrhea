@@ -1,9 +1,7 @@
 'communityLOSModel':
     parms:
 #    - 2.0e-2
-#    - 1.8e-2
-#    - 1.5e-2  # standard for tiny community
-    - 1.5e-4  # standard for full synthetic community
+    - 1.8e-2
 #    - 1.0e-2
     pdf: 'expon(lambda=$0)'
     prov: 'DEBUGGING ONLY - hand-tuning for stability starting at lambda=1.0e-2'
@@ -21,13 +19,8 @@
 'communityNeedsLTACRate':
   'value': 0.03
   'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
-
-'communityNeedsRehabRate':
-  'value': 0.00
-  'prov': 'DEBUGGING ONLY - putting something random in!'
   
 'communityPatientCheckInterval':
-  #'value': 30
   'value': 1
   'prov': 'arbitrary'
   

@@ -27,15 +27,16 @@ from random import shuffle
 
 import pyrheabase
 import pyrheautils
+import schemautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, LTACQueue, tierToQueueMap
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
-from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
+from hospital import estimateWork as hospitalEstimateWork
 
 category = 'LTAC'
-_schema = 'facilityfacts_schema.yaml'
+_schema = 'hospitalfacts_schema.yaml'
 _constants_values = 'ltac_constants.yaml'
 _constants_schema = 'ltac_constants_schema.yaml'
 _validator = None
@@ -65,10 +66,10 @@ class LTAC(Facility):
         self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
                                else 0.0)
         if 'nBeds' in descr:
-            nBeds = descr['nBeds']
+            nBeds = descr['nBeds']['value']
             nWards = int(float(nBeds)/bedsPerWard) + 1
         else:
-            meanPop = descr['meanPop']
+            meanPop = descr['meanPop']['value']
             nWards = int(math.ceil(meanPop / bedsPerWard))
 
         nBeds = nWards * bedsPerWard
@@ -84,12 +85,6 @@ class LTAC(Facility):
             self.addWard(Ward(('%s_%s_%s_%s_%d' %
                                (category, patch.name, descr['abbrev'], 'LTAC', i)),
                               patch, CareTier.LTAC, bedsPerWard))
-
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
-        queueClass = tierToQueueMap[newTier]
-        facAddrList = [tpl[1] for tpl in self.manager.patch.serviceLookup(queueClass.__name__)]
-        shuffle(facAddrList)
-        return facAddrList
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         assert treatment == TreatmentProtocol.NORMAL, \
@@ -149,7 +144,11 @@ class LTAC(Facility):
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "LTAC description %(abbrev)s is missing the expected field 'meanPop'" % descr
-    meanPop = float(descr['meanPop'])
+    meanPop = float(descr['meanPop']['value'])
+    if 'nBeds' in descr and meanPop > descr['nBeds']['value']:
+        logger.warning('LTAC %s meanPop %s > nBeds %s'
+                       % (descr['abbrev'], meanPop, descr['nBeds']['value']))
+        meanPop = descr['nBeds']['value']
     agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.LTAC)
@@ -173,7 +172,11 @@ def estimateWork(descr):
 
 
 def checkSchema(facilityDescr):
-    return hospitalCheckSchema(facilityDescr)
+    global _validator
+    if _validator is None:
+        _validator = schemautils.getValidator(_schema)
+    nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
+    return nErrors
 
 
 ###########

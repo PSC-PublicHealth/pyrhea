@@ -32,7 +32,7 @@ from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
 category = 'HOSPITAL'
-_schema = 'hospitalfacts_schema.yaml'
+_schema = 'facilityfacts_schema.yaml'
 _constants_values = 'hospital_constants.yaml'
 _constants_schema = 'hospital_constants_schema.yaml'
 _validator = None
@@ -87,13 +87,13 @@ class Hospital(Facility):
                                else 0.0)
         self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
         if 'nBeds' in descr:
-            icuBeds = descr['fracAdultPatientDaysICU']['value'] * descr['nBeds']['value']
+            icuBeds = descr['fracAdultPatientDaysICU'] * descr['nBeds']
             icuWards = int(icuBeds/bedsPerICUWard) + 1
-            nonICUBeds = max(descr['nBeds']['value'] - icuBeds, 0)
+            nonICUBeds = max(descr['nBeds'] - icuBeds, 0)
             nonICUWards = int(float(nonICUBeds)/bedsPerWard) + 1
         else:
-            meanPop = descr['meanPop']['value']
-            meanICUPop = meanPop * descr['fracAdultPatientDaysICU']['value']
+            meanPop = descr['meanPop']
+            meanICUPop = meanPop * descr['fracAdultPatientDaysICU']
             meanNonICUPop = meanPop - meanICUPop
             icuWards = int(math.ceil(meanICUPop / bedsPerICUWard))
             nonICUWards = int(math.ceil(meanNonICUPop / bedsPerWard))
@@ -212,12 +212,8 @@ class Hospital(Facility):
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Hospital description %(abbrev)s is missing the expected field 'meanPop'" % descr
-    meanPop = float(descr['meanPop']['value'])
-    if 'nBeds' in descr and meanPop > descr['nBeds']['value']:
-        logger.warning('Hospital %s meanPop %s > nBeds %s'
-                       % (descr['abbrev'], meanPop, descr['nBeds']['value']))
-        meanPop = descr['nBeds']['value']
-    meanICUPop = meanPop * descr['fracAdultPatientDaysICU']['value']
+    meanPop = float(descr['meanPop'])
+    meanICUPop = meanPop * descr['fracAdultPatientDaysICU']
     meanHospPop = meanPop - meanICUPop
     agentList = []
     for i in xrange(int(round(meanICUPop))):
@@ -248,9 +244,9 @@ def generateFull(facilityDescr, patch, policyClasses=None):
 
 def estimateWork(facRec):
     if 'meanPop' in facRec:
-        return facRec['meanPop']['value']
+        return facRec['meanPop']
     elif 'nBeds' in facRec:
-        return facRec['nBeds']['value']
+        return facRec['nBeds']
     else:
         logger.warn('Cannot estimate work for %(abbrev)s' % facRec)
         return 0

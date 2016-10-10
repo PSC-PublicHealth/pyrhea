@@ -1,2 +1,2 @@
-'transitMatrixFilePath': '../../models/OrangeCounty/transitmatrix.yaml'
+'transitMatrixFilePath': '../../models/OrangeCounty2013/transitmatrix.yaml'
 'transitMatrixFileSchema': 'transitmatrix_schema.yaml'

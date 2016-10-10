@@ -1,17 +1,17 @@
 'nhLOSModel':
-    negLogLikPerSample: 5.65736498834
-    nsamp: 55731
+    negLogLikPerSample: 5.22383833234
+    nsamp: 54708
     parms:
-    - 6.77776462e-01
-    - 3.30759124e+00
-    - 5.93862260e-01
-    - 1.73725154e-03
+    - 0.827944167
+    - 2.9163985
+    - 1.0107617
+    - 0.00135160728
     pdf: $0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)
-    prov: Orange County aggregate from nh_los_model_fit.py r51 applied to Length_of_Stay_2007_to_2009_OC_Nursing_Homes-12-18-11_SMB_with_abbrev_RHEA.csv
+    prov: aggregate result over all samples fromnh_los_model_fit.py r124 applied to length_of_stay_2011_2012_OC_Nursing_Homes_08-12-2014_begin0000-end2012.csv
   
 'rehabDeathRate':
-  'value': 0.001
-  'prov': 'DEBUGGING ONLY'
+  'value': 0.0
+  'prov': 'Simulating rhea-dante behavior'
   
 'rehabSickRate':
   'value': 0.003
@@ -26,8 +26,8 @@
   'prov': 'DEBUGGING ONLY - hand-tuned to reduce LTAC crowding'
   
 'residentDeathRate':
-  'value': 0.001
-  'prov': 'DEBUGGING ONLY'
+  'value': 0.0
+  'prov': 'Simulating rhea-dante behavior'
   
 'residentSickRate':
   'value': 0.003

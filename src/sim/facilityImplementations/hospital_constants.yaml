@@ -7,12 +7,12 @@
   'prov': 'empirical, based on rhea-dante'
   
 'hospDischargeViaDeathFrac':
-  'value': 0.0154
-  'prov': 'OrangeCounty model CategoryTransferRates.xls r68 RateCalcs:$59$B'
+  'value': 0.0
+  'prov': 'Simulating rhea-dante behavior'
   
 'icuDischargeViaDeathFrac':
-  'value': 0.0616
-  'prov': 'OrangeCounty model CategoryTransferRates.xls r68 RateCalcs:$60$B'
+  'value': 0.0
+  'prov': 'Simulating rhea-dante behavior'
   
 'icuLOSLogNormSigma':
   'value': 0.7

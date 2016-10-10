@@ -1,14 +1,14 @@
 'facilityDirs':
-  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
-  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/communitiesTiny'
-#  - '/home/welling/git/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
-#  - '/home/welling/git/pyrhea/models/OrangeCounty2013/communitiesTiny'
+#  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
+#  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/communitiesTiny'
+  - '/home/welling/git/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
+  - '/home/welling/git/pyrhea/models/OrangeCounty2013/communitiesTiny'
 
 'facilityImplementationDir': '../sim/facilityImplementations2013'
 
 'pathogenImplementationDir': '../sim/mrsaImplementation2013'
 
-'policyImplementationDir': '../sim/policyImplementations2013'
+'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
     'policyClass': 'MinTravelTimeTransferDestinationPolicy'

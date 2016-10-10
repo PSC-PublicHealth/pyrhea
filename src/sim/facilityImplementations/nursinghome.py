@@ -25,19 +25,22 @@ import logging
 
 import pyrheabase
 import pyrheautils
+import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter
-from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
+from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
 
 logger = logging.getLogger(__name__)
 
 category = 'NURSINGHOME'
+_schema = 'nursinghomefacts_schema.yaml'
 _constants_values = 'nursinghome_constants.yaml'
 _constants_schema = 'nursinghome_constants_schema.yaml'
 _constants = None
+_validator = None
 
 
 class NursingHome(Facility):
@@ -46,8 +49,14 @@ class NursingHome(Facility):
                           descr, patch,
                           reqQueueClasses=[NURSINGQueue],
                           policyClasses=policyClasses)
-        assert 'nBeds' in descr, 'Nursing home %(abbrev) description is missing nBeds' % descr
-        nBeds = int(descr['nBeds'])
+        if 'nBeds' in descr:
+            nBeds = int(descr['nBeds']['value'])
+        else:
+            assert 'meanPop' in descr, (('Nursing home %(abbrev)s description has neither'
+                                         ' nBeds nor meanPop') % descr)
+            nBeds = int(math.ceil(descr['meanPop']['value']))
+            logger.warning('Nursing Home %s has no nBeds; using ceil(meanPop) = %d'
+                           % (descr['abbrev'], nBeds))
         if 'losModel' in descr:
             losModel = descr['losModel']
         else:
@@ -183,11 +192,11 @@ class NursingHome(Facility):
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Nursing home description %(abbrev)s is missing the expected field 'meanPop'" % descr
-    meanPop = descr['meanPop']
-    if meanPop > descr['nBeds']:
-        logger.warning('Nursing Home %(abbrev)s meanPop %(meanPop)s > nBeds %(nBeds)s'
-                       % descr)
-        meanPop = descr['nBeds']
+    meanPop = descr['meanPop']['value']
+    if 'nBeds' in descr and meanPop > descr['nBeds']['value']:
+        logger.warning('Nursing Home %s meanPop %s > nBeds %s'
+                       % (descr['abbrev'], meanPop, descr['nBeds']['value']))
+        meanPop = descr['nBeds']['value']
     if 'losModel' in descr:
         losModel = descr['losModel']
     else:
@@ -224,7 +233,11 @@ def estimateWork(descr):
 
 
 def checkSchema(facilityDescr):
-    return hospitalCheckSchema(facilityDescr)
+    global _validator
+    if _validator is None:
+        _validator = schemautils.getValidator(_schema)
+    nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
+    return nErrors
 
 
 ###########

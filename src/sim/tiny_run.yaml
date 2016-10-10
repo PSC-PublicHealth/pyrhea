@@ -6,7 +6,7 @@
 
 'pathogenImplementationDir': './mrsaImplementation'
 
-'policyImplementationDir': './policyImplementations'
+'policyImplementationDir': './policyImplementations_OC2007'
 'policySelectors':
   - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
     'policyClass': 'MinTravelTimeTransferDestinationPolicy'

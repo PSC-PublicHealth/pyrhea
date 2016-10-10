@@ -1,2 +1,2 @@
-'capacityFilePath': '../../models/OrangeCounty/bedcapacity.yaml'
+'capacityFilePath': '../../models/OrangeCounty2013/bedcapacity.yaml'
 'capacityFileSchema': 'bedcapacity_schema.yaml'
