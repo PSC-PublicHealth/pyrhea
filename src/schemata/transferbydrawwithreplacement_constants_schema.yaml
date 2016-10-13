@@ -1,0 +1,23 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/transferbydrawwithreplacement_constants_schema.yaml'
+'title': 'transfer by draw-with-replacement constants schema'
+'description': 'transfer by draw-with-replacement constants schema'
+
+'$ref': '#/definitions/transferbydrawwithreplacementconstants'
+
+'definitions':
+    
+  'transferbydrawwithreplacementconstants':
+    'type': 'object'
+    'properties':
+      'transferFilePath':
+        'description': 'Path to the YAML file containing the transfer count matrix'
+        'type': 'string'
+      'transferFileSchema':
+        'description': 'Schema for the YAML file containing the transfer count matrix'
+        'type': 'string'
+    'required':
+      - 'transferFilePath'
+      - 'transferFileSchema'
+      
+      

@@ -17,6 +17,13 @@
       'facilityImplementationDir':
         'description': 'Directory containing implementations of facility types'
         'type': 'string'
+      'facilitySelectors':
+        'type': 'array'
+        'items':
+          'type': 'object'
+          'properties':
+            'category': { 'type': 'string', 'description': 'regex which must match facility description category'}
+            'implementation': { 'type': 'string', 'descripition': 'a facility implementation category string'}
       'pathogenImplementationDir':
         'description': 'Directory containing implementations of infectious agents'
         'type': 'string'

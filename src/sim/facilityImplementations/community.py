@@ -229,12 +229,13 @@ class CommunityManager(FacilityManager):
 
 
 class Community(Facility):
-    def __init__(self, descr, patch, policyClasses=None):
+    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
                           policyClasses=policyClasses,
-                          managerClass=CommunityManager)
+                          managerClass=CommunityManager,
+                          categoryNameMapper=categoryNameMapper)
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
@@ -319,8 +320,9 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch, policyClasses=None):
-    fac = Community(facilityDescr, patch, policyClasses=policyClasses)
+def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+    fac = Community(facilityDescr, patch, policyClasses=policyClasses,
+                    categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

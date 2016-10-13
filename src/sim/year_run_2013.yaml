@@ -2,9 +2,9 @@
   - '/home/welling/git/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
   - '/home/welling/git/pyrhea/models/OrangeCounty2013/synthCommunities'
 
-'facilityImplementationDir': '../sim/facilityImplementations2013'
+'facilityImplementationDir': '../sim/facilityImplementations'
 
-'pathogenImplementationDir': '../sim/mrsaImplementation2013'
+'pathogenImplementationDir': '../sim/mrsaImplementation_OC2013'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

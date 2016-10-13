@@ -51,6 +51,9 @@ class ClassASetter(PatientStatusSetter):
     def __str__(self):
         return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
 
+    def __repr__(self):
+        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+
 
 class OverallHealthSetter(PatientStatusSetter):
     def __init__(self, newOverallHealth):
@@ -65,11 +68,12 @@ class OverallHealthSetter(PatientStatusSetter):
 
 
 class Hospital(Facility):
-    def __init__(self, descr, patch, policyClasses=None):
+    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[HOSPQueue, ICUQueue],
-                          policyClasses=policyClasses)
+                          policyClasses=policyClasses,
+                          categoryNameMapper=categoryNameMapper)
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
         self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
@@ -78,9 +82,13 @@ class Hospital(Facility):
                                       / float(descr['totalDischarges']['value']))
         self.fracDischargeHealthy = 1.0 - (self.hospTotalTransferFrac
                                            + self.hospDischargeViaDeathFrac)
-        transferFrac = {v['category']: (self.hospTotalTransferFrac * float(v['count']['value'])
-                                        / float(nTotalTransfersOut))
-                        for v in descr['totalTransfersOut']}
+        transferFrac = {}
+        for v in descr['totalTransfersOut']:
+            implCat = self.categoryNameMapper(v['category'])
+            if implCat not in transferFrac:
+                transferFrac[implCat] = 0.0
+            transferFrac[implCat] += (self.hospTotalTransferFrac * float(v['count']['value'])
+                                      / float(nTotalTransfersOut))
         self.fracTransferHosp = (transferFrac['HOSPITAL'] if 'HOSPITAL' in transferFrac else 0.0)
         self.fracTransferLTAC = (transferFrac['LTAC'] if 'LTAC' in transferFrac else 0.0)
         self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
@@ -140,7 +148,6 @@ class Hospital(Facility):
         return facAddrList
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
-        if treatment != TreatmentProtocol.NORMAL: print '%s clause 4' % self.abbrev
         assert treatment == TreatmentProtocol.NORMAL, \
             ("Hospitals only offer 'NORMAL' treatment; found %s" %
              TreatmentProtocol.names[treatment])
@@ -241,8 +248,9 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch, policyClasses=None):
-    fac = Hospital(facilityDescr, patch, policyClasses=policyClasses)
+def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+    fac = Hospital(facilityDescr, patch, policyClasses=policyClasses,
+                   categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

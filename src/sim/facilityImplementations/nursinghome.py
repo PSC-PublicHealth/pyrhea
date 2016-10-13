@@ -44,11 +44,12 @@ _validator = None
 
 
 class NursingHome(Facility):
-    def __init__(self, descr, patch, policyClasses=None):
+    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[NURSINGQueue],
-                          policyClasses=policyClasses)
+                          policyClasses=policyClasses,
+                          categoryNameMapper=categoryNameMapper)
         if 'nBeds' in descr:
             nBeds = int(descr['nBeds']['value'])
         else:
@@ -223,8 +224,9 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch, policyClasses=None):
-    fac = NursingHome(facilityDescr, patch, policyClasses=policyClasses)
+def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+    fac = NursingHome(facilityDescr, patch, policyClasses=policyClasses,
+                      categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

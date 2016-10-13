@@ -1,0 +1,150 @@
+#! /usr/bin/env python
+
+###################################################################################
+# Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
+# =============================================================================== #
+#                                                                                 #
+# Permission to use, copy, and modify this software and its documentation without #
+# fee for personal use within your organization is hereby granted, provided that  #
+# the above copyright notice is preserved in all copies and that the copyright    #
+# and this permission notice appear in supporting documentation.  All other       #
+# restrictions and obligations are defined in the GNU Affero General Public       #
+# License v3 (AGPL-3.0) located at http://www.gnu.org/licenses/agpl-3.0.html  A   #
+# copy of the license is also provided in the top level of the source directory,  #
+# in the file LICENSE.txt.                                                        #
+#                                                                                 #
+###################################################################################
+
+import logging
+
+import os.path
+from phacsl.utils.collections.phacollections import SingletonMetaClass
+import pyrheautils
+import random
+from collections import deque
+from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
+from facilitybase import CareTier, tierToQueueMap
+
+_validator = None
+_constants_values = 'transferbydrawwithreplacement_constants.yaml'
+_constants_schema = 'transferbydrawwithreplacement_constants_schema.yaml'
+_constants = None
+
+logger = logging.getLogger(__name__)
+
+
+class DWRCore(object):
+    """This is where we put things that are best shared across all instances"""
+    __metaclass__ = SingletonMetaClass
+
+    def __init__(self, patch):
+        self.patch = patch
+        self.tierAddrMap = None
+        self.tbl = None
+        self.totTbl = None
+
+    def _buildTierAddrMap(self):
+        self.tierAddrMap = {}
+        nmDict = CareTier.names
+        logger.info('Building facility-to-address map')
+        for tier in nmDict.keys():
+            self.tierAddrMap[tier] = {}
+            serviceTupleList = self.patch.serviceLookup(tierToQueueMap[tier].__name__)
+            for info, addr in serviceTupleList:
+                innerInfo, facAbbrev, facCoords = info  # @UnusedVariable
+                self.tierAddrMap[tier][facAbbrev] = addr
+        logger.info('map complete')
+
+    def getTierAddrMap(self, tier):
+        if self.tierAddrMap is None:
+            self._buildTierAddrMap()
+        return self.tierAddrMap[tier]
+    
+    def _buildWeightedLists(self):
+        transferMatrixFilePath = _constants['transferFilePath']
+        logger.info('Importing the constant data file %s', transferMatrixFilePath)
+        rawTbl = pyrheautils.importConstants(transferMatrixFilePath,
+                                             _constants['transferFileSchema'])
+        nmDict = CareTier.names
+        tierFacSets = {tier: set(self.getTierAddrMap(tier).keys()) for tier in nmDict.keys()}
+        self.tbl = {}
+        self.totTbl = {}
+        for srcName, rec in rawTbl.items():
+            self.tbl[srcName] = {}
+            self.totTbl[srcName] = {}
+            for tier in nmDict.keys():
+                wtL = []
+                wtSum = 0
+                for destName, ct in rec.items():
+                    if destName in tierFacSets[tier]:
+                        wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
+                        wtSum += ct
+                wtL.sort(reverse=True)
+                self.tbl[srcName][tier] = wtL
+                self.totTbl[srcName][tier] = wtSum
+        logger.info('Import complete.')
+
+    def getTierWeightedList(self, srcName, tier):
+        """
+        Returns a tuple containing:
+        - a list of the form [(wt, (abbrev, addr)), ...] to be shuffled shuffled
+        - a value wtSum equal to the sum of the weights in the list
+        """
+        if self.tbl is None:
+            self._buildWeightedLists()
+        return (self.tbl[srcName][tier][:], self.totTbl[srcName][tier])
+
+
+class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy):
+    def __init__(self, patch):
+        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch)
+        self.core = DWRCore(patch)
+
+    def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
+        pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
+        print '%s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier], CareTier.names[newTier], tot)
+        print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
+        pairList = deque(pairList)
+#         print 'newTier: %s' % CareTier.names[newTier]
+        facList = []
+#        facList_sav = [destTpl for capacity, destTpl in pairList]
+        while pairList:
+            capSum = 0.0
+            lim = random.random() * tot
+            newPL = deque()
+#             print 'pairList: %s' % pairList
+#             print 'lim: %s' % lim
+            while True:
+                capacity, destTpl = pairList.popleft()
+#                 print 'sum = %s tpl = (%s, %s)' % (capSum, capacity, destTpl)
+                capSum += capacity
+                if capSum >= lim:
+                    facList.append(destTpl)
+                    tot -= capacity
+                    newPL.extend(pairList)
+                    pairList = newPL
+#                     print 'breaking; facList = %s' % facList
+                    break
+                else:
+                    newPL.append((capacity, destTpl))
+        print 'done! %s' % facList
+        return [b for a, b in facList]
+#         facList = facList_sav
+#         tAM = self.core.getTierAddrMap(newTier)
+#         return [tAM[facAbbrev] for facAbbrev in facList]
+
+#     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
+#         return (super(CapacityTransferDestinationPolicy, self)
+#                 .getOrderedCandidateFacList(oldFacility, oldTier, newTier, timeNow))
+
+
+def getPolicyClasses():
+    return [DrawWithReplacementTransferDestinationPolicy]
+
+
+###########
+# Initialize the module
+###########
+_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
+                                                      _constants_values),
+                                         _constants_schema)

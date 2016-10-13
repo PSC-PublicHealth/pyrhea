@@ -1,0 +1,29 @@
+'facilityDirs':
+  - '/home/welling/git/pyrhea/models/ChicagoLand/facilityfacts'
+  - '/home/welling/git/pyrhea/models/ChicagoLand/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations'
+'facilitySelectors':
+  - 'category': '((SNF)|(VSNF))'
+    'implementation': 'NURSINGHOME'
+  - 'category': 'LTACH'
+    'implementation': 'LTAC'
+  - 'category': 'HOSPITAL'
+    'implementation': 'HOSPITAL'
+  - 'category': 'COMMUNITY'
+    'implementation': 'COMMUNITY'
+
+'pathogenImplementationDir': '../sim/mrsaImplementation_OC2013'
+
+'policyImplementationDir': '../sim/policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC))'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'MinDistanceTransferDestinationPolicy'
+
+#'runDurationDays': 1095
+'runDurationDays': 365
+
+#'burnInDays': 365
+burnInDays: 100

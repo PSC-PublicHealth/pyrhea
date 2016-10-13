@@ -165,10 +165,22 @@ class Facility(pyrheabase.Facility):
                                                    'Frail' if self.isFrail else 'Healthy')
 
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
-                 managerClass=FacilityManager):
+                 managerClass=FacilityManager, categoryNameMapper=None):
+        """
+        If provided, categoryNameMapper should be a function with the signature:
+        
+           implCat = categoryNameMapper(descrCat)
+           
+        where implCat is a facility implementation category name (e.g. NURSINGHOME) and
+        descrCat is a facility description category name (e.g. SNF).
+        """
         pyrheabase.Facility.__init__(self, name, patch, managerClass=managerClass,
                                      reqQueueClasses=reqQueueClasses)
-        self.category = descr['category']
+        if categoryNameMapper is None:
+            self.categoryNameMapper = (lambda(descrCat): descrCat)
+        else:
+            self.categoryNameMapper = categoryNameMapper
+        self.category = self.categoryNameMapper(descr['category'])
         self.abbrev = descr['abbrev']
         if 'longitude' in descr and 'latitude' in descr:
             self.coords = (descr['longitude'], descr['latitude'])

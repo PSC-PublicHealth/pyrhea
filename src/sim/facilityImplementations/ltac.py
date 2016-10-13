@@ -46,11 +46,12 @@ logger = logging.getLogger(__name__)
 
 
 class LTAC(Facility):
-    def __init__(self, descr, patch, policyClasses=None):
+    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[LTACQueue],
-                          policyClasses=policyClasses)
+                          policyClasses=policyClasses,
+                          categoryNameMapper=categoryNameMapper)
         bedsPerWard = _constants['bedsPerWard']['value']
         self.dischargeViaDeathFrac = _constants['dischargeViaDeathFrac']['value']
         nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
@@ -58,9 +59,13 @@ class LTAC(Facility):
                                   / float(descr['totalDischarges']['value']))
         self.fracDischargeHealthy = 1.0 - (self.totalTransferFrac
                                            + self.dischargeViaDeathFrac)
-        transferFrac = {v['category']: (self.totalTransferFrac * float(v['count']['value'])
-                                        / float(nTotalTransfersOut))
-                        for v in descr['totalTransfersOut']}
+        transferFrac = {}
+        for v in descr['totalTransfersOut']:
+            implCat = self.categoryNameMapper(v['category'])
+            if implCat not in transferFrac:
+                transferFrac[implCat] = 0.0
+            transferFrac[implCat] += (self.totalTransferFrac * float(v['count']['value'])
+                                      / float(nTotalTransfersOut))
         self.fracTransferHosp = (transferFrac['HOSPITAL'] if 'HOSPITAL' in transferFrac else 0.0)
         self.fracTransferLTAC = (transferFrac['LTAC'] if 'LTAC' in transferFrac else 0.0)
         self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
@@ -162,8 +167,9 @@ def _populate(fac, descr, patch):
     return agentList
 
 
-def generateFull(facilityDescr, patch, policyClasses=None):
-    fac = LTAC(facilityDescr, patch, policyClasses=policyClasses)
+def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+    fac = LTAC(facilityDescr, patch, policyClasses=policyClasses,
+               categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

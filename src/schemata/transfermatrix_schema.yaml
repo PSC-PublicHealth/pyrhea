@@ -1,0 +1,19 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/transfermatrix_schema.yaml'
+'title': 'transfer matrix schema'
+'description': 'schema for facility-to-facility transfer counts'
+
+'$ref': '#/definitions/transfermatrix'
+
+'definitions':
+  'toentries':
+    'type': 'object'
+    'description': 'property names are destinition locations, values are transfer counts'
+    'additionalProperties':
+      'type': 'number'
+
+  'transfermatrix':
+    'type': 'object'
+    'description': 'property names are origin locations'
+    'additionalProperties': { '$ref': '#/definitions/toentries' }
+      

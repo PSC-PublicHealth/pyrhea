@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import sys
 import os
 import yaml
@@ -85,7 +83,7 @@ def loadFacilityImplementations(implementationDir):
     return implDict
 
 
-def loadFacilityDescriptions(dirList, facImplDict):
+def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
     """
     This loads facilities, including communities, checking them against a schema.
     """
@@ -100,21 +98,27 @@ def loadFacilityDescriptions(dirList, facImplDict):
     for rec in rawRecs:
         assert 'abbrev' in rec, "Facility description has no 'abbrev' field: %s" % rec
         assert 'category' in rec, \
-            "Facility description for %(abbrev) has no 'category' field" % rec
-        nErrors = facImplDict[rec['category']].checkSchema(rec)
-        if nErrors:
-            logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+            "Facility description for %(abbrev)s has no 'category' field" % rec
+        facImplCategory = findFacImplCategory(facImplDict, facImplRules, rec['category'])
+        if facImplCategory:
+            facImpl = facImplDict[facImplCategory]
+            nErrors = facImpl.checkSchema(rec)
+            if nErrors:
+                logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+            else:
+                facRecs.append(rec)
         else:
-            facRecs.append(rec)
+            raise RuntimeError('cannot find a facility implementation for %s, category %s',
+                               rec['abbrev'], rec['category'])
     return facRecs
 
 
-def distributeFacilities(comm, facDirs, facImplDict, partitionFile):
+def distributeFacilities(comm, facDirs, facImplDict, facImplRules, partitionFile):
     """
     Estimate work associated with each facility and attempt to share it out fairly
     """
     if comm.size == 1:
-        facRecs = loadFacilityDescriptions(facDirs, facImplDict)
+        facRecs = loadFacilityDescriptions(facDirs, facImplDict, facImplRules)
         myFacList = facRecs
     else:
         assert partitionFile is not None, 'Expected a partition file'
@@ -122,7 +126,7 @@ def distributeFacilities(comm, facDirs, facImplDict, partitionFile):
             with open(partitionFile, 'rU') as f:
                 parentDict = yaml.safe_load(f)
             partitionDict = parentDict['partition']
-            facRecs = loadFacilityDescriptions(facDirs, facImplDict)
+            facRecs = loadFacilityDescriptions(facDirs, facImplDict, facImplRules)
             assignments = defaultdict(list)
             for r in facRecs:
                 assignments[partitionDict[r['abbrev']]].append(r)
@@ -333,22 +337,51 @@ def findPolicies(policyClassList,
     return l
 
 
-def initializeFacilities(patchList, myFacList, facImplDict, policyClassList, policyRules,
+def findFacImplCategory(facImplDict,
+                        facImplRules,
+                        category):
+    """
+    The 'category' parameter comes from a facility description 'category' attribute.
+    Map it to its matching facility implementation 'category' attribute using the
+    supplied rules.
+    """
+    for facRegex, implStr in facImplRules:
+        if facRegex.match(category):
+            return implStr
+    return None
+
+
+def createFacImplMap(facImplDict, facImplRules):
+    def myMap(category):
+        val = findFacImplCategory(facImplDict, facImplRules, category)
+        if val:
+            return val
+        else:
+            raise RuntimeError('cannot find a facility implementation for %s' % category)
+    return myMap
+            
+
+def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
+                         policyClassList, policyRules,
                          PthClass, noteHolderGroup, comm, totalRunDays):
     # Share the facilities out over the patches
     offset = 0
     tupleList = [(p, [], [], []) for p in patchList]
     for facDescription in myFacList:
         patch, allIter, allAgents, allFacilities = tupleList[offset]
-        if facDescription['category'] in facImplDict:
-            facImpl = facImplDict[facDescription['category']]
+        facImplCategory = findFacImplCategory(facImplDict, facImplRules,
+                                              facDescription['category'])
+        if facImplCategory:
+            facImpl = facImplDict[facImplCategory]
+            facImplMapFun = createFacImplMap(facImplDict, facImplRules)
             facilities, wards, patients = \
                 facImpl.generateFull(facDescription, patch,
                                      policyClasses=findPolicies(policyClassList,
                                                                 policyRules,
-                                                                facImpl.category))
+                                                                facImpl.category),
+                                     categoryNameMapper=facImplMapFun)
             for w in wards:
-                w.setInfectiousAgent(PthClass(w))
+                w.setInfectiousAgent(PthClass(w, useWardCategory=facImplCategory))
                 w.initializePatientPthState()
             for fac in facilities:
                 nh = noteHolderGroup.createNoteHolder()
@@ -448,48 +481,66 @@ def main():
         parser.destroy()
     else:
         clData = None
-    clData = comm.bcast(clData, root=0)
-
-    configureLogging(clData['logCfgDict'], clData['loggingExtra'])
-
-    verbose = clData['verbose']  # @UnusedVariable
-    debug = clData['debug']  # @UnusedVariable
-    trace = clData['trace']
-    deterministic = clData['deterministic']
-    inputDict = clData['input']
-
-    if deterministic:
-        seed(1234 + comm.rank)  # Set the random number generator seed
-
-    schemautils.setSchemaBasePath(schemaDir)
-    pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
-    assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
-    PthClass = pthImplDict.values()[0].getPathogenClass()
-
-    facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
-
-    policyClassList = loadPolicyImplementations(inputDict['policyImplementationDir'])
-    policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
-                   for rule in inputDict['policySelectors']]
-
-    myFacList = distributeFacilities(comm, inputDict['facilityDirs'], facImplDict,
-                                     clData['partitionFile'])
-    logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
-
-    patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
-                                    printCensus=clData['printCensus'])
-    noteHolderGroup = noteholder.NoteHolderGroup()
-    patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
-                 for i in xrange(clData['patches'])]  # @UnusedVariable
-    totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
-
-    # Add some things for which we need only one instance
-    patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
-                                        inputDict['burnInDays'], noteHolderGroup)])
-
-    initializeFacilities(patchList, myFacList, facImplDict, policyClassList, policyRules,
-                         PthClass, noteHolderGroup, comm, totalRunDays)
-
+        
+    try:
+        clData = comm.bcast(clData, root=0)
+    
+        configureLogging(clData['logCfgDict'], clData['loggingExtra'])
+    
+        verbose = clData['verbose']  # @UnusedVariable
+        debug = clData['debug']  # @UnusedVariable
+        trace = clData['trace']
+        deterministic = clData['deterministic']
+        inputDict = clData['input']
+    
+        if deterministic:
+            seed(1234 + comm.rank)  # Set the random number generator seed
+    
+        schemautils.setSchemaBasePath(schemaDir)
+        pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
+        assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
+        PthClass = pthImplDict.values()[0].getPathogenClass()
+    
+        facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
+        if 'facilitySelectors' in inputDict:
+            facImplRules = [(re.compile(rule['category']), rule['implementation'])
+                           for rule in inputDict['facilitySelectors']]
+        else:
+            facImplRules = [(re.compile(category), category)
+                            for category in facImplDict.keys()]  # an identity map
+    
+        policyClassList = loadPolicyImplementations(inputDict['policyImplementationDir'])
+        policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
+                       for rule in inputDict['policySelectors']]
+    
+        myFacList = distributeFacilities(comm, inputDict['facilityDirs'],
+                                         facImplDict, facImplRules,
+                                         clData['partitionFile'])
+        logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
+    
+        patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
+                                        printCensus=clData['printCensus'])
+        noteHolderGroup = noteholder.NoteHolderGroup()
+        patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
+                     for i in xrange(clData['patches'])]  # @UnusedVariable
+        totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
+    
+        # Add some things for which we need only one instance
+        patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
+                                            inputDict['burnInDays'], noteHolderGroup)])
+    
+        initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
+                             policyClassList, policyRules,
+                             PthClass, noteHolderGroup, comm, totalRunDays)
+    except Exception, e:
+        logger.error('%s exception during initialization: %s; traceback follows' %
+                     (patchGroup.name, e))
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        logger.info('%s exiting due to exception during initialization' % patchGroup.name)
+        logging.shutdown()
+        sys.exit('Exception during initialization')
+    
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     try:
         exitMsg = patchGroup.start()

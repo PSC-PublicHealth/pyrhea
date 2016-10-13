@@ -25,7 +25,6 @@ will match even if the list ['A', 'B', 'C'] in one matches against the list
 ['A', 'C', 'B'] in the other.
 """
 
-import os.path
 import signal
 import optparse
 import types
@@ -34,6 +33,9 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 
 
 def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
+    """
+    Compare two terms, recursively.
+    """
     if preamble is None:
         preamble = ''
     # print '%s %s -> %s' % (preamble, oldTerm, newTerm)
@@ -77,8 +79,12 @@ def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
     else:
         if oldTerm != newTerm:
             print '%s%s -> %s' % (preamble, oldTerm, newTerm)
-    
+
+
 def termCompare(facDict, updatedFacDict, abbrev, key):
+    """
+    Compare two top-level dictionary entries.
+    """
     if abbrev in facDict:
         if abbrev in updatedFacDict:
             if key in facDict[abbrev]:
@@ -101,7 +107,7 @@ def termCompare(facDict, updatedFacDict, abbrev, key):
         print '%s record was newly created in the update' % abbrev
     else:
         pass  # no such entry exists
-        
+
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
