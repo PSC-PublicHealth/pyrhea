@@ -61,28 +61,41 @@ class DWRCore(object):
         return self.tierAddrMap[tier]
     
     def _buildWeightedLists(self):
-        transferMatrixFilePath = _constants['transferFilePath']
-        logger.info('Importing the constant data file %s', transferMatrixFilePath)
-        rawTbl = pyrheautils.importConstants(transferMatrixFilePath,
-                                             _constants['transferFileSchema'])
         nmDict = CareTier.names
         tierFacSets = {tier: set(self.getTierAddrMap(tier).keys()) for tier in nmDict.keys()}
+        pairsSeen = set()
         self.tbl = {}
         self.totTbl = {}
-        for srcName, rec in rawTbl.items():
-            self.tbl[srcName] = {}
-            self.totTbl[srcName] = {}
-            for tier in nmDict.keys():
-                wtL = []
-                wtSum = 0
-                for destName, ct in rec.items():
-                    if destName in tierFacSets[tier]:
-                        wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
-                        wtSum += ct
+        for transferMatrixFilePath in _constants['transferFilePaths']:
+            logger.info('Importing the weight data file %s', transferMatrixFilePath)
+            rawTbl = pyrheautils.importConstants(transferMatrixFilePath,
+                                                 _constants['transferFileSchema'])
+            for srcName, rec in rawTbl.items():
+                if srcName not in self.tbl:
+                    self.tbl[srcName] = {}
+                    self.totTbl[srcName] = {}
+                for destName in rec.keys():
+                    if (srcName, destName) in pairsSeen:
+                        raise RuntimeError('Duplicate weight table entries for %s -> %s' %
+                                           (srcName, destName))
+                    else:
+                        pairsSeen.add((srcName, destName))
+                for tier in nmDict.keys():
+                    if tier not in self.tbl[srcName]:
+                        self.tbl[srcName][tier] = []
+                        self.totTbl[srcName][tier] = 0.0
+                    wtL = self.tbl[srcName][tier]
+                    wtSum = self.totTbl[srcName][tier]
+                    for destName, ct in rec.items():
+                        if destName in tierFacSets[tier]:
+                            wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
+                            wtSum += ct
+                    self.totTbl[srcName][tier] = wtSum
+            logger.info('Import complete.')
+        for srcName, subTbl in self.tbl.items():
+            for wtL in subTbl.values():     
                 wtL.sort(reverse=True)
-                self.tbl[srcName][tier] = wtL
-                self.totTbl[srcName][tier] = wtSum
-        logger.info('Import complete.')
+        logger.info('Post-processing of weight data files is complete.')
 
     def getTierWeightedList(self, srcName, tier):
         """
@@ -102,8 +115,8 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
         pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
-        print '%s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier], CareTier.names[newTier], tot)
-        print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
+#         print '%s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier], CareTier.names[newTier], tot)
+#         print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
         pairList = deque(pairList)
 #         print 'newTier: %s' % CareTier.names[newTier]
         facList = []
@@ -127,15 +140,7 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
                     break
                 else:
                     newPL.append((capacity, destTpl))
-        print 'done! %s' % facList
         return [b for a, b in facList]
-#         facList = facList_sav
-#         tAM = self.core.getTierAddrMap(newTier)
-#         return [tAM[facAbbrev] for facAbbrev in facList]
-
-#     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
-#         return (super(CapacityTransferDestinationPolicy, self)
-#                 .getOrderedCandidateFacList(oldFacility, oldTier, newTier, timeNow))
 
 
 def getPolicyClasses():

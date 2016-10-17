@@ -45,12 +45,18 @@ from scipy.stats import lognorm, expon
 nameMap = {'NURSINGHOME': 'NURSING',
            'HOSPITAL': 'HOSP',
            'COMMUNITY': 'HOME',
-           'LTAC': 'LTAC'}
+           'LTAC': 'LTAC',
+           'SNF': 'SNF',
+           'VSNF': 'VSNF',
+           'LTACH': 'LTACH'}
 
 constantFileNameMap = {'NURSINGHOME': 'nursinghome',
                        'HOSPITAL': 'hospital',
                        'COMMUNITY': 'community',
-                       'LTAC': 'ltac'}
+                       'LTAC': 'ltac',
+                       'SNF': 'nursinghome',
+                       'VSNF': 'nursinghome',
+                       'LTACH': 'ltac'}
 
 careTiers = ['HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU']
 
@@ -66,7 +72,10 @@ defaultNotesPath = os.path.join(thisDir, '../sim/notes.pkl')
 defaultDescrDirs = [os.path.join(thisDir, '../../models/OrangeCounty2013/facilityfactsCurrent2013'),
                     os.path.join(thisDir, '../../models/OrangeCounty2013/communitiesTiny'),
                     os.path.join(thisDir, '../../models/OrangeCounty2013/synthCommunities')]
-defaultConstDir = os.path.join(thisDir, '../sim/facilityImplementations2013')
+defaultDescrDirs += [os.path.join(thisDir, lpath)
+                     for lpath in['../../models/ChicagoLand/facilityfacts',
+                                  '../../models/ChicagoLand/synthCommunities']]
+defaultConstDir = os.path.join(thisDir, '../sim/facilityImplementations')
 
 
 def fullCRVFromMeanLOS(fitParms):
@@ -106,10 +115,10 @@ class LOSPlotter(object):
                                                            constants['icuLOSLogNormSigma']])
             if 'losModel' in descr:
                 self.fullCRVs['HOSP'] = fullCRVFromLOSModel(descr['losModel'])
-        elif descr['category'] == 'LTAC':
+        elif descr['category'] in ['LTAC', 'LTACH']:
             if 'losModel' in descr:
                 self.fullCRVs['LTAC'] = fullCRVFromLOSModel(descr['losModel'])
-        elif descr['category'] == 'NURSINGHOME':
+        elif descr['category'] in ['NURSINGHOME', 'SNF', 'VSNF']:
             if 'losModel' in descr:
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(descr['losModel'])
             else:
@@ -190,7 +199,7 @@ def overallLOSFig(catNames, allOfCategoryDict):
 def singleLOSFig(abbrev, notesDict):
     figs1b, axes1b = plt.subplots(nrows=len(careTiers), ncols=1)
     losDescr = loadFacilityDescription(abbrev)
-    constants = loadFacilityTypeConstants(losDescr['category'])
+    constants = loadFacilityTypeConstants(constantFileNameMap[losDescr['category']])
     losPlotter = LOSPlotter(losDescr, constants)
     for k in notesDict.keys():
         if k.endswith(abbrev):
@@ -485,16 +494,17 @@ def writeTransferMapAsDot(transferDict, fname):
 
     mtm.initializeMapCoordinates(facDict.values())
 
-    inclusionSet = [('NURSINGHOME', 'HOSPITAL'),
-                    ('NURSINGHOME', 'LTAC'),
-                    ('LTAC', 'NURSINGHOME'),
-                    ('HOSPITAL', 'NURSINGHOME'),
-                    ('HOSPITAL', 'HOSPITAL'),
-                    ('NURSINGHOME', 'NURSINGHOME'),
-                    ('LTAC', 'LTAC'),
-                    ('LTAC', 'HOSPITAL'),
-                    ('HOSPITAL', 'LTAC')
-                    ]
+    inclusionSet = [
+        ('NURSINGHOME', 'HOSPITAL'),
+        ('NURSINGHOME', 'LTAC'),
+        ('LTAC', 'NURSINGHOME'),
+        ('HOSPITAL', 'NURSINGHOME'),
+        ('HOSPITAL', 'HOSPITAL'),
+        ('NURSINGHOME', 'NURSINGHOME'),
+        ('LTAC', 'LTAC'),
+        ('LTAC', 'HOSPITAL'),
+        ('HOSPITAL', 'LTAC')
+        ]
 
     mtm.writeDotGraph('sim_graph.dot', 'Simulated patient transfers',
                       facDict, transferDict, inclusionSet)
@@ -511,11 +521,14 @@ def main():
     specialDict = {}
     for nm, d in notesDict.items():
         try:
-            category, abbrev = tuple(nm.split('_'))
-            abbrev = abbrev.lower()
-            if category not in categoryDict:
-                categoryDict[category] = {}
-            categoryDict[category][abbrev] = d
+            if '_' in nm and not nm.startswith('Patch'):
+                category, abbrev = tuple(nm.split('_', 1))
+                abbrev = abbrev.lower()
+                if category not in categoryDict:
+                    categoryDict[category] = {}
+                categoryDict[category][abbrev] = d
+            else:
+                specialDict[nm] = d
         except:
             specialDict[nm] = d
 
@@ -535,10 +548,11 @@ def main():
 
     overallLOSFig(catNames, allOfCategoryDict)
 
-    singleLOSFig('SJUD', notesDict)
-    singleLOSFig('WAEC', notesDict)
-    singleLOSFig('CM69', notesDict)
-    singleLOSFig('COLL', notesDict)
+#     singleLOSFig('SJUD', notesDict)
+#     singleLOSFig('WAEC', notesDict)
+#     singleLOSFig('CM69', notesDict)
+#     singleLOSFig('COLL', notesDict)
+    singleLOSFig('MANO_512_S', notesDict)
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
     patientFateFig(catNames, allOfCategoryDict)
