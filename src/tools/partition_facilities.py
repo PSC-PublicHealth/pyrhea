@@ -22,29 +22,35 @@ import optparse
 import logging
 import signal
 import yaml
+import re
 from datetime import datetime
 import numpy as np
 from map_transfer_matrix import parseFacilityData
+from notes_plotter import findFacImplCategory
 from notes_plotter import importNotes
 from pyrheautils import loadModulesFromDir
 import schemautils
-
+import geodatamanager
 import geomap
 
-schemaDir = '../schemata'
-inputSchema = 'rhea_input_schema.yaml'
+SCHEMA_DIR = '../schemata'
+INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 logger = None
 
 
-def buildLclWorkVec(orderedFacList, facDict, implementationDir):
+def buildLclWorkVec(orderedFacList, facDict, implementationDir, catToImplDict):
     implDict = {}
     for mod in loadModulesFromDir(implementationDir, ['category', 'estimateWork']):
         implDict[mod.category] = mod
     wtDict = {}
     for abbrev, descr in facDict.items():
-        wtDict[abbrev] = implDict[descr['category']].estimateWork(descr)
-    lclWorkVec = np.array([wtDict[k] for k in orderedFacList])
+        wtDict[abbrev] = implDict[catToImplDict[descr['category']]].estimateWork(descr)
+    for key in wtDict.keys():
+        if wtDict[key] == '':
+            print 'No weight for %s' % key
+            wtDict[key] = 0.0
+    lclWorkVec = np.array([float(wtDict[k]) for k in orderedFacList])
     return lclWorkVec
 
 
@@ -124,8 +130,11 @@ class WorkPartition(object):
     def calcInternalWork(self):
         """
         Calculate the current total work for this partition
-        """
-        return np.sum(self.wVec)
+        """ 
+        if len(self.wVec):
+            return np.sum(self.wVec)
+        else:
+            return 0.0
 
     def split(self, idx):
         """
@@ -253,16 +262,19 @@ class BinaryPartitionSet(PartitionSet):
 def lossFunc(work1, work2, crossWork):
     workDif = work1 - work2
     wt1 = 1.0
-    wt2 = 0.005
+    #wt2 = 0.005
+    wt2 = 0.002
     return wt1*(workDif*workDif) + wt2*(crossWork*crossWork)
 
 
-def drawMap(partitionSet, abbrevTractDict, facDict, geoDataPath, stateCode, countyCode):
+def drawMap(partitionSet, abbrevTractDict, facDict, geoDataPathList,
+            stateCodeRE, countyCodeRE, countySet, catToImplDict):
     ctrLon = sum([r['longitude'] for r in facDict.values()]) / len(facDict)
     ctrLat = sum([r['latitude'] for r in facDict.values()]) / len(facDict)
 
-    myMap = geomap.Map(geoDataPath, stateCode, countyCode, ctrLon, ctrLat,
-                       annotate=False)  # Map of Orange County
+    myMap = geomap.Map(geoDataPathList, stateCodeRE, countyCodeRE, ctrLon, ctrLat,
+                       annotate=False,
+                       regexCodes=True)
     LTRED = '#cc6666'
     RED = '#cc0000'
     LTMAGENTA = '#cc66cc'
@@ -276,17 +288,23 @@ def drawMap(partitionSet, abbrevTractDict, facDict, geoDataPath, stateCode, coun
     LTYELLOW = '#cccc66'
     YELLOW = '#cccc00'
 
+    tractGeoIDDict = {}
+    for geoID in myMap.tractIDList():
+        propRec = myMap.getTractProperties(geoID)
+        tractGeoIDDict[(propRec['STATE'] + propRec['COUNTY'], propRec['TRACT'])] = geoID
+
     clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
                    (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
     for idx, wP in enumerate(partitionSet.wPIter()):
         clr1, clr2 = clrTupleSeq[idx % len(clrTupleSeq)]
         for abbrev in wP.facIter():
             if abbrev in abbrevTractDict:
-                tract = abbrevTractDict[abbrev]
-                myMap.plotTract(tract, clr1)
+                geoID = tractGeoIDDict[abbrevTractDict[abbrev]]
+                myMap.plotTract(geoID, clr1)
             else:
                 rec = facDict[abbrev]
-                mrk = {'HOSPITAL': '*', 'LTAC': '+', 'NURSINGHOME': 'o'}[rec['category']]
+                implStr = catToImplDict[rec['category']].upper()
+                mrk = {'HOSPITAL': '*', 'LTAC': '+', 'NURSINGHOME': 'o'}[implStr]
                 myMap.plotMarker(rec['longitude'], rec['latitude'], mrk, rec['abbrev'], clr2)
 
     myMap.draw()
@@ -358,18 +376,32 @@ def main():
     outputPath = opts.out
     parser.destroy()
 
-    inputDict = checkInputFileSchema(inputPath, os.path.join(schemaDir, inputSchema))
+    inputDict = checkInputFileSchema(inputPath, os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
 
-    geoDataPath = '/home/welling/geo/tiger/tigr_2010_06.json'
-    stateCode = '06'
-    countyCode = '059'
+    gDM = geodatamanager.GeoDataManager()
+#     stateCodeRE = '06'
+#     countyCodeRE = '059'
+    countyCodeRE = r'.*'
+    stateCodeRE = r'.*'
 
     facDirList = inputDict['facilityDirs']
     implementationDir = inputDict['facilityImplementationDir']
 
     facDict = parseFacilityData(facDirList)
 
-    schemautils.setSchemaBasePath(schemaDir)
+    catNames = list(set([rec['category'] for rec in facDict.values()]))
+
+    if 'facilitySelectors' in inputDict:
+        facImplRules = [(re.compile(rule['category']), rule['implementation'])
+                       for rule in inputDict['facilitySelectors']]
+    else:
+        facImplRules = [(re.compile(cat), cat)
+                        for cat in catNames]  # an identity map
+
+    catToImplDict = {cat: findFacImplCategory(implementationDir, facImplRules, cat)
+                     for cat in catNames}
+
+    schemautils.setSchemaBasePath(SCHEMA_DIR)
 
     orderedFacList = facDict.keys()[:]
     orderedFacList.sort()
@@ -383,7 +415,8 @@ def main():
     #             assert val == 0 or facDict[abbrev]['category'].upper() in ['HOSPITAL'], 'fail %s %s' % (abbrev, val)
         transferMatrix /= float(len(notesFileList))
 
-    lclWorkVec = buildLclWorkVec(orderedFacList, facDict, implementationDir)
+    lclWorkVec = buildLclWorkVec(orderedFacList, facDict, implementationDir,
+                                  catToImplDict)
 
     fullWP = WorkPartition(orderedFacList, lclWorkVec, transferMatrix)
 
@@ -397,13 +430,17 @@ def main():
     partitionSet.partition(numParts)
 
     abbrevTractDict = {}
+    countySet = set()
     for abbrev, rec in facDict.items():
-        if rec['category'] == 'COMMUNITY':
-            tractStr = rec['name'].split()[-1]
-            abbrevTractDict[abbrev] = tractStr
+        if 'FIPS' in rec:
+            countySet.add(abbrev)
+            gDM.addFIPS(rec['FIPS'])
+        if 'censusTract' in rec:
+            assert 'FIPS' in rec, '%s has a tract but no FIPS code?' % abbrev
+            abbrevTractDict[abbrev] = (rec['FIPS'], rec['censusTract'])
 
     drawMap(partitionSet, abbrevTractDict, facDict,
-            geoDataPath, stateCode, countyCode)
+            gDM.getGeoDataFileList(), stateCodeRE, countyCodeRE, countySet, catToImplDict)
 
     partitionByAbbrev = {}
     for idx, wP in enumerate(partitionSet.wPIter()):

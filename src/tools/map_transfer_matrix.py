@@ -60,10 +60,11 @@ class Graph(object):
                        ('shape', 'shape'),
                        ('style', 'style'),
                        ('height', 'height'),
+                       ('fillcolor', 'fillcolor'),
                        ('pos', 'pos')]:
             if k1 in attrDict:
                 attrStr += ', %s=%s' % (k2, attrDict[k1])
-        attrStr = attrStr[1:]  # drop leading comma
+#         attrStr = attrStr[1:]  # drop leading comma
         self.ofile.write('%s [%s];\n' % (nodeName, attrStr))
 
     def addEdge(self, fromNodeName, toNodeName, attrDict={}):
@@ -109,7 +110,12 @@ def facToNodeAttrs(facRec):
         if isinstance(facRec['meanPop'], (types.IntType, types.FloatType)):
             szFac = float(facRec['meanPop'])
         else:
-            szFac = float(facRec['meanPop']['value'])
+            try:
+                szFac = float(facRec['meanPop']['value'])
+            except ValueError:
+                print ('%s meanPop invalid value <%s>' %
+                       (facRec['abbrev'], facRec['meanPop']['value']))
+                szFac = None
     else:
         print '%s has no nBeds or meanPop' % facRec['abbrev']
         szFac = None
@@ -295,14 +301,29 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
     with Graph(fname, title=title) as g:
         for src in facDict.keys():
             src = src.lower()
+#             if (facDict[src]['longitude'] < -87.6 or facDict[src]['longitude'] > -87.2
+#                     or facDict[src]['latitude'] < 41.41 or facDict[src]['latitude'] > 41.61):
+#                 continue
             if src not in createdSet:
                 g.addNode(src, facToNodeAttrs(facDict[src]))
                 createdSet.add(src)
 
         for src, r in transferDict.items():
             src = src.lower()
+            if (src not in facDict 
+#                 or
+#                 facDict[src]['longitude'] < -87.6 or facDict[src]['longitude'] > -87.2
+#                     or facDict[src]['latitude'] < 41.41 or facDict[src]['latitude'] > 41.61
+                    ):
+                continue
             for dst, v in r.items():
                 dst = dst.lower()
+                if (dst not in facDict 
+#                     or
+#                     facDict[dst]['longitude'] < -87.6 or facDict[dst]['longitude'] > -87.2
+#                         or facDict[dst]['latitude'] < 41.41 or facDict[dst]['latitude'] > 41.61
+                        ):
+                    continue
                 if transOutDict[src] > 0.0 and transInDict[dst] > 0.0:
                     if src in invertDict and dst in invertDict[src]:
                         reverseV = invertDict[src][dst]
@@ -344,6 +365,19 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
     return transInDict, transOutDict
 
 
+def addFacilityTypeSynonyms(inclusionSet):
+    inclusionSet = set(inclusionSet)  # in case we get passed a list
+    synDict = {'NURSINGHOME': ['SNF', 'VSNF'],
+               'LTAC': ['LTACH'],
+               'HOSPITAL': []}
+    newSet = inclusionSet.copy()
+    for tpl in inclusionSet:
+        fm, to = tpl
+        for newFm in synDict[fm] + [fm]:
+            for newTo in synDict[to] + [to]:
+                newSet.add((newFm, newTo))
+    return newSet
+
 def main():
     # facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
     #                             'facilityfactsCurrent')
@@ -380,6 +414,7 @@ def main():
                     ('LTAC', 'HOSPITAL'),
                     ('HOSPITAL', 'LTAC')
                     ]
+    inclusionSet = addFacilityTypeSynonyms(inclusionSet)
     title = "HOSPITAL + LTAC internal direct transfers"
     # title = 'NURSINGHOME internal direct transfers'
     # title = "NURSINGHOME to/from HOSPITAL+LTAC direct + indirect transfers"

@@ -15,15 +15,19 @@
 #                                                                                 #
 ###################################################################################
 
+import sys
 import os.path
 import signal
 import optparse
+import yaml
+import cPickle as pickle
 
+import schemautils
 from map_transfer_matrix import parseFacilityData
 import phacsl.utils.formats.csv_tools as csv_tools
-
-
+import phacsl.utils.formats.yaml_tools as yaml_tools
 import geomap
+import geodatamanager
 
 # http://stackoverflow.com/questions/18229628/python-profiling-using-line-profiler-clever-way-to-remove-profile-statements
 try:
@@ -51,6 +55,10 @@ GREEN = '#00cc00'
 LTYELLOW = '#cccc66'
 YELLOW = '#cccc00'
 
+SCHEMA_DIR = '../schemata'
+INPUT_SCHEMA = 'rhea_input_schema.yaml'
+
+DEFAULT_NOTES_FNAME = 'notes.pkl'
 
 def categoryToColor(cat):
     return {'HOSPITAL': 'red', 'LTAC': 'green', 'NURSINGHOME': 'blue', 'COMMUNITY': 'pink',
@@ -127,67 +135,88 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
     myMap.draw()
 
 
+def checkInputFileSchema(fname, schemaFname):
+    try:
+        with open(fname, 'rU') as f:
+            inputJSON = yaml.safe_load(f)
+        validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
+        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+        if nErrors:
+            print 'Input file violates schema:'
+            for e in validator.iter_errors(inputJSON):
+                print ('Schema violation: %s: %s' %
+                       (' '.join([str(word) for word in e.path]), e.message))
+            sys.exit('Input file violates schema')
+        else:
+            return inputJSON
+    except Exception, e:
+        sys.exit('Error checking input against its schema: %s' % e)
+
+
+def importNotes(fname):
+    with open(fname, 'r') as f:
+        stuff = pickle.load(f)
+    return stuff
+
+
 def main():
-    verbose = False
-    debug = False
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
     # handy trick to enable attachment of pdb to a running program
     def handle_pdb(sig, frame):
         import pdb
         pdb.Pdb().set_trace(frame)
     signal.signal(signal.SIGUSR1, handle_pdb)
+    
 
-    geoDataDir = '/home/welling/geo/USA'
-    geoDataPathList = [os.path.join(geoDataDir, 'IL/tigr_2010_17.geojson'),
-                       os.path.join(geoDataDir, 'IN/tigr_2010_18.geojson'),
-                       os.path.join(geoDataDir, 'IA/tigr_2010_19.geojson'),
-                       os.path.join(geoDataDir, 'WI/tigr_2010_55.geojson'),
-                       ]
-    countyCodePath = os.path.join(geoDataDir, 'fips_county_codes.csv')
+    parser = optparse.OptionParser(usage="""
+    %prog [-n notes.pkl] run_descr.yaml
+    """)
 
-    modelDir = os.path.join(os.path.dirname(__file__), '../../models/ChicagoLand/')
-    facDict = parseFacilityData([
-                                 os.path.join(modelDir, 'facilityfacts'),
-                                 os.path.join(modelDir, 'synthCommunities')
-                                 ])
-    countyCodeDict = loadCountyCodes(countyCodePath)
-    cL = []
+    parser.add_option('-n', '--notes', action='store', type='string',
+                      help="Notes filename (overrides any name in the run description)")
+    opts, args = parser.parse_args()
+    if len(args) != 1:
+        parser.error('A YAML run description is required')
+
+    parser.destroy()
+
+    inputDict = checkInputFileSchema(args[0],
+                                     os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+    implDir = inputDict['facilityImplementationDir']
+
+    if opts.notes:
+        notesFName = opts.notes
+    elif 'notesFileName' in inputDict:
+        notesFName = inputDict['notesFileName']
+    else:
+        notesFName = DEFAULT_NOTES_FNAME
+
+    notesDict = importNotes(notesFName)
+
+    gDM = geodatamanager.GeoDataManager()
+
+    facDict = parseFacilityData(inputDict['facilityDirs'])
     countySet = set()
     for rec in facDict.values():
         if 'FIPS' in rec:
             fipsCode = rec['FIPS']
             countySet.add((int(fipsCode[:2]), int(fipsCode[2:])))
+            gDM.addFIPS(fipsCode)
         else:
             line = rec['address']
             strs = line.split(',')
-            stateStr = strs[3].split()[0].upper()
-            countyStr = strs[2].split()[0].lower()
-            cL.append((stateStr, countyStr))
-    for sname, cname in list(set(cL)):
-        if (sname, cname) in countyCodeDict:
-            countySet.add(countyCodeDict[(sname, cname)])
-        else:
-            print 'No code for <%s><%s>' % (sname, cname)
-#     countyFIPSList = list(countySet)
-#     countyFIPSRE = r'((' + r')|('.join(["%03d" % cF for cF in countyFIPSList]) + r'))'
-#     stateFIPSRE = r'17'
+            if 'USA' in strs[-1]:
+                strs = strs[:-1]
+            if 'county' in strs[-2].lower():
+                stateStr = strs[-1].split()[0].upper()
+                countyStr = strs[-2].split()[0].lower()
+                try:
+                    gDM.addCounty(stateStr, countyStr)
+                except:
+                    print 'Unknown county %s %s' % (countyStr, stateStr)
     countyFIPSRE = r'.*'
     stateFIPSRE = r'.*'
 
-    parser = optparse.OptionParser(usage="""
-    %prog [-v][-d] input.csv
-    """)
-    parser.add_option("-v", "--verbose", action="store_true",
-                      help="verbose output")
-    parser.add_option("-d", "--debug", action="store_true",
-                      help="debugging output")
-
-    opts, args = parser.parse_args()
-
-    if opts.debug:
-        debug = True
-    elif opts.verbose:
-        verbose = True
 
 #     if len(args) == 1:
 #         inputPath = args[0]
@@ -216,7 +245,7 @@ def main():
 #     stateCode = '06'
 #     countyCode = '059'
 
-    drawMap(geoDataPathList, facDict.values(), stateFIPSRE, countyFIPSRE, countySet)
+    drawMap(gDM.getGeoDataFileList(), facDict.values(), stateFIPSRE, countyFIPSRE, countySet)
 
 if __name__ == "__main__":
     main()

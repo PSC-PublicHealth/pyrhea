@@ -19,15 +19,19 @@ _rhea_svn_id_ = "$Id$"
 
 import sys
 import os.path
-import os
+from optparse import OptionParser
 
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
 
+import re
 import yaml
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
+from pyrheautils import importConstants
+from facilitybase import CareTier as CareTierEnum
+import schemautils
 from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
 import pathogenbase as pth
@@ -41,41 +45,29 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import lognorm, expon
 
+SCHEMA_DIR = '../schemata'
+INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
-nameMap = {'NURSINGHOME': 'NURSING',
-           'HOSPITAL': 'HOSP',
-           'COMMUNITY': 'HOME',
-           'LTAC': 'LTAC',
-           'SNF': 'SNF',
-           'VSNF': 'VSNF',
-           'LTACH': 'LTACH'}
+DEFAULT_NOTES_FNAME = 'notes.pkl'
 
-constantFileNameMap = {'NURSINGHOME': 'nursinghome',
-                       'HOSPITAL': 'hospital',
-                       'COMMUNITY': 'community',
-                       'LTAC': 'ltac',
-                       'SNF': 'nursinghome',
-                       'VSNF': 'nursinghome',
-                       'LTACH': 'ltac'}
+CARE_TIERS = CareTierEnum.names.values()[:]
 
-careTiers = ['HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU']
-
-
-# defaultNotesPath = '/home/welling/workspace/pyRHEA/src/sim/notes.pkl'
-# defaultDescrDirs = ['/home/welling/workspace/pyRHEA/models/OrangeCounty2013/facilityfactsCurrent2013',
-#                     '/home/welling/workspace/pyRHEA/models/OrangeCounty2013/communitiesTiny']
-# defaultConstDir = '/home/welling/workspace/pyRHEA/src/sim/facilityImplementations2013'
-
-
-thisDir = os.path.dirname(__file__)
-defaultNotesPath = os.path.join(thisDir, '../sim/notes.pkl')
-defaultDescrDirs = [os.path.join(thisDir, '../../models/OrangeCounty2013/facilityfactsCurrent2013'),
-                    os.path.join(thisDir, '../../models/OrangeCounty2013/communitiesTiny'),
-                    os.path.join(thisDir, '../../models/OrangeCounty2013/synthCommunities')]
-defaultDescrDirs += [os.path.join(thisDir, lpath)
-                     for lpath in['../../models/ChicagoLand/facilityfacts',
-                                  '../../models/ChicagoLand/synthCommunities']]
-defaultConstDir = os.path.join(thisDir, '../sim/facilityImplementations')
+def checkInputFileSchema(fname, schemaFname):
+    try:
+        with open(fname, 'rU') as f:
+            inputJSON = yaml.safe_load(f)
+        validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
+        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+        if nErrors:
+            print 'Input file violates schema:'
+            for e in validator.iter_errors(inputJSON):
+                print ('Schema violation: %s: %s' %
+                       (' '.join([str(word) for word in e.path]), e.message))
+            sys.exit('Input file violates schema')
+        else:
+            return inputJSON
+    except Exception, e:
+        sys.exit('Error checking input against its schema: %s' % e)
 
 
 def fullCRVFromMeanLOS(fitParms):
@@ -107,23 +99,23 @@ def fullCRVFromLOSModel(losModel):
 
 
 class LOSPlotter(object):
-    def __init__(self, descr, constants):
+    def __init__(self, descr, constants, facToImplDict):
         self.fullCRVs = {}
-        if descr['category'] == 'HOSPITAL':
+        if facToImplDict[descr['category']] == 'HOSPITAL':
             if 'meanLOSICU' in descr:
                 self.fullCRVs['ICU'] = fullCRVFromMeanLOS([descr['meanLOSICU'],
                                                            constants['icuLOSLogNormSigma']])
             if 'losModel' in descr:
                 self.fullCRVs['HOSP'] = fullCRVFromLOSModel(descr['losModel'])
-        elif descr['category'] in ['LTAC', 'LTACH']:
+        elif facToImplDict[descr['category']] == 'LTAC':
             if 'losModel' in descr:
                 self.fullCRVs['LTAC'] = fullCRVFromLOSModel(descr['losModel'])
-        elif descr['category'] in ['NURSINGHOME', 'SNF', 'VSNF']:
+        elif facToImplDict[descr['category']] == 'NURSINGHOME':
             if 'losModel' in descr:
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(descr['losModel'])
             else:
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(constants['nhLOSModel'])
-        elif descr['category'] == 'COMMUNITY':
+        elif facToImplDict[descr['category']] == 'COMMUNITY':
             self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
         else:
             raise RuntimeError("facility %s has unknown category %s - cannot plot LOS"
@@ -141,8 +133,8 @@ class LOSPlotter(object):
             axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
-def loadFacilityDescription(abbrev):
-    for descDir in defaultDescrDirs:
+def loadFacilityDescription(abbrev, facilityDirs):
+    for descDir in facilityDirs:
         fname = os.path.join(descDir, abbrev + '.yaml')
         if os.path.exists(fname):
             with open(fname, 'rU') as f:
@@ -150,9 +142,12 @@ def loadFacilityDescription(abbrev):
     raise RuntimeError('No description file found for %s' % abbrev)
 
 
-def loadFacilityTypeConstants(category):
-    with open(os.path.join(defaultConstDir, category.lower() + '_constants.yaml'), 'rU') as f:
-        return yaml_tools._simplify(yaml.safe_load(f))
+def loadFacilityTypeConstants(category, implementationDir):
+    jsonDict = importConstants(os.path.join(implementationDir,
+                                            category.lower() + '_constants.yaml'),
+                               os.path.join(SCHEMA_DIR,
+                                            category.lower() + '_constants_schema.yaml'))
+    return yaml_tools._simplify(jsonDict)
 
 
 def importNotes(fname):
@@ -174,36 +169,42 @@ def collectBarSamples(histoVal):
     return bins, counts, barWidth
 
 
-def overallLOSFig(catNames, allOfCategoryDict):
-    figs1, axes1 = plt.subplots(nrows=len(allOfCategoryDict), ncols=1)
-    for offset, cat in enumerate(catNames):
-        constants = loadFacilityTypeConstants(constantFileNameMap[cat])
-        losPlotter = LOSPlotter({'abbrev': 'all', 'category': cat}, constants)
-        bigHisto = HistoVal([])
-        for tier in careTiers:
-            try:
-                bigHisto += allOfCategoryDict[cat][tier + '_LOS']
-            except:
-                pass
-        bins, counts, barWidth = collectBarSamples(bigHisto)
-        rects = axes1[offset].bar(bins, counts, width=barWidth, color='b')  # @UnusedVariable
-        axes1[offset].set_ylabel('Counts')
-        axes1[offset].set_xlabel('Days')
-        axes1[offset].set_title('LOS for ' + cat)
-        if bins:
-            losPlotter.plot(nameMap[cat], axes1[offset], 300, 0, max(bins), sum(counts))
+def overallLOSFig(catNames, allOfCategoryDict, facToImplDict, implDir):
+    nPlots = 0
+    for cat in catNames:
+        for tier in CARE_TIERS:
+            if cat in allOfCategoryDict and (tier + '_LOS') in allOfCategoryDict[cat]:
+                nPlots += 1
+    figs1, axes1 = plt.subplots(nrows=nPlots, ncols=1)
+    offset = 0
+    for cat in catNames:
+        if cat not in allOfCategoryDict:
+            continue
+        constants = loadFacilityTypeConstants(facToImplDict[cat].lower(), implDir)
+        losPlotter = LOSPlotter({'abbrev': 'all', 'category': cat}, constants,
+                                facToImplDict)
+        for tier in CARE_TIERS:
+            if (tier + '_LOS') in allOfCategoryDict[cat]:
+                bins, counts, barWidth = collectBarSamples(allOfCategoryDict[cat][tier + '_LOS'])
+                axes1[offset].bar(bins, counts, width=barWidth, color='b')
+                axes1[offset].set_ylabel('Counts')
+                axes1[offset].set_xlabel('Days')
+                axes1[offset].set_title('LOS for %s %s' % (cat, tier))
+                if bins:
+                    losPlotter.plot(tier, axes1[offset], 300, 0, max(bins), sum(counts))
+                offset += 1
     figs1.tight_layout()
     figs1.canvas.set_window_title("LOS Histograms By Category")
 
 
-def singleLOSFig(abbrev, notesDict):
-    figs1b, axes1b = plt.subplots(nrows=len(careTiers), ncols=1)
-    losDescr = loadFacilityDescription(abbrev)
-    constants = loadFacilityTypeConstants(constantFileNameMap[losDescr['category']])
-    losPlotter = LOSPlotter(losDescr, constants)
+def singleLOSFig(abbrev, notesDict, facilityDirs, facToImplDict, implDir):
+    figs1b, axes1b = plt.subplots(nrows=len(CARE_TIERS), ncols=1)
+    losDescr = loadFacilityDescription(abbrev, facilityDirs)
+    constants = loadFacilityTypeConstants(facToImplDict[losDescr['category']].lower(), implDir)
+    losPlotter = LOSPlotter(losDescr, constants, facToImplDict)
     for k in notesDict.keys():
         if k.endswith(abbrev):
-            for idx, tier in enumerate(careTiers):
+            for idx, tier in enumerate(CARE_TIERS):
                 tK = tier + '_LOS'
                 if tK in notesDict[k]:
                     bins, counts, barWidth = collectBarSamples(notesDict[k][tK])
@@ -223,8 +224,8 @@ def singleLOSFig(abbrev, notesDict):
 
 def bedBounceFig(allOfCategoryDict):
     catNames = allOfCategoryDict.keys()[:]
-    figs2, axes2 = plt.subplots(nrows=len(careTiers), ncols=1)
-    for offset, tier in enumerate(careTiers):
+    figs2, axes2 = plt.subplots(nrows=len(CARE_TIERS), ncols=1)
+    for offset, tier in enumerate(CARE_TIERS):
         key = '%s_bounce_histo' % tier
         hv = HistoVal([])
         for cat in catNames:
@@ -235,7 +236,7 @@ def bedBounceFig(allOfCategoryDict):
         for k, v in hv.histogram().items():
             bins.append(k)
             counts.append(v)
-        rects = axes2[offset].bar(bins, counts, color='r')  # @UnusedVariable
+        axes2[offset].bar(bins, counts, color='r')  # @UnusedVariable
         axes2[offset].set_ylabel('Counts')
         axes2[offset].set_xlabel('Bounces')
         axes2[offset].set_title('Bounces for Bed Requests for ' + tier)
@@ -245,8 +246,8 @@ def bedBounceFig(allOfCategoryDict):
 
 def patientFlowFig(allOfCategoryDict):
     catNames = allOfCategoryDict.keys()[:]
-    figs3, axes3 = plt.subplots(nrows=1, ncols=len(careTiers))
-    for offset, tier in enumerate(careTiers):
+    figs3, axes3 = plt.subplots(nrows=1, ncols=len(CARE_TIERS))
+    for offset, tier in enumerate(CARE_TIERS):
         nArrive = 0
         nDepart = 0
         for cat in catNames:
@@ -276,8 +277,8 @@ def patientFateFig(catNames, allOfCategoryDict):
               'ICU': 'cyan',
               'LTAC': 'yellow'}
     for offset, cat in enumerate(catNames):
-        keys = ['death'] + ['%s_found' % tier for tier in careTiers]
-        labels = ['death'] + careTiers
+        keys = ['death'] + ['%s_found' % tier for tier in CARE_TIERS]
+        labels = ['death'] + CARE_TIERS
         counts = []
         for k in keys:
             if k in allOfCategoryDict[cat]:
@@ -336,45 +337,6 @@ def occupancyTimeFig(specialDict):
         axes5[offset].set_title(patchName)
     figs5.tight_layout()
     figs5.canvas.set_window_title("Time History of Occupancy")
-
-
-# def pathogenTimeFig(specialDict):
-#     figs6, axes6 = plt.subplots(nrows=1, ncols=len(specialDict))
-#     if len(specialDict) == 1:
-#         axes6 = [axes6]
-#     for offset, (patchName, data) in enumerate(specialDict.items()):
-#         try:
-#             pthDataList = data['pathogen']
-#             assert isinstance(pthDataList, types.ListType), \
-#                 'Special data %s is not a list' % patchName
-#             fields = {}
-#             for d in pthDataList:
-#                 for k, v in d.items():
-#                     if k not in fields:
-#                         fields[k] = []
-#                     fields[k].append(v)
-#             assert 'day' in fields, 'Date field is missing for special data %s' % patchName
-#             dayList = fields['day']
-#             del fields['day']
-#             keys = fields.keys()
-#             keys.sort()
-#             for k in keys:
-#                 facClassNm, enumStr = k.split('_')
-#                 l = fields[k]
-#                 lbl = '%s %s' % (facClassNm, pth.Status.names[int(enumStr)])
-#                 assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
-#                                                  '(%d vs. %d)')
-#                                                 % (k, patchName, len(l), len(dayList)))
-#                 if not all([ll == 0 for ll in l]) and facClassNm == 'Hospital':
-#                     axes6[offset].plot(dayList, l, label=lbl)
-#             axes6[offset].set_xlabel('Days')
-#             axes6[offset].set_ylabel('Pathogen Prevalence')
-#             axes6[offset].legend()
-#         except Exception, e:
-#             print e
-#         axes6[offset].set_title(patchName)
-#     figs6.tight_layout()
-#     figs6.canvas.set_window_title("Time History of Occupancy")
 
 
 def pathogenTimeFig(specialDict):
@@ -488,9 +450,8 @@ def writeTransferMapAsCSV(transferMap, fname):
         csv_tools.writeCSV(f, kL, recs)
 
 
-def writeTransferMapAsDot(transferDict, fname):
-    facDict = mtm.parseFacilityData(os.path.join(thisDir, '../../models/OrangeCounty2013/'
-                                                 'facilityfactsCurrent2013'))
+def writeTransferMapAsDot(transferDict, fname, facilityDirs, catToImplDict):
+    facDict = mtm.parseFacilityData(facilityDirs)
 
     mtm.initializeMapCoordinates(facDict.values())
 
@@ -505,32 +466,72 @@ def writeTransferMapAsDot(transferDict, fname):
         ('LTAC', 'HOSPITAL'),
         ('HOSPITAL', 'LTAC')
         ]
+    
+    catL = catToImplDict.keys()[:]
+    translatedInclusionSet = []
+    for src in catL:
+        for dst in catL:
+            if (catToImplDict[src], catToImplDict[dst]) in inclusionSet:
+                translatedInclusionSet.append((src, dst))
 
     mtm.writeDotGraph('sim_graph.dot', 'Simulated patient transfers',
-                      facDict, transferDict, inclusionSet)
+                      facDict, transferDict, translatedInclusionSet)
 
+
+def findFacImplCategory(facImplDict,
+                        facImplRules,
+                        category):
+    """
+    The 'category' parameter comes from a facility description 'category' attribute.
+    Map it to its matching facility implementation 'category' attribute using the
+    supplied rules.
+    """
+    for facRegex, implStr in facImplRules:
+        if facRegex.match(category):
+            return implStr
+    return None
 
 def main():
-    if len(sys.argv) > 1:
-        notesFName = sys.argv[1]
+    """
+    main
+    """
+    parser = OptionParser(usage="""
+    %prog [--notes notes_file.pkl] run_descr.yaml
+    """)
+    parser.add_option('-n', '--notes', action='store', type='string',
+                      help="Notes filename (overrides any name in the run description)")
+    opts, args = parser.parse_args()
+    if len(args) != 1:
+        parser.error('A YAML run description is required')
+
+    parser.destroy()
+
+    inputDict = checkInputFileSchema(args[0],
+                                     os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+    implDir = inputDict['facilityImplementationDir']
+    
+    if opts.notes:
+        notesFName = opts.notes
+    elif 'notesFileName' in inputDict:
+        notesFName = inputDict['notesFileName']
     else:
-        notesFName = defaultNotesPath
+        notesFName = DEFAULT_NOTES_FNAME
 
     notesDict = importNotes(notesFName)
     categoryDict = {}
     specialDict = {}
-    for nm, d in notesDict.items():
+    for nm, dct in notesDict.items():
         try:
             if '_' in nm and not nm.startswith('Patch'):
                 category, abbrev = tuple(nm.split('_', 1))
                 abbrev = abbrev.lower()
                 if category not in categoryDict:
                     categoryDict[category] = {}
-                categoryDict[category][abbrev] = d
+                categoryDict[category][abbrev] = dct
             else:
-                specialDict[nm] = d
+                specialDict[nm] = dct
         except:
-            specialDict[nm] = d
+            specialDict[nm] = dct
 
     noteHolderGroup = noteholder.NoteHolderGroup()
     allOfCategoryDict = {}
@@ -541,18 +542,30 @@ def main():
 
     catNames = allOfCategoryDict.keys()[:]
 
+    if 'facilitySelectors' in inputDict:
+        facImplRules = [(re.compile(rule['category']), rule['implementation'])
+                       for rule in inputDict['facilitySelectors']]
+    else:
+        facImplRules = [(re.compile(cat), cat)
+                        for cat in catNames]  # an identity map
+
+    catToImplDict = {cat: findFacImplCategory(implDir, facImplRules, cat)
+                     for cat in catNames}
+
     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
-                          'sim_transfer_matrix.csv')
+                          'sim_transfer_matrix.csv',
+                          inputDict['facilityDirs'], catToImplDict)
 
     countBirthsDeaths(catNames, allOfCategoryDict)
 
-    overallLOSFig(catNames, allOfCategoryDict)
+    overallLOSFig(catNames, allOfCategoryDict, catToImplDict, implDir)
 
-#     singleLOSFig('SJUD', notesDict)
-#     singleLOSFig('WAEC', notesDict)
-#     singleLOSFig('CM69', notesDict)
-#     singleLOSFig('COLL', notesDict)
-    singleLOSFig('MANO_512_S', notesDict)
+#     singleLOSFig('SJUD', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+#     singleLOSFig('WAEC', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+#     singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+#     singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+    singleLOSFig('MANO_512_S', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
     patientFateFig(catNames, allOfCategoryDict)
