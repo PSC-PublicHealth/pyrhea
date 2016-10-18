@@ -112,14 +112,17 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
 
     for r in locRecs:
         name = r['abbrev']
-        try:
-            mrk = {'SNF': '+', 'VSNF': '+', 'NURSINGHOME': '+', 'HOSPITAL': '*',
-                   'LTAC': 'o', 'LTACH': 'o', 'CHILDREN': 'x'}[r['category']]
-        except KeyError:
-            print 'No marker type for %s' % r['category']
-            mrk = 'x'
-        if name:
-            myMap.plotMarker(float(r['longitude']), float(r['latitude']), mrk, name, 'black')
+        if 'censusTract' in r:
+            pass  # Already drew these while plotting tracts above
+        else:
+            try:
+                mrk = {'SNF': '+', 'VSNF': '+', 'NURSINGHOME': '+', 'HOSPITAL': '*',
+                       'LTAC': 'o', 'LTACH': 'o', 'CHILDREN': 'x'}[r['category']]
+            except KeyError:
+                print 'No marker type for %s' % r['category']
+                mrk = 'x'
+            if name:
+                myMap.plotMarker(float(r['longitude']), float(r['latitude']), mrk, name, 'black')
 
     myMap.draw()
 
@@ -145,19 +148,22 @@ def main():
     modelDir = os.path.join(os.path.dirname(__file__), '../../models/ChicagoLand/')
     facDict = parseFacilityData([
                                  os.path.join(modelDir, 'facilityfacts'),
-#                                  os.path.join(modelDir, 'synthCommunities')
+                                 os.path.join(modelDir, 'synthCommunities')
                                  ])
     countyCodeDict = loadCountyCodes(countyCodePath)
     cL = []
-    for rec in facDict.values():
-        line = rec['address']
-        strs = line.split(',')
-        stateStr = strs[3].split()[0].upper()
-        countyStr = strs[2].split()[0].lower()
-        cL.append((stateStr, countyStr))
-    countiesInPlay = list(set(cL))
     countySet = set()
-    for sname, cname in countiesInPlay:
+    for rec in facDict.values():
+        if 'FIPS' in rec:
+            fipsCode = rec['FIPS']
+            countySet.add((int(fipsCode[:2]), int(fipsCode[2:])))
+        else:
+            line = rec['address']
+            strs = line.split(',')
+            stateStr = strs[3].split()[0].upper()
+            countyStr = strs[2].split()[0].lower()
+            cL.append((stateStr, countyStr))
+    for sname, cname in list(set(cL)):
         if (sname, cname) in countyCodeDict:
             countySet.add(countyCodeDict[(sname, cname)])
         else:
