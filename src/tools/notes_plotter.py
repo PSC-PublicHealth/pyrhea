@@ -268,14 +268,37 @@ def patientFlowFig(allOfCategoryDict):
     figs3.canvas.set_window_title("Patient Flow By Tier")
 
 
-def patientFateFig(catNames, allOfCategoryDict):
-    figs4, axes4 = plt.subplots(nrows=1, ncols=len(catNames))
+def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
+#     fig4, ax4 = plt.subplot()
+    fig4 = plt.figure(figsize=(len(catNames), 2))
+    ax4 = fig4.gca()
+    ax4.set_xlim((-0.5, len(catNames)-0.5))
+    ax4.set_ylim((-0.5, 1.5))
+    ax4.set_aspect('equal', 'datalim')
+    ax4.set_xticks(range(len(catNames)))
+    ax4.set_yticks([0.0, 1.0])
+    ax4.set_xticklabels(catNames)
+    ax4.set_yticklabels(['real', 'sim'])
     clrMap = {'death': 'black',
               'HOME': 'green',
+              'other': 'green',
               'NURSING': 'red',
               'HOSP': 'blue',
+              'HOSP+ICU': 'blue',
               'ICU': 'cyan',
               'LTAC': 'yellow'}
+    implTierMap = {'HOSPITAL': ['HOSP', 'ICU'],
+                   'LTAC': ['LTAC'],
+                   'NURSINGHOME': ['NURSING'],
+                   'COMMUNITY': ['HOME']}
+    wrapOrderMap = {'ICU': 0,
+                    'HOSP': 1,
+                    'HOSP+ICU': 1,
+                    'LTAC': 2,
+                    'NURSING': 3,
+                    'HOME': 4,
+                    'other': 5,
+                    'death': 6}
     for offset, cat in enumerate(catNames):
         keys = ['death'] + ['%s_found' % tier for tier in CARE_TIERS]
         labels = ['death'] + CARE_TIERS
@@ -285,19 +308,48 @@ def patientFateFig(catNames, allOfCategoryDict):
                 counts.append(allOfCategoryDict[cat][k])
             else:
                 counts.append(0)
-        ct2 = []
-        lbl2 = []
+        sortMe = [(wrapOrderMap[lbl], (ct, lbl, clrMap[lbl])) for ct, lbl in zip(counts, labels)
+                  if ct != 0]
+        sortMe.sort(reverse=True)
+        ct2, lbl2, clrs = [list(tpl) for tpl in zip(*[tpl for idx, tpl in sortMe])]
+        row = 1
+        ax4.pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90, colors=clrs,
+                radius=0.25, center=(offset, row), frame=True)
+        row = 0
+        labels = []
+        values = []
         clrs = []
-        for ct, lbl in zip(counts, labels):
-            if ct != 0:
-                ct2.append(ct)
-                lbl2.append(lbl)
-                clrs.append(clrMap[lbl])
-        axes4[offset].pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90, colors=clrs)
-        axes4[offset].axis('equal')
-        axes4[offset].set_title(cat)
-    figs4.tight_layout()
-    figs4.canvas.set_window_title("Patient Fates")
+        pairDict = {}
+        if cat in allFacInfo:
+            print '%s: %s' % (cat, allFacInfo[cat])
+            for lbl, val in allFacInfo[cat].items():
+                if lbl in catToImplDict:
+                    toImpl = catToImplDict[lbl]
+                    toLbl = '+'.join(implTierMap[toImpl])
+                else:
+                    toLbl = lbl
+                print '%s %s' % (toLbl, pairDict)
+                if toLbl in pairDict:
+                    pairDict[toLbl] += val
+                else:
+                    pairDict[toLbl] = val
+                clrs.append(clrMap[toLbl])
+            if pairDict:
+                sortMe = [(wrapOrderMap[lbl], (ct, lbl, clrMap[lbl])) for lbl, ct in pairDict.items()
+                          if ct != 0]
+                sortMe.sort(reverse=True)
+                values, labels, clrs = [list(tpl) for tpl in zip(*[tpl for idx, tpl in sortMe])]
+            else:
+                labels = []
+                values = []
+                clrs = []
+        ax4.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, colors=clrs,
+                radius=0.25, center=(offset, row), frame=True)
+
+    fig4.tight_layout()
+    fig4.canvas.set_window_title("Patient Fates")
+#     figs4.tight_layout()
+#     figs4.canvas.set_window_title("Patient Fates")
 
 
 def occupancyTimeFig(specialDict):
@@ -491,6 +543,35 @@ def findFacImplCategory(facImplDict,
             return implStr
     return None
 
+def scanAllFacilities(facilityDirs):
+    result = {}
+    facDict = mtm.parseFacilityData(facilityDirs)
+    for fac in facDict.values():
+        cat = fac['category']
+        if cat not in result:
+            result[cat] = {}
+        if 'totalDischarges' in fac:
+            totDisch = fac['totalDischarges']['value']
+        else:
+            totDisch = None
+        if 'totalTransfersOut' in fac:
+            knownDisch = 0
+            for dct in fac['totalTransfersOut']:
+                toCat = dct['category']
+                toN = dct['count']['value']
+                if toCat not in result[cat]:
+                    result[cat][toCat] = 0
+                result[cat][toCat] += toN
+                knownDisch += toN
+            if totDisch is not None:
+                delta = totDisch - knownDisch
+                if 'other' in result[cat]:
+                    result[cat]['other'] += delta
+                else:
+                    result[cat]['other'] = delta
+                    
+    return result
+
 def main():
     """
     main
@@ -541,6 +622,8 @@ def main():
             allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
 
     catNames = allOfCategoryDict.keys()[:]
+    
+    allOfCategoryFacilityInfo = scanAllFacilities(inputDict['facilityDirs'])
 
     if 'facilitySelectors' in inputDict:
         facImplRules = [(re.compile(rule['category']), rule['implementation'])
@@ -568,7 +651,7 @@ def main():
 
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
-    patientFateFig(catNames, allOfCategoryDict)
+    patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
     occupancyTimeFig(specialDict)
     pathogenTimeFig(specialDict)
 

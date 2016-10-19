@@ -2,7 +2,7 @@
 
 """
 facilityfacts mods:  These are location-specific tweaks
-- SJMC doesn't actually nead nBeds
+- SJMC doesn't actually need nBeds
 """
 
 import json

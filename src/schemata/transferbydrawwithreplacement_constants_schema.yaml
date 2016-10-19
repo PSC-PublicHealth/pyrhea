@@ -10,14 +10,17 @@
   'transferbydrawwithreplacementconstants':
     'type': 'object'
     'properties':
-      'transferFilePath':
-        'description': 'Path to the YAML file containing the transfer count matrix'
-        'type': 'string'
+      'transferFilePaths':
+        'description': >
+          Paths to YAML files containing weighted transfer data.  Typically the
+          weights correspond to historical transfer count data.
+        'type': 'array'
+        'items': {'type': 'string'}
       'transferFileSchema':
-        'description': 'Schema for the YAML file containing the transfer count matrix'
+        'description': 'Schema for the YAML files containing the transfer count matrices'
         'type': 'string'
     'required':
-      - 'transferFilePath'
+      - 'transferFilePaths'
       - 'transferFileSchema'
       
       

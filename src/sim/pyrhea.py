@@ -38,7 +38,7 @@ import pyrheautils
 schemaDir = '../schemata'
 inputSchema = 'rhea_input_schema.yaml'
 
-defaultOutputNotesName = 'notes.pkl'
+DEFAULT_OUTPUT_NOTES_NAME = 'notes.pkl'
 
 logger = None
 
@@ -446,8 +446,8 @@ def main():
                                 "('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')"),
                           default=None)
         parser.add_option("-o", "--out", action="store", type="string",
-                          default=defaultOutputNotesName,
-                          help=("Set output file name (default '%s')" % defaultOutputNotesName))
+                          help=("Set output file name (default '%s')" %
+                                DEFAULT_OUTPUT_NOTES_NAME))
         parser.add_option("-P", "--partition", action="store", type="string",
                           help=("yaml file defining the partition of locations to ranks"
                                 " (no default)"))
@@ -469,7 +469,7 @@ def main():
                   'printCensus': opts.census,
                   'logCfgDict': getLoggerConfig(),
                   'loggingExtra': numLogLevel,
-                  'partitionFile': opts.partition
+                  'partitionFile': opts.partition,
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -477,7 +477,14 @@ def main():
                                                    comm)
         else:
             parser.error("A YAML-format file specifying run parameters must be specified.")
-        outputNotesName = opts.out  # Defined only in rank 0!
+
+        # NOTE- outputNotesName is defined only for rank 0.
+        if opts.out:
+            outputNotesName = opts.out
+        elif 'notesFileName' in clData['input']:
+            outputNotesName = clData['input']['notesFileName']
+        else:
+            outputNotesName = DEFAULT_OUTPUT_NOTES_NAME
         parser.destroy()
     else:
         clData = None

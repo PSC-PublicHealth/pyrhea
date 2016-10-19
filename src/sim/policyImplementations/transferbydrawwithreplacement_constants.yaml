@@ -1,2 +1,4 @@
-'transferFilePath': '../../models/ChicagoLand/transfer_counts.yaml'
+'transferFilePaths': 
+  - '../../models/ChicagoLand/transfer_counts.yaml'
+  - '../../models/ChicagoLand/fac_to_community_inv_sep.yaml'
 'transferFileSchema': 'transfermatrix_schema.yaml'
