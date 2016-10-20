@@ -59,16 +59,23 @@ class MRSACore(object):
 
 
 class MRSA(Pathogen):
-    def __init__(self, ward):
-        super(MRSA, self).__init__(ward)
+    def __init__(self, ward, useWardCategory):
+        """
+        useWardCategory will typically be the same as that listed in the facility
+        description file for the ward, but it may differ if category mapping has
+        occurred.  For example, ward.category might be 'SNF' while useWardCategory
+        is 'NURSINGHOME'.  This is intended to support category name mapping between
+        facility descriptions and implementations.
+        """
+        super(MRSA, self).__init__(ward, useWardCategory)
         self.core = MRSACore()
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
         initialFractionColonized = _valFromCategoryEntry('initialFractionColonized',
-                                                         self.ward.fac.category,
+                                                         useWardCategory,
                                                          _constants)
         initialFractionInfected = _valFromCategoryEntry('initialFractionInfected',
-                                                        self.ward.fac.category,
+                                                        useWardCategory,
                                                         _constants)
         colTree = BayesTree(PthStatusSetter(PthStatus.CHRONIC),
                              PthStatusSetter(PthStatus.COLONIZED),

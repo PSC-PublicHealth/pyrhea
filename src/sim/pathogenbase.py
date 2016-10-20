@@ -24,7 +24,7 @@ defaultStatus = Status.CLEAR
 
 
 class Pathogen(object):
-    def __init__(self, ward):
+    def __init__(self, ward, _useWardCategory):
         self.ward = ward
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
