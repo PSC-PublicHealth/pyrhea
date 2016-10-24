@@ -29,13 +29,13 @@ modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
 allKeySet, recs = yaml_tools.parse_all(os.path.join(modelDir, 'facilityfacts'))
 facDict = {r['abbrev']:r for r in recs}
 
-illinoisFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716_BedLOS.csv'
+illinoisFName = 'Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016_BedLOS.csv'
 ilInfo = loadCSVByAbbrev(modelDir, illinoisFName, key='UNIQUE_ID')
-ilNBedsProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716.xlsx:BedLOS:$S (includes ICU)"
-ilNBedsICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716.xlsx:BedLOS:$Q"
-ilMeanPopProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716.xlsx:BedLOS:$T (includes ICU)"
-ilMeanPopICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716.xlsx:BedLOS:$R"
-ilMeanLOSICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_v100716.xlsx:BedLOS:$W"
+ilNBedsProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016.xlsx:BedLOS:$S (includes ICU)"
+ilNBedsICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016.xlsx:BedLOS:$Q"
+ilMeanPopProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016.xlsx:BedLOS:$T (includes ICU)"
+ilMeanPopICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016.xlsx:BedLOS:$R"
+ilMeanLOSICUProvStr = "Geocoded_LOSCMSAHQ_2010Cohort_LOS_Bedsize_10-23-2016.xlsx:BedLOS:$W"
 
 remoteFName = 'PROTECT_WI_IN_Facility_BedSizes_091316_Facility.csv'
 remInfo = loadCSVByAbbrev(modelDir, remoteFName, key='UNIQUE_ID')
@@ -64,7 +64,15 @@ nonHospEraseInvalidsList = ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']
 hospEraseInvalidsList = ['nBeds', 'meanPop', 'meanLOSICU', 'meanLOS']
 
 nonHospEraseUnconditionallyList = []
-hospEraseUnconditionallyList = ['meanPopICU']
+hospEraseUnconditionallyList = []
+
+nonHospUpdateUnconditionallyList = ['RESU_500_S', 'THC_2544_L', 'RESU_2380_S']
+hospUpdateUnconditionallyList = ['ELMH_200_H', 'MERC_901_H','NORT_660_H', 'EDWA_801_H',
+                                 'BETH_5025_H']
+
+hospDoNotUpdateList = []
+nonHospDoNotUpdateList = ['MIDW_8540_S', 'MCAL_18300_S']
+
 
 newRecs = []
 for abbrev, rec in facDict.items():
@@ -72,11 +80,15 @@ for abbrev, rec in facDict.items():
     changed = False
 
     if rec['category'] in ['SNF', 'VSNF', 'NURSINGHOME', 'LTACH']:
-        eraseInvalidsList, eraseUnconditionallyList, tupleList = \
-            nonHospEraseInvalidsList, nonHospEraseUnconditionallyList, nonHospTuples
+        (eraseInvalidsList, eraseUnconditionallyList, updateUnconditionallyList, 
+         doNotUpdateList, tupleList) = \
+            (nonHospEraseInvalidsList, nonHospEraseUnconditionallyList,
+             nonHospUpdateUnconditionallyList, nonHospDoNotUpdateList, nonHospTuples)
     elif rec['category'] in ['HOSPITAL']:
-        eraseInvalidsList, eraseUnconditionallyList, tupleList = \
-            hospEraseInvalidsList, hospEraseUnconditionallyList, hospTuples
+        (eraseInvalidsList, eraseUnconditionallyList, updateUnconditionallyList, 
+         doNotUpdateList, tupleList) = \
+            (hospEraseInvalidsList, hospEraseUnconditionallyList,
+             hospUpdateUnconditionallyList, hospDoNotUpdateList, hospTuples)
     else:
         sys.exit('%s has unknown category %s' % (abbrev, rec['category']))
 
@@ -94,16 +106,37 @@ for abbrev, rec in facDict.items():
 
         if key in nR and typeCheck(nR[key]['value']):
             oldVal = nR[key]['value']
+            srcFound = False
             for (info, srcFName), (srcKey, provStr) in zip(srcList, pairList):
                 if abbrev in info and srcKey in info[abbrev] and typeCheck(info[abbrev][srcKey]):
-#                     if abbrev == 'EDWA_801_H':
-                    if False:
-                        nR[key] = {'value': info[abbrev][srcKey], 'prov': provStr}
+                    srcFound = True
+#                     if abbrev in ['ELMH_200_H', 'MERC_901_H','NORT_660_H', 'RESU_500_S', 'EDWA_801_H',
+#                                   'BETH_5025_H', 'MIDW_8540_S', 'MCAL_18300_S']:
+# #                     if False:
+#                         nR[key] = {'value': info[abbrev][srcKey], 'prov': provStr}
+#                         changed = True
+#                     else:
+                    if info[abbrev][srcKey] == oldVal:
+                        nR[key]['prov'] = provStr
                         changed = True
                     else:
-                        errStr = ('%s has value mismatch for %s with %s entry %s: %s vs %s' %
-                                  (abbrev, key, srcFName, srcKey, oldVal, info[abbrev][srcKey]))
-                        assert (info[abbrev][srcKey] == oldVal), errStr
+                        if abbrev in doNotUpdateList:
+                            print ('skipping update of %s %s -> %s for %s' %
+                                   (key, oldVal, info[abbrev][srcKey], abbrev))
+                        elif abbrev in updateUnconditionallyList:
+                            nR[key] = {'value': info[abbrev][srcKey], 'prov': provStr}
+                            changed = True
+                        else:
+                            errStr = ('%s has value mismatch for %s with %s entry %s: %s vs %s' %
+                                      (abbrev, key, srcFName, srcKey, oldVal, info[abbrev][srcKey]))
+                            raise RuntimeError(errStr)
+            if not srcFound:
+                for testStr in ['median', 'mean', 'average', 'regression', 'interpolat']:
+                    if testStr in nR[key]['prov'].lower():
+                        srcFound = True
+                        break
+            if not srcFound:
+                print 'No valid src for %s %s' % (abbrev, key)
         else:
             for (info, srcFName), (srcKey, provStr) in zip(srcList, pairList):
                 if abbrev in info and srcKey in info[abbrev] and typeCheck(info[abbrev][srcKey]):
