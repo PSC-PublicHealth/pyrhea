@@ -1,8 +1,6 @@
 'facilityDirs':
-#  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
-#  - '/home/jim/projects/pyrhea/repo/pyrhea/models/OrangeCounty2013/communitiesTiny'
-  - '/home/welling/git/pyrhea/models/OrangeCounty2013/facilityfactsCurrent2013'
-  - '/home/welling/git/pyrhea/models/OrangeCounty2013/communitiesTiny'
+  - '../../models/OrangeCounty2013/facilityfactsCurrent2013'
+  - '../../models/OrangeCounty2013/communitiesTiny'
 
 'facilityImplementationDir': '../sim/facilityImplementations'
 
