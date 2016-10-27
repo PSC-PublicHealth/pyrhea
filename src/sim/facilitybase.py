@@ -235,7 +235,7 @@ class Facility(pyrheabase.Facility):
                 patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
                 self.patientDataDict[patientID] = patientRec
             if timeNow != 0:  # Exclude initial populations
-                nh = self.getHolder()
+                nh = self.getNoteHolder()
                 if nh:
                     nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
         elif issubclass(msgType, pyrheabase.DepartureMsg):
