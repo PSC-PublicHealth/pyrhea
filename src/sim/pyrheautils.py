@@ -25,11 +25,21 @@ import schemautils
 
 logger = logging.getLogger(__name__)
 
+PATH_STRING_MAP = {}
 
-def importConstants(valuePath, schemaPath):
-    with open(valuePath, 'rU') as f:
+def pathTranslate(rawPath, lookupDict=None):
+    if lookupDict is None:
+        lookupDict = PATH_STRING_MAP
+    path = rawPath
+    for key, val in lookupDict.items():
+        path = path.replace('$(%s)' % key, val)
+    return path
+    
+
+def importConstants(valuePath, schemaPath, pathLookupDict=None):
+    with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)
-    validator = schemautils.getValidator(schemaPath)
+    validator = schemautils.getValidator(pathTranslate(schemaPath, pathLookupDict))
     nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
     if nErrors:
         for e in validator.iter_errors(cJSON):
