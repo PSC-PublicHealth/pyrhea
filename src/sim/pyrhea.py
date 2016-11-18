@@ -35,12 +35,58 @@ import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
 
-schemaDir = '../schemata'
-inputSchema = 'rhea_input_schema.yaml'
+SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
+INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 DEFAULT_OUTPUT_NOTES_NAME = 'notes.pkl'
 
 logger = None
+
+def buildFacOccupancyDict(patch, timeNow):
+    facTypeDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        tpName = type(fac).__name__
+        if tpName not in facTypeDict:
+            facTypeDict[tpName] = 0
+            facTypeDict[tpName + '_all'] = 0
+        if hasattr(fac, 'patientDataDict'):
+            patientCount = 0
+            allCount = 0
+            for rec in fac.patientDataDict.values():
+                allCount += 1 + rec.prevVisits
+                if rec.departureDate is None:
+                    patientCount += 1
+            facTypeDict[tpName] += patientCount
+            facTypeDict[tpName + '_all'] += allCount
+    return facTypeDict
+
+
+def buildFacPthDict(patch, timeNow):
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        facPPC = {}
+        for ward in fac.getWards():
+            pPC = ward.iA.getPatientPthCounts(timeNow)
+            for k, v in pPC.items():
+                if k in facPPC:
+                    facPPC[k] += v
+                else:
+                    facPPC[k] = v
+        tpName = type(fac).__name__
+        for k, v in facPPC.items():
+            key = '%s_%s' % (tpName, k)
+            if key in facPthDict:
+                facPthDict[key] += v
+            else:
+                facPthDict[key] = v
+    return facPthDict
+
+
+PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
+                          'pathogen': buildFacPthDict}
+
 
 
 def loadPolicyImplementations(implementationDir):
@@ -72,6 +118,9 @@ def loadPathogenImplementations(implementationDir):
 
 def loadFacilityImplementations(implementationDir):
     logger.info('Loading facility implementations')
+    # provide some string mapping
+    implementationDir = pyrheautils.pathTranslate(implementationDir)
+    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['category',
@@ -90,7 +139,8 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
     logger.info('Parsing facilities descriptions')
     allKeySet = set()
     rawRecs = []
-    for d in dirList:
+    for d in dirList[:]:
+        d = pyrheautils.pathTranslate(d)
         kS, recs = yaml_tools.parse_all(d)
         rawRecs.extend(recs)
         allKeySet.update(kS)
@@ -183,7 +233,7 @@ def checkInputFileSchema(fname, schemaFname, comm):
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
-        validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
+        validator = schemautils.getValidator(schemaFname)
         nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
         if nErrors:
             myLogger.error('Input file violates schema:')
@@ -198,55 +248,23 @@ def checkInputFileSchema(fname, schemaFname, comm):
         comm.Abort(2)
 
 
-def buildFacOccupancyDict(patch, timeNow):
-    facTypeDict = {'day': timeNow}
-    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
-    for fac in patch.allFacilities:
-        tpName = type(fac).__name__
-        if tpName not in facTypeDict:
-            facTypeDict[tpName] = 0
-            facTypeDict[tpName + '_all'] = 0
-        if hasattr(fac, 'patientDataDict'):
-            patientCount = 0
-            allCount = 0
-            for rec in fac.patientDataDict.values():
-                allCount += 1 + rec.prevVisits
-                if rec.departureDate is None:
-                    patientCount += 1
-            facTypeDict[tpName] += patientCount
-            facTypeDict[tpName + '_all'] += allCount
-    return facTypeDict
 
 
-def buildFacPthDict(patch, timeNow):
-    facPthDict = {'day': timeNow}
-    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
-    for fac in patch.allFacilities:
-        facPPC = {}
-        for ward in fac.getWards():
-            pPC = ward.iA.getPatientPthCounts(timeNow)
-            for k, v in pPC.items():
-                if k in facPPC:
-                    facPPC[k] += v
-                else:
-                    facPPC[k] = v
-        tpName = type(fac).__name__
-        for k, v in facPPC.items():
-            key = '%s_%s' % (tpName, k)
-            if key in facPthDict:
-                facPthDict[key] += v
-            else:
-                facPthDict[key] = v
-    return facPthDict
-
-
-def createPerDayCB(patch, noteHolder, runDurationDays):
+def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
+    """
+    recGenDict is of the form {key: genFun} where genFun has the signature:
+    
+      dictOfNotes = genFun(patch, timeNow)
+      
+    The result is a set of notes of the form:
+    
+      key: [dictOfNotesAtTime0, dictOfNotesAtTime1, ..., dictOfNotesAtRunDurationDaysPlusOne]
+    """
     def perDayCB(loop, timeNow):
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
-        oD = buildFacOccupancyDict(patch, timeNow)
-        pD = buildFacPthDict(patch, timeNow)
-        noteHolder.addNote({'occupancy': [oD], 'pathogen': [pD]})
+        noteHolder.addNote({key: [recFun(patch, timeNow)]
+                            for key, recFun in recGenDict.items()})
         if timeNow > runDurationDays:
             patch.group.stop()
     return perDayCB
@@ -406,10 +424,12 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
         logger.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
                     (comm.rank, patch.name, len(allIter), len(allAgents), len(allFacilities)))
         patchNH = noteHolderGroup.createNoteHolder()
-        patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays))
-        patchNH.addNote({'name': patch.name,
-                         'occupancy': [buildFacOccupancyDict(patch, 0)],
-                         'rank': comm.rank})
+        patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays,
+                                                    recGenDict=PER_DAY_NOTES_GEN_DICT))
+        initialNote = {'name': patch.name, 'rank': comm.rank}
+        for key, genFun in PER_DAY_NOTES_GEN_DICT.items():
+            initialNote[key] = [genFun(patch, 0)]
+        patchNH.addNote(initialNote)
 
 
 def main():
@@ -473,7 +493,7 @@ def main():
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
-                                                   os.path.join(schemaDir, inputSchema),
+                                                   os.path.join(SCHEMA_DIR, INPUT_SCHEMA),
                                                    comm)
         else:
             parser.error("A YAML-format file specifying run parameters must be specified.")
@@ -490,8 +510,10 @@ def main():
         clData = None
         
     try:
+        patchGroup = None  # for the benefit of diagnostics during init
         clData = comm.bcast(clData, root=0)
-    
+        if 'modelDir' in clData['input']:
+            pyrheautils.PATH_STRING_MAP['MODELDIR'] = clData['input']['modelDir']
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     
         verbose = clData['verbose']  # @UnusedVariable
@@ -503,7 +525,7 @@ def main():
         if deterministic:
             seed(1234 + comm.rank)  # Set the random number generator seed
     
-        schemautils.setSchemaBasePath(schemaDir)
+        schemautils.setSchemaBasePath(SCHEMA_DIR)
         pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
         assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
         PthClass = pthImplDict.values()[0].getPathogenClass()
@@ -540,13 +562,22 @@ def main():
                              policyClassList, policyRules,
                              PthClass, noteHolderGroup, comm, totalRunDays)
     except Exception, e:
-        logger.error('%s exception during initialization: %s; traceback follows' %
-                     (patchGroup.name, e))
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        logger.info('%s exiting due to exception during initialization' % patchGroup.name)
-        logging.shutdown()
-        sys.exit('Exception during initialization')
+        if patchGroup:
+            logger.error('%s exception during initialization: %s; traceback follows' %
+                         (patchGroup.name, e))
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            logger.info('%s exiting due to exception during initialization' % patchGroup.name)
+            logging.shutdown()
+            sys.exit('Exception during initialization')
+        else:
+            logger.error('%s exception during initialization: %s; traceback follows' %
+                         ('<no patchGroup yet>', e))
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            logger.info('%s exiting due to exception during initialization' % '<no patchGroup yet>')
+            logging.shutdown()
+            sys.exit('Exception during initialization')
     
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     try:
