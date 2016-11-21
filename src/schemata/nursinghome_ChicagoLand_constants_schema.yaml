@@ -57,7 +57,6 @@
   'nursinghomeconstants':
     'type': 'object'
     'properties':
-      'nhLOSModel': {'$ref': '#/definitions/PDF'}
       'deathRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Fraction of discharges which are via death'
@@ -67,7 +66,7 @@
         'description': 'Fraction of hospital bed requests which are ICU bed requests'
       }
     'required':
-      - 'nhLOSModel'
       - 'deathRate'
+      - 'hospTransferToICURate'
       
       

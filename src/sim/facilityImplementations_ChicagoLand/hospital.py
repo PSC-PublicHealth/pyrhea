@@ -21,20 +21,21 @@ import os.path
 import math
 from scipy.stats import lognorm
 import logging
-from random import shuffle
+from random import random
 
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, HOSPQueue, ICUQueue, tierToQueueMap
+from facilitybase import FacilityManager
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
 category = 'HOSPITAL'
 _schema = 'hospitalfacts_schema.yaml'
 _constants_values = '$(MODELDIR)/constants/hospital_constants.yaml'
-_constants_schema = 'hospital_constants_schema.yaml'
+_constants_schema = 'hospital_ChicagoLand_constants_schema.yaml'
 _validator = None
 _constants = None
 
@@ -67,11 +68,28 @@ class OverallHealthSetter(PatientStatusSetter):
                 % PatientOverallHealth.names[self.newOverallHealth])
 
 
+class HospitalManager(FacilityManager):
+    def allocateAvailableBed(self, requestedTier, strict=False):
+        """
+        If a HOSP tier bed is requested, maybe upgrade to ICU to simulate patients who
+        are triaged to the ICU on arrival.
+        """
+        if strict:
+            tier = requestedTier
+        else:
+            if requestedTier == CareTier.HOSP and random() < _constants['fracTriageHOSPToICU']['value']:
+                tier = CareTier.ICU
+            else:
+                tier = requestedTier
+        return super(HospitalManager, self).allocateAvailableBed(tier)
+
+
 class Hospital(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[HOSPQueue, ICUQueue],
+                          managerClass=HospitalManager,
                           policyClasses=policyClasses,
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
@@ -233,7 +251,7 @@ def _populate(fac, descr, patch):
     meanHospPop = meanPop - meanICUPop
     agentList = []
     for i in xrange(int(round(meanICUPop))):
-        ward = fac.manager.allocateAvailableBed(CareTier.ICU)
+        ward = fac.manager.allocateAvailableBed(CareTier.ICU, strict=True)
         assert ward is not None, 'Ran out of ICU beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
@@ -242,7 +260,7 @@ def _populate(fac, descr, patch):
                               0)
         agentList.append(a)
     for i in xrange(int(round(meanHospPop))):
-        ward = fac.manager.allocateAvailableBed(CareTier.HOSP)
+        ward = fac.manager.allocateAvailableBed(CareTier.HOSP, strict=True)
         assert ward is not None, 'Ran out of HOSP beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
@@ -280,5 +298,4 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(_constants_values,
-                                         _constants_schema)
+_constants = pyrheautils.importConstants(_constants_values, _constants_schema)

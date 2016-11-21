@@ -215,10 +215,7 @@ def _populate(fac, descr, patch):
         logger.warning('Nursing Home %s meanPop %s > nBeds %s'
                        % (descr['abbrev'], meanPop, descr['nBeds']['value']))
         meanPop = descr['nBeds']['value']
-    if 'losModel' in descr:
-        losModel = descr['losModel']
-    else:
-        losModel = _constants['nhLOSModel']
+    losModel = descr['losModel']
     assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
         "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
     # The following is approximate, but adequate...
