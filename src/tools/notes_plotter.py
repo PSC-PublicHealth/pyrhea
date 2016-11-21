@@ -29,7 +29,7 @@ import yaml
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
-from pyrheautils import importConstants
+import pyrheautils
 from facilitybase import CareTier as CareTierEnum
 import schemautils
 from phacsl.utils.notes.statval import HistoVal
@@ -39,6 +39,7 @@ import map_transfer_matrix as mtm
 import math
 import pickle
 import types
+from imp import load_source
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -143,10 +144,22 @@ def loadFacilityDescription(abbrev, facilityDirs):
 
 
 def loadFacilityTypeConstants(category, implementationDir):
-    jsonDict = importConstants(os.path.join(implementationDir,
-                                            category.lower() + '_constants.yaml'),
-                               os.path.join(SCHEMA_DIR,
-                                            category.lower() + '_constants_schema.yaml'))
+    sys.path.append(implementationDir)
+    
+    fullPath = pyrheautils.pathTranslate(os.path.join(implementationDir,
+                                                      category.lower() + '.py'))
+    newMod = load_source(category.lower(), fullPath)
+    assert hasattr(newMod, 'generateFull'), ('%s does not contain a facility implementation' %
+                                             fullPath)
+    assert hasattr(newMod, 'category') and newMod.category.lower() == category.lower(), \
+        ('%s does not contain an implementation of %s' % (fullPath, category))
+    assert hasattr(newMod, '_constants_values') and hasattr(newMod, '_constants_schema'), \
+        ('%s does not point to its associated constants' % fullPath)
+
+    constPath = pyrheautils.pathTranslate(newMod._constants_values)
+    schemaPath = pyrheautils.pathTranslate(newMod._constants_schema)
+    jsonDict = pyrheautils.importConstants(constPath, schemaPath)
+    sys.path.pop()  # drop implementaionDir
     return yaml_tools._simplify(jsonDict)
 
 
@@ -169,18 +182,20 @@ def collectBarSamples(histoVal):
     return bins, counts, barWidth
 
 
-def overallLOSFig(catNames, allOfCategoryDict, facToImplDict, implDir):
+def overallLOSFig(catNames, allOfCategoryDict, facToImplDict, constDir):
     nPlots = 0
     for cat in catNames:
         for tier in CARE_TIERS:
             if cat in allOfCategoryDict and (tier + '_LOS') in allOfCategoryDict[cat]:
                 nPlots += 1
     figs1, axes1 = plt.subplots(nrows=nPlots, ncols=1)
+    if nPlots == 1:
+        axes1 = [axes1]
     offset = 0
     for cat in catNames:
         if cat not in allOfCategoryDict:
             continue
-        constants = loadFacilityTypeConstants(facToImplDict[cat].lower(), implDir)
+        constants = loadFacilityTypeConstants(facToImplDict[cat].lower(), constDir)
         losPlotter = LOSPlotter({'abbrev': 'all', 'category': cat}, constants,
                                 facToImplDict)
         for tier in CARE_TIERS:
@@ -197,10 +212,10 @@ def overallLOSFig(catNames, allOfCategoryDict, facToImplDict, implDir):
     figs1.canvas.set_window_title("LOS Histograms By Category")
 
 
-def singleLOSFig(abbrev, notesDict, facilityDirs, facToImplDict, implDir):
+def singleLOSFig(abbrev, notesDict, facilityDirs, facToImplDict, constDir):
     figs1b, axes1b = plt.subplots(nrows=len(CARE_TIERS), ncols=1)
     losDescr = loadFacilityDescription(abbrev, facilityDirs)
-    constants = loadFacilityTypeConstants(facToImplDict[losDescr['category']].lower(), implDir)
+    constants = loadFacilityTypeConstants(facToImplDict[losDescr['category']].lower(), constDir)
     losPlotter = LOSPlotter(losDescr, constants, facToImplDict)
     for k in notesDict.keys():
         if k.endswith(abbrev):
@@ -587,9 +602,14 @@ def main():
 
     parser.destroy()
 
+    schemautils.setSchemaBasePath(SCHEMA_DIR)
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
-    implDir = inputDict['facilityImplementationDir']
+    modelDir = inputDict['modelDir']
+    pyrheautils.PATH_STRING_MAP['MODELDIR'] = modelDir
+    implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
+    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
+    constDir = os.path.join(modelDir, 'constants')
     
     if opts.notes:
         notesFName = opts.notes
@@ -623,7 +643,8 @@ def main():
 
     catNames = allOfCategoryDict.keys()[:]
     
-    allOfCategoryFacilityInfo = scanAllFacilities(inputDict['facilityDirs'])
+    facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
+    allOfCategoryFacilityInfo = scanAllFacilities(facDirList)
 
     if 'facilitySelectors' in inputDict:
         facImplRules = [(re.compile(rule['category']), rule['implementation'])
@@ -637,7 +658,7 @@ def main():
 
     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
                           'sim_transfer_matrix.csv',
-                          inputDict['facilityDirs'], catToImplDict)
+                          facDirList, catToImplDict)
 
     countBirthsDeaths(catNames, allOfCategoryDict)
 
@@ -647,7 +668,7 @@ def main():
 #     singleLOSFig('WAEC', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
 #     singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
 #     singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
-    singleLOSFig('MANO_512_S', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+    singleLOSFig('MANO_512_S', notesDict, facDirList, catToImplDict, implDir)
 
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)

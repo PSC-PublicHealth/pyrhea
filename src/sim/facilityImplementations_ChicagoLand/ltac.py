@@ -37,7 +37,7 @@ from hospital import estimateWork as hospitalEstimateWork
 
 category = 'LTAC'
 _schema = 'hospitalfacts_schema.yaml'
-_constants_values = 'ltac_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/ltac_constants.yaml'
 _constants_schema = 'ltac_constants_schema.yaml'
 _validator = None
 _constants = None
@@ -52,6 +52,7 @@ class LTAC(Facility):
                           reqQueueClasses=[LTACQueue],
                           policyClasses=policyClasses,
                           categoryNameMapper=categoryNameMapper)
+        descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
         self.dischargeViaDeathFrac = _constants['dischargeViaDeathFrac']['value']
         nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
@@ -61,7 +62,7 @@ class LTAC(Facility):
                                            + self.dischargeViaDeathFrac)
         transferFrac = {}
         for v in descr['totalTransfersOut']:
-            implCat = self.categoryNameMapper(v['category'])
+            implCat = v['category']
             if implCat not in transferFrac:
                 transferFrac[implCat] = 0.0
             transferFrac[implCat] += (self.totalTransferFrac * float(v['count']['value'])
@@ -188,6 +189,5 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

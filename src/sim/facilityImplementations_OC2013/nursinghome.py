@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 category = 'NURSINGHOME'
 _schema = 'nursinghomefacts_schema.yaml'
-_constants_values = 'nursinghome_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/nursinghome_constants.yaml'
 _constants_schema = 'nursinghome_constants_schema.yaml'
 _constants = None
 _validator = None
@@ -50,6 +50,8 @@ class NursingHome(Facility):
                           reqQueueClasses=[NURSINGQueue],
                           policyClasses=policyClasses,
                           categoryNameMapper=categoryNameMapper)
+        descr = self.mapDescrFields(descr)
+        _c = _constants
         if 'nBeds' in descr:
             nBeds = int(descr['nBeds']['value'])
         else:
@@ -245,6 +247,5 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

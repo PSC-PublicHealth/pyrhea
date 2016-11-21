@@ -15,7 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-import os.path
 import random
 from scipy.stats import expon, binom
 import logging
@@ -36,7 +35,7 @@ logger = logging.getLogger(__name__)
 category = 'COMMUNITY'
 _schema = 'communityfacts_schema.yaml'
 _validator = None
-_constants_values = 'community_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/community_constants.yaml'
 _constants_schema = 'community_constants_schema.yaml'
 _constants = None
 
@@ -236,6 +235,7 @@ class Community(Facility):
                           policyClasses=policyClasses,
                           managerClass=CommunityManager,
                           categoryNameMapper=categoryNameMapper)
+        descr = self.mapDescrFields(descr)
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
         losModel = _constants['communityLOSModel']
@@ -341,6 +341,5 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

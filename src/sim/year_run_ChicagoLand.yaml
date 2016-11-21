@@ -1,8 +1,10 @@
-'facilityDirs':
-  - '/home/welling/git/pyrhea/models/ChicagoLand/facilityfacts'
-  - '/home/welling/git/pyrhea/models/ChicagoLand/synthCommunities'
+'modelDir': '/home/welling/git/pyrhea/models/ChicagoLand'
 
-'facilityImplementationDir': '../sim/facilityImplementations'
+'facilityDirs':
+  - '$(MODELDIR)/facilityfacts'
+  - '$(MODELDIR)/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
 'facilitySelectors':
   - 'category': '((SNF)|(VSNF))'
     'implementation': 'NURSINGHOME'

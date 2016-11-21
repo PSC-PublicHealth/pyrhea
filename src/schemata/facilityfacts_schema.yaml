@@ -37,7 +37,7 @@
     'properties':
       'name': {'type': 'string'}
       'abbrev': {'type': 'string'}
-      'nBeds': {'$ref': 'basics_schema.yaml#/definitions/posinteger'}
+      'nBeds': {'$ref': 'basics_schema.yaml#/definitions/posinteger'}      
       'meanPop': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
       'meanLOS': {'$ref': '#/definitions/LOSData'}
       'meanLOSICU': {'$ref': '#/definitions/LOSData'}
@@ -70,8 +70,11 @@
       - 'totalTransfersIn'
       - 'totalTransfersOut'
       - 'losModel'
-#      - 'nBeds'
-#      - 'meanPop'
+    'anyOf':
+      - 'required':
+         - 'nBeds'
+      - 'required':
+         - 'meanPop'
 
   'hospitalfacts':
     'allOf':

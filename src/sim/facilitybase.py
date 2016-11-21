@@ -370,6 +370,33 @@ class Facility(pyrheabase.Facility):
         """
         return BayesTree(PatientStatusSetter())
 
+    def mapDescrFields(self, descr):
+        """
+        Descr is a record describing the facility, some fields of which contain
+        category names in terms of 'descr' categories rather than 'impl' categories.
+        Rebuild the record with 'impl' category names.
+        """
+        newDescr = descr.copy()
+        for field in ['category']:
+            newDescr[field] = self.categoryNameMapper(descr[field])
+        for field in ['totalTransfersOut']:
+            if field in descr:
+                newD = {}
+                for elt in descr[field]:
+                    newCat = self.categoryNameMapper(elt['category'])
+                    if newCat in newD:
+                        val, prov = newD[newCat]
+                        val += elt['count']['value']
+                        prov += elt['count']['prov']
+                        newD[newCat] = (val, prov)
+                    else:
+                        newD[newCat] = (elt['count']['value'], elt['count']['prov'])
+                newL = []
+                for cat, (val, prov) in newD.items():
+                    newL.append({'category': cat, 'count': {'value': val, 'prov': prov}})
+                newDescr[field] = newL
+        return newDescr
+    
 
 class PatientAgent(pyrheabase.PatientAgent):
     idCounter = 0  # to provide a reliable identifier for each patient
