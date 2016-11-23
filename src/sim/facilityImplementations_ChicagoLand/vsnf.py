@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import os.path
 from random import random
 import math
@@ -35,15 +33,15 @@ from hospital import ClassASetter, OverallHealthSetter
 
 logger = logging.getLogger(__name__)
 
-category = 'NURSINGHOME'
+category = 'VSNF'
 _schema = 'nursinghomefacts_ChicagoLand_schema.yaml'
-_constants_values = '$(MODELDIR)/constants/nursinghome_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/vsnf_constants.yaml'
 _constants_schema = 'nursinghome_ChicagoLand_constants_schema.yaml'
 _constants = None
 _validator = None
 
 
-class NursingHome(Facility):
+class VentSNF(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
@@ -98,7 +96,7 @@ class NursingHome(Facility):
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         careTier = ward.tier
         assert careTier == CareTier.NURSING, \
-            "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
+            "VSNFs only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if patientStatus.overall == PatientOverallHealth.FRAIL:
@@ -241,7 +239,7 @@ def _populate(fac, descr, patch):
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
-    fac = NursingHome(facilityDescr, patch, policyClasses=policyClasses,
+    fac = VentSNF(facilityDescr, patch, policyClasses=policyClasses,
                       categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 

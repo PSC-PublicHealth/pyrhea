@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import os.path
 import math
 from scipy.stats import lognorm
@@ -95,23 +93,38 @@ class Hospital(Facility):
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
-        self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
-        nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
-        self.hospTotalTransferFrac = (float(nTotalTransfersOut)
-                                      / float(descr['totalDischarges']['value']))
-        self.fracDischargeHealthy = 1.0 - (self.hospTotalTransferFrac
-                                           + self.hospDischargeViaDeathFrac)
-        transferFrac = {}
-        for v in descr['totalTransfersOut']:
-            implCat = v['category']
-            if implCat not in transferFrac:
-                transferFrac[implCat] = 0.0
-            transferFrac[implCat] += (self.hospTotalTransferFrac * float(v['count']['value'])
-                                      / float(nTotalTransfersOut))
-        self.fracTransferHosp = (transferFrac['HOSPITAL'] if 'HOSPITAL' in transferFrac else 0.0)
-        self.fracTransferLTAC = (transferFrac['LTAC'] if 'LTAC' in transferFrac else 0.0)
-        self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
-                               else 0.0)
+        
+        _c = _constants
+        totDsch = float(descr['totalDischarges']['value'])
+        totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
+        ttoD = {elt['category']: elt['count']['value'] for elt in descr['totalTransfersOut']}
+        fracNotTransferred = (float(totDsch) - float(totTO)) / float(totDsch)
+        assert fracNotTransferred >= 0.0, '%s has more transfers than discharges' % self.name
+        
+        self.lclRates = {}
+        self.lclRates['death'] = _c['hospDischargeViaDeathFrac']['value']
+        assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'
+        self.lclRates['home'] = fracNotTransferred - self.lclRates['death']
+
+        expectedKeys = ['HOSPITAL', 'LTAC', 'NURSINGHOME', 'VSNF']
+        if totTO:
+            for key in ttoD.keys():
+                assert key in expectedKeys, \
+                    '%s records outgoing transfers to unexpected category %s' % (self.name, key)
+            for key in expectedKeys:
+                nTransfers = ttoD[key] if key in ttoD else 0
+                self.lclRates[key.lower()] = float(nTransfers) / float(totDsch)
+        else:
+            for key in expectedKeys:
+                self.lclRates[key.lower()] = 0.0
+            logger.warning('%s has no transfers out', self.name)
+
+        # All patients getting rehab must be in the transfer streams to rehab-providing facilities
+#         fracWhoMayHaveRehab = self.lclRates['nursinghome'] + self.lclRates['vsnf']
+#         assert fracWhoMayHaveRehab >= _c['fracOfDischargesRequiringRehab']['value'], \
+#             ("%s has only %s of discharges going to rehab facilities but should rehab %s of patients" %
+#              (self.name, fracWhoMayHaveRehab, _c['fracOfDischargesRequiringRehab']['value']))
+
         self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
         if 'nBeds' in descr:
             allBeds = descr['nBeds']['value']
@@ -182,21 +195,19 @@ class Hospital(Facility):
                 return self.hospTreeCache[key]
             else:
                 changeProb = self.hospCachedCDF.intervalProb(*key)
-                rehabFrac = _c['fracOfDischargesRequiringRehab']['value']
-                changeTree = BayesTree.fromLinearCDF([(self.hospDischargeViaDeathFrac,
+                changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                        ClassASetter(DiagClassA.DEATH)),
-                                                      (self.fracTransferHosp,
+                                                      (self.lclRates['hospital'],
                                                        ClassASetter(DiagClassA.SICK)),
-                                                      (self.fracTransferLTAC,
+                                                      (self.lclRates['ltac'],
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      (((self.fracTransferNH
-                                                         + self.fracDischargeHealthy)
-                                                        * rehabFrac),
+                                                      ((self.lclRates['nursinghome']
+                                                         + self.lclRates['vsnf']),
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (((self.fracTransferNH
-                                                         + self.fracDischargeHealthy)
-                                                        * (1.0 - rehabFrac)),
-                                                       ClassASetter(DiagClassA.HEALTHY))])
+                                                      (self.lclRates['home'],
+                                                       ClassASetter(DiagClassA.HEALTHY)),
+                                                      ])
+
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
                                  changeProb)

@@ -54,23 +54,36 @@ class LTAC(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
-        self.dischargeViaDeathFrac = _constants['dischargeViaDeathFrac']['value']
-        nTotalTransfersOut = sum([v['count']['value'] for v in descr['totalTransfersOut']])
-        self.totalTransferFrac = (float(nTotalTransfersOut)
-                                  / float(descr['totalDischarges']['value']))
-        self.fracDischargeHealthy = 1.0 - (self.totalTransferFrac
-                                           + self.dischargeViaDeathFrac)
-        transferFrac = {}
-        for v in descr['totalTransfersOut']:
-            implCat = v['category']
-            if implCat not in transferFrac:
-                transferFrac[implCat] = 0.0
-            transferFrac[implCat] += (self.totalTransferFrac * float(v['count']['value'])
-                                      / float(nTotalTransfersOut))
-        self.fracTransferHosp = (transferFrac['HOSPITAL'] if 'HOSPITAL' in transferFrac else 0.0)
-        self.fracTransferLTAC = (transferFrac['LTAC'] if 'LTAC' in transferFrac else 0.0)
-        self.fracTransferNH = (transferFrac['NURSINGHOME'] if 'NURSINGHOME' in transferFrac
-                               else 0.0)
+        
+        _c = _constants
+        totDsch = float(descr['totalDischarges']['value'])
+        totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
+        ttoD = {elt['category']: elt['count']['value'] for elt in descr['totalTransfersOut']}
+        fracNotTransferred = (float(totDsch) - float(totTO)) / float(totDsch)
+        assert fracNotTransferred >= 0.0, '%s has more transfers than discharges' % self.name
+        
+        self.lclRates = {}
+        self.lclRates['death'] = _c['dischargeViaDeathFrac']['value']
+        assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'
+        self.lclRates['home'] = fracNotTransferred - self.lclRates['death']
+
+        expectedKeys = ['HOSPITAL', 'LTAC', 'NURSINGHOME', 'VSNF']
+        if totTO:
+            for key in ttoD.keys():
+                assert key in expectedKeys, \
+                    '%s records outgoing transfers to unexpected category %s' % (self.name, key)
+            for key in expectedKeys:
+                nTransfers = ttoD[key] if key in ttoD else 0
+                self.lclRates[key.lower()] = float(nTransfers) / float(totDsch)
+        else:
+            for key in expectedKeys:
+                self.lclRates[key.lower()] = 0.0
+            logger.warning('%s has no transfers out', self.name)
+
+        self.lclRates['icu'] = _c['hospTransferToICURate']['value'] * self.lclRates['hospital']
+        self.lclRates['hospital'] = ((1.0 -_c['hospTransferToICURate']['value'])
+                                     * self.lclRates['hospital'])
+
         if 'nBeds' in descr:
             nBeds = descr['nBeds']['value']
             nWards = int(float(nBeds)/bedsPerWard) + 1
@@ -103,21 +116,21 @@ class LTAC(Facility):
                 return self.treeCache[key]
             else:
                 changeProb = self.cachedCDF.intervalProb(*key)
-                rehabFrac = _c['fracOfDischargesRequiringRehab']['value']
-                changeTree = BayesTree.fromLinearCDF([(self.dischargeViaDeathFrac,
+                changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                        ClassASetter(DiagClassA.DEATH)),
-                                                      (self.fracTransferHosp,
+                                                      (self.lclRates['icu'],
+                                                       ClassASetter(DiagClassA.VERYSICK)),
+                                                      (self.lclRates['hospital'],
                                                        ClassASetter(DiagClassA.SICK)),
-                                                      (self.fracTransferLTAC,
+                                                      (self.lclRates['ltac'],
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      (((self.fracTransferNH
-                                                         + self.fracDischargeHealthy)
-                                                        * rehabFrac),
+                                                      ((self.lclRates['nursinghome']
+                                                         + self.lclRates['vsnf']),
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (((self.fracTransferNH
-                                                         + self.fracDischargeHealthy)
-                                                        * (1.0 - rehabFrac)),
-                                                       ClassASetter(DiagClassA.HEALTHY))])
+                                                      (self.lclRates['home'],
+                                                       ClassASetter(DiagClassA.HEALTHY))
+                                                      ])
+
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
                                  changeProb)

@@ -6,8 +6,10 @@
 
 'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
 'facilitySelectors':
-  - 'category': '((SNF)|(VSNF))'
+  - 'category': 'SNF'
     'implementation': 'NURSINGHOME'
+  - 'category': 'VSNF'
+    'implementation': 'VSNF'
   - 'category': 'LTACH'
     'implementation': 'LTAC'
   - 'category': 'HOSPITAL'
@@ -15,7 +17,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/mrsaImplementation_OC2013'
+'pathogenImplementationDir': '../sim/mrsaImplementation_ChicagoLand'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

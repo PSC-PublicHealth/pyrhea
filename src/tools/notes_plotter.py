@@ -116,6 +116,11 @@ class LOSPlotter(object):
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(descr['losModel'])
             else:
                 self.fullCRVs['NURSING'] = fullCRVFromLOSModel(constants['nhLOSModel'])
+        elif facToImplDict[descr['category']] == 'VSNF':
+            if 'losModel' in descr:
+                self.fullCRVs['VSNF'] = fullCRVFromLOSModel(descr['losModel'])
+            else:
+                self.fullCRVs['VSNF'] = fullCRVFromLOSModel(constants['nhLOSModel'])
         elif facToImplDict[descr['category']] == 'COMMUNITY':
             self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
         else:
@@ -298,6 +303,7 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
               'HOME': 'green',
               'other': 'green',
               'NURSING': 'red',
+              'VSNF': 'pink',
               'HOSP': 'blue',
               'HOSP+ICU': 'blue',
               'ICU': 'cyan',
@@ -305,15 +311,17 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
     implTierMap = {'HOSPITAL': ['HOSP', 'ICU'],
                    'LTAC': ['LTAC'],
                    'NURSINGHOME': ['NURSING'],
-                   'COMMUNITY': ['HOME']}
+                   'COMMUNITY': ['HOME'],
+                   'VSNF': ['NURSING']}
     wrapOrderMap = {'ICU': 0,
                     'HOSP': 1,
                     'HOSP+ICU': 1,
                     'LTAC': 2,
                     'NURSING': 3,
-                    'HOME': 4,
-                    'other': 5,
-                    'death': 6}
+                    'VSNF': 4,
+                    'HOME': 5,
+                    'other': 6,
+                    'death': 7}
     for offset, cat in enumerate(catNames):
         keys = ['death'] + ['%s_found' % tier for tier in CARE_TIERS]
         labels = ['death'] + CARE_TIERS
@@ -340,10 +348,11 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
             for lbl, val in allFacInfo[cat].items():
                 if lbl in catToImplDict:
                     toImpl = catToImplDict[lbl]
+                    print 'toImpl: %s implTierMap: %s' % (toImpl, implTierMap)
                     toLbl = '+'.join(implTierMap[toImpl])
                 else:
                     toLbl = lbl
-                print '%s %s' % (toLbl, pairDict)
+#                 print '%s %s' % (toLbl, pairDict)
                 if toLbl in pairDict:
                     pairDict[toLbl] += val
                 else:
