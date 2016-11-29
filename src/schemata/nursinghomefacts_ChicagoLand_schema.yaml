@@ -12,7 +12,7 @@
     - 'properties':
         'category': 
           'type': 'string'
-          'enum': ['NURSINGHOME', 'SNF', 'VSNF']
+          'enum': ['NURSINGHOME', 'SNF']
       'required':
       - 'totalDischarges'
       - 'nBeds'
