@@ -25,7 +25,8 @@ import pyrheabase
 import pyrheautils
 import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import NURSINGQueue, VENTQueue, SKILNRSQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter
 from hospital import estimateWork as hospitalEstimateWork
@@ -45,7 +46,7 @@ class VentSNF(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
-                          reqQueueClasses=[NURSINGQueue],
+                          reqQueueClasses=[NURSINGQueue, VENTQueue, SKILNRSQueue],
                           policyClasses=policyClasses,
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
@@ -118,9 +119,9 @@ class VentSNF(Facility):
             changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                    ClassASetter(DiagClassA.DEATH)),
                                                   (self.lclRates['nursinghome'],
-                                                   PatientStatusSetter()),
+                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
                                                   (self.lclRates['vsnf'],
-                                                   PatientStatusSetter()),
+                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
                                                   (self.lclRates['ltac'],
                                                    ClassASetter(DiagClassA.NEEDSLTAC)),
                                                   (self.lclRates['hospital'],
@@ -146,11 +147,19 @@ class VentSNF(Facility):
                     adverseProb = (self.lclRates['death']
                                    + self.lclRates['hospital']
                                    + self.lclRates['icu']
-                                   + self.lclRates['ltac'])
+                                   + self.lclRates['ltac']
+                                   + self.lclRates['nursinghome']
+                                   + self.lclRates['vsnf'])
                     if adverseProb > 0.0:
                         adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.DEATH)),
+                                                               (self.lclRates['nursinghome']
+                                                                / adverseProb,
+                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                               (self.lclRates['vsnf']
+                                                                / adverseProb,
+                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
                                                                (self.lclRates['ltac']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSLTAC)),
@@ -185,27 +194,6 @@ class VentSNF(Facility):
             else:
                 raise RuntimeError('Nursing homes do not provide treatment protocol %s'
                                    % treatment)
-
-    def prescribe(self, patientDiagnosis, patientTreatment):
-        """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
-
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \

@@ -120,9 +120,9 @@ class NursingHome(Facility):
             changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                    ClassASetter(DiagClassA.DEATH)),
                                                   (self.lclRates['nursinghome'],
-                                                   PatientStatusSetter()),
+                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
                                                   (self.lclRates['vsnf'],
-                                                   PatientStatusSetter()),
+                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
                                                   (self.lclRates['ltac'],
                                                    ClassASetter(DiagClassA.NEEDSLTAC)),
                                                   (self.lclRates['hospital'],
@@ -131,6 +131,7 @@ class NursingHome(Facility):
                                                    ClassASetter(DiagClassA.VERYSICK)),
                                                   (self.lclRates['home'],
                                                    healthySetter)])
+
             tree = BayesTree(changeTree,
                              innerTree,
                              changeProb)
@@ -148,11 +149,19 @@ class NursingHome(Facility):
                     adverseProb = (self.lclRates['death']
                                    + self.lclRates['hospital']
                                    + self.lclRates['icu']
-                                   + self.lclRates['ltac'])
+                                   + self.lclRates['ltac']
+                                   + self.lclRates['nursinghome']
+                                   + self.lclRates['vsnf'])
                     if adverseProb > 0.0:
                         adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.DEATH)),
+                                                               (self.lclRates['nursinghome']
+                                                                / adverseProb,
+                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                               (self.lclRates['vsnf']
+                                                                / adverseProb,
+                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
                                                                (self.lclRates['ltac']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSLTAC)),
@@ -175,7 +184,8 @@ class NursingHome(Facility):
                     return tree
             elif treatment == TreatmentProtocol.NORMAL:
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
-                                                 DiagClassA.VERYSICK]):
+                                                 DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
+                                                 DiagClassA.NEEDSSKILNRS]):
                     logger.warning('fac %s status: %s careTier %s startTime: %s: '
                                    'this patient should be gone by now'
                                    % (self.name, str(patientStatus), CareTier.names[careTier],
@@ -187,26 +197,6 @@ class NursingHome(Facility):
             else:
                 raise RuntimeError('Nursing homes do not provide treatment protocol %s'
                                    % treatment)
-
-    def prescribe(self, patientDiagnosis, patientTreatment):
-        """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
-            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
 
 def _populate(fac, descr, patch):

@@ -17,12 +17,14 @@
 
 import logging
 from random import shuffle
+from phacsl.utils.collections.phacollections import enum
 import quilt.patches as patches
 import quilt.peopleplaces as peopleplaces
 from quilt.peopleplaces import SimpleMsg, ArrivalMsg, DepartureMsg  # to export it @UnusedImport
 
 logger = logging.getLogger(__name__)
 
+TierUpdateModFlag = enum('FORCE_MOVE')
 
 class Ward(peopleplaces.Location):
     def __init__(self, name, patch, tier, nBeds):
@@ -272,7 +274,11 @@ class PatientAgent(peopleplaces.Person):
         self.newLocAddr = value
 
     def handleTierUpdate(self, timeNow):
-        return self.ward.tier
+        """
+        The PatientAgent computes a new needed CareTier and a (potentially empty) list
+        of modifiers, which the caller may use to relocate the PatientAgent as needed.
+        """
+        return self.ward.tier, []
 
     def handleDeath(self, timeNow):
         pass
@@ -283,8 +289,8 @@ class PatientAgent(peopleplaces.Person):
         return facAddrList
 
     def getNewLocAddr(self, timeNow):
-        tier = self.handleTierUpdate(timeNow)
-        if tier == self.tier:
+        tier, modifiers = self.handleTierUpdate(timeNow)
+        if tier == self.tier and TierUpdateModFlag.FORCE_MOVE not in modifiers:
             return self.locAddr  # things stay the same
         elif tier is None:
             return None  # signal death
@@ -317,6 +323,8 @@ class PatientAgent(peopleplaces.Person):
                 return self.locAddr  # Stay put; we'll try next timeslice
                 # state is unchanged
             else:
+                if tier == self.tier:
+                    print 'zing! %s' % self.name
                 return self.newLocAddr
 
     def handleArrival(self, timeNow):

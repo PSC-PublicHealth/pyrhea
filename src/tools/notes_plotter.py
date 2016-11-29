@@ -348,7 +348,6 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
             for lbl, val in allFacInfo[cat].items():
                 if lbl in catToImplDict:
                     toImpl = catToImplDict[lbl]
-                    print 'toImpl: %s implTierMap: %s' % (toImpl, implTierMap)
                     toLbl = '+'.join(implTierMap[toImpl])
                 else:
                     toLbl = lbl
@@ -567,9 +566,12 @@ def findFacImplCategory(facImplDict,
             return implStr
     return None
 
+def readFacFiles(facilityDirs):
+    return mtm.parseFacilityData(facilityDirs)
+
 def scanAllFacilities(facilityDirs):
     result = {}
-    facDict = mtm.parseFacilityData(facilityDirs)
+    facDict = readFacFiles(facilityDirs)
     for fac in facDict.values():
         cat = fac['category']
         if cat not in result:
@@ -577,6 +579,7 @@ def scanAllFacilities(facilityDirs):
         if 'totalDischarges' in fac:
             totDisch = fac['totalDischarges']['value']
         else:
+            assert fac['category'] == 'COMMUNITY', '%s should have totDisch and does not' % fac['abbrev']
             totDisch = None
         if 'totalTransfersOut' in fac:
             knownDisch = 0
@@ -593,7 +596,7 @@ def scanAllFacilities(facilityDirs):
                     result[cat]['other'] += delta
                 else:
                     result[cat]['other'] = delta
-                    
+
     return result
 
 def main():

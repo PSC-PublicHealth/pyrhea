@@ -139,27 +139,6 @@ class LTAC(Facility):
         else:
             raise RuntimeError('LTACs do not provide care tier %s' % careTier)
 
-    def prescribe(self, patientDiagnosis, patientTreatment):
-        """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
-            else:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
-        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
-
-
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "LTAC description %(abbrev)s is missing the expected field 'meanPop'" % descr
