@@ -14,19 +14,19 @@
           'type': 'string'
           'enum': ['VSNF']
         'fracVentBeds': {
-          '$ref': '#/definitions/fraction',
+          '$ref': 'basics_schema.yaml#/definitions/fraction',
           'description': 'Fraction of nBeds in the Vent units'
          }
         'fracSkilledBeds': {
-          '$ref': '#/definitions/fraction',
+          '$ref': 'basics_schema.yaml#/definitions/fraction',
           'description': 'Fraction of nBeds in the Skilled Nursing units'
          }
         'fracVentAdmissions': {
-          '$ref': '#/definitions/fraction',
+          '$ref': 'basics_schema.yaml#/definitions/fraction',
           'description': 'Fraction of admissions which are to the Vent units'
          }
         'fracSkilledAdmissions': {
-          '$ref': '#/definitions/fraction',
+          '$ref': 'basics_schema.yaml#/definitions/fraction',
           'description': 'Fraction of admissions which are to the Skilled Nursing units'
          }
         

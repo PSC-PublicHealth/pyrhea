@@ -124,9 +124,10 @@ class LTAC(Facility):
                                                        ClassASetter(DiagClassA.SICK)),
                                                       (self.lclRates['ltac'],
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      ((self.lclRates['nursinghome']
-                                                         + self.lclRates['vsnf']),
+                                                      (self.lclRates['nursinghome'],
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                      (self.lclRates['vsnf'],
+                                                       ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       (self.lclRates['home'],
                                                        ClassASetter(DiagClassA.HEALTHY))
                                                       ])

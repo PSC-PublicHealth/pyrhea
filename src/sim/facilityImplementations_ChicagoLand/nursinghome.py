@@ -107,7 +107,7 @@ class NursingHome(Facility):
                     return self.frailRehabTreeCache[key]
                 else:
                     # If no major changes happen, allow for the patient's completing rehab
-                    innerTree = BayesTree(ClassASetter(PatientOverallHealth.HEALTHY),
+                    innerTree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
                                           PatientStatusSetter(),
                                           self.rehabCachedCDF.intervalProb(*key))
             else:
@@ -122,7 +122,7 @@ class NursingHome(Facility):
                                                   (self.lclRates['nursinghome'],
                                                    ClassASetter(DiagClassA.NEEDSREHAB)),
                                                   (self.lclRates['vsnf'],
-                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                   ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                   (self.lclRates['ltac'],
                                                    ClassASetter(DiagClassA.NEEDSLTAC)),
                                                   (self.lclRates['hospital'],
@@ -161,7 +161,7 @@ class NursingHome(Facility):
                                                                 ClassASetter(DiagClassA.NEEDSREHAB)),
                                                                (self.lclRates['vsnf']
                                                                 / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                                ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                                (self.lclRates['ltac']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSLTAC)),
