@@ -304,6 +304,9 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
               'other': 'green',
               'NURSING': 'red',
               'VSNF': 'pink',
+              'SKILNRS': 'gray',
+              'VENT': 'purple',
+              'NURSING+SKILNRS+VENT': 'red',
               'HOSP': 'blue',
               'HOSP+ICU': 'blue',
               'ICU': 'cyan',
@@ -312,16 +315,19 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
                    'LTAC': ['LTAC'],
                    'NURSINGHOME': ['NURSING'],
                    'COMMUNITY': ['HOME'],
-                   'VSNF': ['NURSING']}
+                   'VSNF': ['NURSING', 'SKILNRS', 'VENT']}
     wrapOrderMap = {'ICU': 0,
                     'HOSP': 1,
                     'HOSP+ICU': 1,
                     'LTAC': 2,
                     'NURSING': 3,
                     'VSNF': 4,
-                    'HOME': 5,
-                    'other': 6,
-                    'death': 7}
+                    'SKILNRS': 5,
+                    'NURSING+SKILNRS+VENT': 4,
+                    'VENT': 6,
+                    'HOME': 7,
+                    'other': 7,
+                    'death': 8}
     for offset, cat in enumerate(catNames):
         keys = ['death'] + ['%s_found' % tier for tier in CARE_TIERS]
         labels = ['death'] + CARE_TIERS

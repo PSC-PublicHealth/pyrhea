@@ -25,9 +25,9 @@ import pyrheabase
 import pyrheautils
 import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import DiagClassA, CareTier, DiagClassA
 from facilitybase import NURSINGQueue, VENTQueue, SKILNRSQueue
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
+from facilitybase import PatientOverallHealth, Facility, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, FacilityManager, tierToQueueMap
 from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
@@ -41,6 +41,38 @@ _constants_schema = 'vsnf_ChicagoLand_constants_schema.yaml'
 _constants = None
 _validator = None
 
+
+class NursingWard(ForcedStateWard):
+    def __init__(self, name, patch, nBeds):
+        super(NursingWard, self).__init__(name, patch, CareTier.NURSING, nBeds)
+        
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """
+        Patient is arriving by triage, so force the patient's internal status and diagnosis
+        to correspond to those of the ward.
+        """
+        self.forceState(patientAgent, CareTier.NURSING, DiagClassA.NEEDSREHAB)
+
+class SkilNrsWard(ForcedStateWard):
+    def __init__(self, name, patch, nBeds):
+        super(SkilNrsWard, self).__init__(name, patch, CareTier.SKILNRS, nBeds)
+
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """
+        Patient is a direct transfer, so no special processing is needed.
+        """
+        self.forceState(patientAgent, CareTier.SKILNRS, DiagClassA.NEEDSSKILNRS)
+
+class VentWard(ForcedStateWard):
+    def __init__(self, name, patch, nBeds):
+        super(VentWard, self).__init__(name, patch, CareTier.VENT, nBeds)
+
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """
+        Patient is arriving by triage, so force the patient's internal status and diagnosis
+        to correspond to those of the ward.
+        """
+        self.forceState(patientAgent, CareTier.VENT, DiagClassA.NEEDSVENT)
 
 class VSNFManager(FacilityManager):
     def allocateAvailableBed(self, requestedTier, strict=False):
@@ -105,12 +137,12 @@ class VentSNF(Facility):
         nBedsVent = int(nBeds * descr['fracVentBeds']['value'])
         nBedsSkil = int(nBeds * descr['fracSkilledBeds']['value'])
         nBedsOther = nBeds - (nBedsVent + nBedsSkil)
-        self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                          patch, CareTier.NURSING, nBedsOther))
-        self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                          patch, CareTier.SKILNRS, nBedsSkil))
-        self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                          patch, CareTier.VENT, nBedsVent))
+        self.addWard(NursingWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                                 patch, nBedsOther))
+        self.addWard(SkilNrsWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                                 patch, nBedsSkil))
+        self.addWard(VentWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                              patch, nBedsVent))
 
         pVent = descr['fracVentAdmissions']['value']
         pSkil = descr['fracSkilledAdmissions']['value']
@@ -121,13 +153,9 @@ class VentSNF(Facility):
                                                    ])
 
         
-        lMP = losModel['parms']
-        self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
-                                                         scale=math.exp(lMP[1])))
-        self.rehabTreeCache = {}
-        self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
-        self.frailTreeCache = {}
-        self.frailRehabTreeCache = {}
+        k, mu, sigma, lmda = losModel['parms']
+        self.cachedCDF = CachedCDFGenerator(lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda))
+        self.treeCache = {}
 
     def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
         """Specialized to prioritize transfers to our own wards if possible"""
@@ -151,100 +179,41 @@ class VentSNF(Facility):
         # This implementation applies the same LOS distributions regardless of CareTier,
         # so we can ignore the tier in most of what follows
         #
-        if patientStatus.overall == PatientOverallHealth.FRAIL:
-            if treatment == TreatmentProtocol.REHAB:
-                if key in self.frailRehabTreeCache:
-                    return self.frailRehabTreeCache[key]
-                else:
-                    # If no major changes happen, allow for the patient's completing rehab
-                    innerTree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
-                                          PatientStatusSetter(),
-                                          self.rehabCachedCDF.intervalProb(*key))
-            else:
-                if key in self.frailTreeCache:
-                    return self.frailTreeCache[key]
-                else:
-                    innerTree = PatientStatusSetter()  # No change of state
-            changeProb = self.frailCachedCDF.intervalProb(*key)
-            healthySetter = OverallHealthSetter(PatientOverallHealth.HEALTHY)
-            changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
-                                                   ClassASetter(DiagClassA.DEATH)),
-                                                  (self.lclRates['nursinghome'],
-                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                  (self.lclRates['vsnf'],
-                                                   ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                  (self.lclRates['ltac'],
-                                                   ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                  (self.lclRates['hospital'],
-                                                   ClassASetter(DiagClassA.SICK)),
-                                                  (self.lclRates['icu'],
-                                                   ClassASetter(DiagClassA.VERYSICK)),
-                                                  (self.lclRates['home'],
-                                                   healthySetter)])
-            tree = BayesTree(changeTree,
-                             innerTree,
-                             changeProb)
-            if treatment == TreatmentProtocol.REHAB:
-                self.frailRehabTreeCache[key] = tree
-            else:
-                self.frailTreeCache[key] = tree
-            return tree
+        if key in self.treeCache:
+            return self.treeCache[key]
         else:
-            if treatment == TreatmentProtocol.REHAB:
-                if key in self.rehabTreeCache:
-                    return self.rehabTreeCache[key]
-                else:
-                    changeProb = self.rehabCachedCDF.intervalProb(*key)
-                    adverseProb = (self.lclRates['death']
-                                   + self.lclRates['hospital']
-                                   + self.lclRates['icu']
-                                   + self.lclRates['ltac']
-                                   + self.lclRates['nursinghome']
-                                   + self.lclRates['vsnf'])
-                    if adverseProb > 0.0:
-                        adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.DEATH)),
-                                                               (self.lclRates['nursinghome']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                               (self.lclRates['vsnf']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                               (self.lclRates['ltac']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                               (self.lclRates['hospital']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.SICK)),
-                                                               (self.lclRates['icu']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.VERYSICK))])
-                        tree = BayesTree(BayesTree(adverseTree,
-                                                   ClassASetter(DiagClassA.HEALTHY),
-                                                   adverseProb),
-                                         PatientStatusSetter(),
-                                         changeProb)
-                    else:
-                        tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
-                                         PatientStatusSetter(),
-                                         changeProb)
-                    self.rehabTreeCache[key] = tree
-                    return tree
-            elif treatment == TreatmentProtocol.NORMAL:
-                if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
-                                                 DiagClassA.VERYSICK, DiagClassA.HEALTHY]):
-                    logger.warning('fac %s status: %s careTier %s startTime: %s: '
-                                   'this patient should be gone by now'
-                                   % (self.name, str(patientStatus), CareTier.names[careTier],
-                                      startTime))
-                    return BayesTree(PatientStatusSetter())
-                else:
-                    raise RuntimeError('Patients with NORMAL overall health should only be'
-                                       ' in %s care for rehab' % CareTier.names[careTier])
+            changeProb = self.cachedCDF.intervalProb(*key)
+            adverseProb = (self.lclRates['death']
+                           + self.lclRates['hospital']
+                           + self.lclRates['icu']
+                           + self.lclRates['ltac']
+                           + self.lclRates['nursinghome']
+                           + self.lclRates['vsnf'])
+            if adverseProb > 0.0:
+                adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
+                                                        / adverseProb,
+                                                        ClassASetter(DiagClassA.DEATH)),
+                                                       (self.lclRates['nursinghome'] / adverseProb,
+                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                       (self.lclRates['vsnf'] / adverseProb,
+                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
+                                                       (self.lclRates['ltac'] / adverseProb,
+                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
+                                                       (self.lclRates['hospital'] / adverseProb,
+                                                        ClassASetter(DiagClassA.SICK)),
+                                                       (self.lclRates['icu'] / adverseProb,
+                                                        ClassASetter(DiagClassA.VERYSICK))])
+                tree = BayesTree(BayesTree(adverseTree,
+                                           ClassASetter(DiagClassA.HEALTHY),
+                                           adverseProb),
+                                 PatientStatusSetter(),
+                                 changeProb)
             else:
-                raise RuntimeError('Nursing homes do not provide treatment protocol %s'
-                                   % treatment)
+                tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
+                                 PatientStatusSetter(),
+                                 changeProb)
+            self.treeCache[key] = tree
+            return tree
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
@@ -263,7 +232,8 @@ def _populate(fac, descr, patch):
     nVent = int(round(descr['fracVentAdmissions']['value'] * meanPop))
     nSkil = int(round(descr['fracSkilledAdmissions']['value'] * meanPop))
     nOther = int(round(meanPop - (nVent + nSkil)))
-    for count, tier in [(nVent, CareTier.VENT), (nSkil, CareTier.SKILNRS),
+    for count, tier in [(nVent, CareTier.VENT),
+                        (nSkil, CareTier.SKILNRS),
                         (nOther, CareTier.NURSING)]:
         for i in xrange(count):
             ward = fac.manager.allocateAvailableBed(tier, strict=True)
@@ -272,12 +242,9 @@ def _populate(fac, descr, patch):
                             descr['abbrev'], CareTier.names[tier], i, count)
                 break
             a = PatientAgent('PatientAgent_%s_%s_%d' % (CareTier.names[tier], ward._name, i),
-                             patch, ward, debug=True)
+                             patch, ward)
             if random() <= residentFrac:
                 a._status = a._status._replace(overall=PatientOverallHealth.FRAIL)
-            else:  # They must be here for rehab
-                a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
-                a._treatment = TreatmentProtocol.REHAB
             ward.lock(a)
             fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                   fac.getMsgPayload(pyrheabase.ArrivalMsg, a),

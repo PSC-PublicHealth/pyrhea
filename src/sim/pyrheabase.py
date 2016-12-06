@@ -40,6 +40,10 @@ class Ward(peopleplaces.Location):
 
     def getReqQueueAddr(self):
         return self.fac.reqQueues[0].getGblAddr()
+    
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the arrival processing of patients"""
+        pass
 
 
 class FacRequestQueue(peopleplaces.RequestQueue):
@@ -62,7 +66,7 @@ class FacilityManager(peopleplaces.Manager):
                 ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
                 if n > 0:
                     self.fac.wardAddrDict[addr] = (w, n-1)
-                    # print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
+#                     print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
                     return w
             return None
         else:
@@ -252,7 +256,7 @@ class BedRequest(patches.Agent):
 
 class PatientAgent(peopleplaces.Person):
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
-        super(PatientAgent, self).__init__(name, patch, ward, debug=debug)
+        super(PatientAgent, self).__init__(name, patch, ward, debug=False)
         self.tier = ward.tier
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
@@ -323,8 +327,6 @@ class PatientAgent(peopleplaces.Person):
                 return self.locAddr  # Stay put; we'll try next timeslice
                 # state is unchanged
             else:
-                if tier == self.tier:
-                    print 'zing! %s' % self.name
                 return self.newLocAddr
 
     def handleArrival(self, timeNow):
@@ -333,6 +335,7 @@ class PatientAgent(peopleplaces.Person):
         locked the interactant self.loc.
         """
         self.tier = self.loc.tier
+        self.ward.handlePatientArrival(self, timeNow)
 
     def __getstate__(self):
         d = peopleplaces.Person.__getstate__(self)

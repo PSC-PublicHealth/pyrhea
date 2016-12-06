@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 from random import randint, shuffle, choice
 import pyrheabase
 from phacsl.utils.collections.phacollections import enum, namedtuple
@@ -94,6 +92,19 @@ class Ward(pyrheabase.Ward):
     def initializePatientPthState(self):
         for p in self.getPatientList():
             self.iA.initializePatientState(p)
+
+
+class ForcedStateWard(Ward):
+    def forceState(self, patientAgent, careTier, diagClassA):
+        
+        patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
+        patientAgent._diagnosis = self.fac.diagnose(patientAgent._status, patientAgent._diagnosis)
+        newTier, patientAgent._treatment = self.fac.prescribe(patientAgent._diagnosis,
+                                                              patientAgent._treatment)[0:2]
+        assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
+                                      % (self._name, CareTier.names[careTier],
+                                         DiagClassA.names[diagClassA],
+                                         patientAgent.name))
 
 
 class FacilityManager(pyrheabase.FacilityManager):
@@ -223,7 +234,8 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
             innerPayload = super(Facility, self).getMsgPayload(msgType, patientAgent)
             return ((patientAgent.id, patientAgent.ward.tier,
-                     patientAgent._status.overall == PatientOverallHealth.FRAIL),
+                     patientAgent._status.overall == PatientOverallHealth.FRAIL,
+                     patientAgent.name),
                     innerPayload)
         elif issubclass(msgType, BirthMsg):
             return patientAgent._status.overall
@@ -235,7 +247,7 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier, isFrail = myPayload
+            patientID, tier, isFrail, patientName = myPayload
             if patientID in self.patientDataDict:
                 logger.debug('Patient %s has returned to %s' % (patientID, self.name))
                 patientRec = self.patientDataDict[patientID]
@@ -252,7 +264,7 @@ class Facility(pyrheabase.Facility):
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier, isFrail = myPayload
+            patientID, tier, isFrail, patientName = myPayload
             if patientID not in self.patientDataDict:
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
             patientRec = self.patientDataDict[patientID]
@@ -481,7 +493,11 @@ class PatientAgent(pyrheabase.PatientAgent):
             modifierList = []
         if self.debug:
             self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
-                              % (self.name, self._status, self._diagnosis, self._treatment))
+                              % (self.name, self._status, self._diagnosis,
+                                 TreatmentProtocol.names[self._treatment]))
+            self.logger.debug('%s: modifiers are %s',
+                              self.name,
+                              [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
         self.lastUpdateTime = timeNow
         return newTier, modifierList
 

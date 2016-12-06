@@ -24,7 +24,7 @@ from random import random
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, HOSPQueue, ICUQueue, tierToQueueMap
 from facilitybase import FacilityManager
 from stats import CachedCDFGenerator, BayesTree
@@ -65,6 +65,19 @@ class OverallHealthSetter(PatientStatusSetter):
     def __str__(self):
         return ('PatientStatusSetter(overallHealth <- %s)'
                 % PatientOverallHealth.names[self.newOverallHealth])
+
+
+class ICUWard(ForcedStateWard):
+    def __init__(self, name, patch, nBeds):
+        super(ICUWard, self).__init__(name, patch, CareTier.ICU, nBeds)
+        
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """
+        Patient is arriving by triage, so force the patient's internal status and diagnosis
+        to correspond to those of the ward.
+        """
+        self.forceState(patientAgent, CareTier.ICU, DiagClassA.VERYSICK)
+
 
 
 class HospitalManager(FacilityManager):
@@ -162,9 +175,9 @@ class Hospital(Facility):
         self.icuTreeCache = {}
 
         for i in xrange(icuWards):
-            self.addWard(Ward(('%s_%s_%s_%s_%d' %
-                               (category, patch.name, descr['abbrev'], 'ICU', i)),
-                              patch, CareTier.ICU, bedsPerICUWard))
+            self.addWard(ICUWard(('%s_%s_%s_%s_%d' %
+                                  (category, patch.name, descr['abbrev'], 'ICU', i)),
+                                 patch, bedsPerICUWard))
         for i in xrange(nonICUWards):
             self.addWard(Ward(('%s_%s_%s_%s_%d' %
                                (category, patch.name, descr['abbrev'], 'HOSP', i)),
