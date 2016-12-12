@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 from random import randint, shuffle, choice
 import pyrheabase
 from phacsl.utils.collections.phacollections import enum, namedtuple
@@ -28,11 +26,12 @@ from pathogenbase import Pathogen  # @UnusedImport
 
 logger = logging.getLogger(__name__)
 
-CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU')
+CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU', 'VENT', 'SKILNRS')
 
 PatientOverallHealth = enum('HEALTHY', 'FRAIL')
 
-DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH')
+DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH',
+                  'NEEDSVENT', 'NEEDSSKILNRS')
 
 TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
 
@@ -41,16 +40,18 @@ PatientStatus = namedtuple('PatientStatus',
                             'diagClassA',           # one of DiagClassA
                             'startDateA',           # date diagClassA status was entered
                             'pthStatus',            # one of PthStatus
-                            'startDatePth'          # date PthStatus status was entered
+                            'startDatePth',         # date PthStatus status was entered
+                            'relocateFlag'          # true if patient needs relocation
                             ],
-                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None])
+                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None, bool])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
                                'diagClassA',           # one of DiagClassA
                                'pthStatus',            # one of PthStatus
+                               'relocateFlag'          # true if patient needs relocation
                                ],
-                              field_types=[PatientOverallHealth, DiagClassA, PthStatus])
+                              field_types=[PatientOverallHealth, DiagClassA, PthStatus, bool])
 
 
 class PatientStatusSetter(object):
@@ -93,6 +94,19 @@ class Ward(pyrheabase.Ward):
             self.iA.initializePatientState(p)
 
 
+class ForcedStateWard(Ward):
+    def forceState(self, patientAgent, careTier, diagClassA):
+        
+        patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
+        patientAgent._diagnosis = self.fac.diagnose(patientAgent._status, patientAgent._diagnosis)
+        newTier, patientAgent._treatment = self.fac.prescribe(patientAgent._diagnosis,
+                                                              patientAgent._treatment)[0:2]
+        assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
+                                      % (self._name, CareTier.names[careTier],
+                                         DiagClassA.names[diagClassA],
+                                         patientAgent.name))
+
+
 class FacilityManager(pyrheabase.FacilityManager):
     pass
 
@@ -130,12 +144,20 @@ class NURSINGQueue(FacRequestQueue):
 class HOMEQueue(FacRequestQueue):
     pass
 
+class VENTQueue(FacRequestQueue):
+    pass
+
+class SKILNRSQueue(FacRequestQueue):
+    pass
+
 
 tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.NURSING: NURSINGQueue,
                   CareTier.LTAC: LTACQueue,
                   CareTier.HOSP: HOSPQueue,
-                  CareTier.ICU: ICUQueue}
+                  CareTier.ICU: ICUQueue,
+                  CareTier.VENT: VENTQueue,
+                  CareTier.SKILNRS: SKILNRSQueue}
 
 
 class TransferDestinationPolicy(object):
@@ -212,7 +234,8 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
             innerPayload = super(Facility, self).getMsgPayload(msgType, patientAgent)
             return ((patientAgent.id, patientAgent.ward.tier,
-                     patientAgent._status.overall == PatientOverallHealth.FRAIL),
+                     patientAgent._status.overall == PatientOverallHealth.FRAIL,
+                     patientAgent.name),
                     innerPayload)
         elif issubclass(msgType, BirthMsg):
             return patientAgent._status.overall
@@ -224,7 +247,7 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier, isFrail = myPayload
+            patientID, tier, isFrail, patientName = myPayload
             if patientID in self.patientDataDict:
                 logger.debug('Patient %s has returned to %s' % (patientID, self.name))
                 patientRec = self.patientDataDict[patientID]
@@ -241,7 +264,7 @@ class Facility(pyrheabase.Facility):
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier, isFrail = myPayload
+            patientID, tier, isFrail, patientName = myPayload
             if patientID not in self.patientDataDict:
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
             patientRec = self.patientDataDict[patientID]
@@ -312,25 +335,39 @@ class Facility(pyrheabase.Facility):
         """
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
-                                patientStatus.pthStatus)
+                                patientStatus.pthStatus,
+                                patientStatus.relocateFlag)
 
     def prescribe(self, patientDiagnosis, patientTreatment):
-        """This returns a tuple (careTier, patientTreatment)"""
+        """
+        This returns a tuple of either form (careTier, patientTreatment) or
+        (careTier, patientTreatment, modifierList)
+        """
+        if patientDiagnosis.relocateFlag:
+            modifierList = [pyrheabase.TierUpdateModFlag.FORCE_MOVE]
+        else:
+            modifierList = []
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+                return (CareTier.HOME, TreatmentProtocol.NORMAL, modifierList)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+                return (CareTier.NURSING, TreatmentProtocol.NORMAL, modifierList)
             else:
                 raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
         if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+            return (CareTier.NURSING, TreatmentProtocol.REHAB, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+            return (CareTier.HOSP, TreatmentProtocol.NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+            return (CareTier.ICU, TreatmentProtocol.NORMAL, modifierList)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
+            return (CareTier.LTAC, TreatmentProtocol.NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
+            return (None, TreatmentProtocol.NORMAL, modifierList)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
+            return (CareTier.VENT, TreatmentProtocol.NORMAL, modifierList)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
+            return (CareTier.SKILNRS, TreatmentProtocol.NORMAL, modifierList)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
@@ -341,19 +378,25 @@ class Facility(pyrheabase.Facility):
         """
         if careTier == CareTier.HOME:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, defaultPthStatus)
+                                    DiagClassA.HEALTHY, defaultPthStatus, False)
         elif careTier == CareTier.NURSING:
             return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, defaultPthStatus)
+                                    DiagClassA.HEALTHY, defaultPthStatus, False)
         elif careTier == CareTier.LTAC:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSLTAC, defaultPthStatus)
+                                    DiagClassA.NEEDSLTAC, defaultPthStatus, False)
         elif careTier == CareTier.HOSP:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.SICK, defaultPthStatus)
+                                    DiagClassA.SICK, defaultPthStatus, False)
         elif careTier == CareTier.ICU:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.VERYSICK, defaultPthStatus)
+                                    DiagClassA.VERYSICK, defaultPthStatus, False)
+        elif careTier == CareTier.VENT:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSVENT, defaultPthStatus, False)
+        elif careTier == CareTier.SKILNRS:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSSKILNRS, defaultPthStatus, False)
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
 
@@ -370,6 +413,33 @@ class Facility(pyrheabase.Facility):
         """
         return BayesTree(PatientStatusSetter())
 
+    def mapDescrFields(self, descr):
+        """
+        Descr is a record describing the facility, some fields of which contain
+        category names in terms of 'descr' categories rather than 'impl' categories.
+        Rebuild the record with 'impl' category names.
+        """
+        newDescr = descr.copy()
+        for field in ['category']:
+            newDescr[field] = self.categoryNameMapper(descr[field])
+        for field in ['totalTransfersOut']:
+            if field in descr:
+                newD = {}
+                for elt in descr[field]:
+                    newCat = self.categoryNameMapper(elt['category'])
+                    if newCat in newD:
+                        val, prov = newD[newCat]
+                        val += elt['count']['value']
+                        prov += elt['count']['prov']
+                        newD[newCat] = (val, prov)
+                    else:
+                        newD[newCat] = (elt['count']['value'], elt['count']['prov'])
+                newL = []
+                for cat, (val, prov) in newD.items():
+                    newL.append({'category': cat, 'count': {'value': val, 'prov': prov}})
+                newDescr[field] = newL
+        return newDescr
+    
 
 class PatientAgent(pyrheabase.PatientAgent):
     idCounter = 0  # to provide a reliable identifier for each patient
@@ -379,9 +449,10 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier)
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
-                                     self._diagnosis.pthStatus, 0)
+                                     self._diagnosis.pthStatus, 0,
+                                     False)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
-                                                           TreatmentProtocol.NORMAL)
+                                                           TreatmentProtocol.NORMAL)[0:2]
         self.lastUpdateTime = timeNow
         self.id = (patch.patchId, PatientAgent.idCounter)
         PatientAgent.idCounter += 1
@@ -412,14 +483,23 @@ class PatientAgent(pyrheabase.PatientAgent):
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
         if self._status.diagClassA == DiagClassA.DEATH:
-            return None
+            return None, []
         self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
-        newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis, self._treatment)
+        tpl = self.ward.fac.prescribe(self._diagnosis, self._treatment)
+        newTier, self._treatment = tpl[0:2]
+        if len(tpl) == 3:
+            modifierList = tpl[2]
+        else:
+            modifierList = []
         if self.debug:
             self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
-                              % (self.name, self._status, self._diagnosis, self._treatment))
+                              % (self.name, self._status, self._diagnosis,
+                                 TreatmentProtocol.names[self._treatment]))
+            self.logger.debug('%s: modifiers are %s',
+                              self.name,
+                              [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
         self.lastUpdateTime = timeNow
-        return newTier
+        return newTier, modifierList
 
     def getPostArrivalPauseTime(self, timeNow):
         if self.ward.checkInterval > 1:
@@ -428,7 +508,8 @@ class PatientAgent(pyrheabase.PatientAgent):
             return 0
 
     def handleTierUpdate(self, timeNow):
-        return self.updateEverything(timeNow)
+        newTier, modifierList = self.updateEverything(timeNow)
+        return newTier, modifierList
 
     def handleDeath(self, timeNow):
         assert self._status.diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
@@ -442,6 +523,14 @@ class PatientAgent(pyrheabase.PatientAgent):
                                    facAddr),
                           timeNow)
 
+    def getNewLocAddr(self, timeNow):
+        newAddr = super(PatientAgent, self).getNewLocAddr(timeNow)
+        if newAddr != self.locAddr:
+            # It's about to move, so clear relocateFlag
+            self._diagnosis = self._diagnosis._replace(relocateFlag=False)
+            self._status = self._status._replace(relocateFlag=False)
+        return newAddr
+    
     def getCandidateFacilityList(self, timeNow, newTier):
         return self.ward.fac.getOrderedCandidateFacList(self.ward.tier, newTier, timeNow)
 

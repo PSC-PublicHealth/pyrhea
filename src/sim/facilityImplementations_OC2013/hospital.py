@@ -33,7 +33,7 @@ import schemautils
 
 category = 'HOSPITAL'
 _schema = 'hospitalfacts_schema.yaml'
-_constants_values = 'hospital_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/hospital_constants.yaml'
 _constants_schema = 'hospital_constants_schema.yaml'
 _validator = None
 _constants = None
@@ -74,6 +74,7 @@ class Hospital(Facility):
                           reqQueueClasses=[HOSPQueue, ICUQueue],
                           policyClasses=policyClasses,
                           categoryNameMapper=categoryNameMapper)
+        descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
         self.hospDischargeViaDeathFrac = _constants['hospDischargeViaDeathFrac']['value']
@@ -84,7 +85,7 @@ class Hospital(Facility):
                                            + self.hospDischargeViaDeathFrac)
         transferFrac = {}
         for v in descr['totalTransfersOut']:
-            implCat = self.categoryNameMapper(v['category'])
+            implCat = v['category']
             if implCat not in transferFrac:
                 transferFrac[implCat] = 0.0
             transferFrac[implCat] += (self.hospTotalTransferFrac * float(v['count']['value'])
@@ -275,6 +276,5 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

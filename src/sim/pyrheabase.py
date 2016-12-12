@@ -17,12 +17,14 @@
 
 import logging
 from random import shuffle
+from phacsl.utils.collections.phacollections import enum
 import quilt.patches as patches
 import quilt.peopleplaces as peopleplaces
 from quilt.peopleplaces import SimpleMsg, ArrivalMsg, DepartureMsg  # to export it @UnusedImport
 
 logger = logging.getLogger(__name__)
 
+TierUpdateModFlag = enum('FORCE_MOVE')
 
 class Ward(peopleplaces.Location):
     def __init__(self, name, patch, tier, nBeds):
@@ -38,6 +40,10 @@ class Ward(peopleplaces.Location):
 
     def getReqQueueAddr(self):
         return self.fac.reqQueues[0].getGblAddr()
+    
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the arrival processing of patients"""
+        pass
 
 
 class FacRequestQueue(peopleplaces.RequestQueue):
@@ -60,7 +66,7 @@ class FacilityManager(peopleplaces.Manager):
                 ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
                 if n > 0:
                     self.fac.wardAddrDict[addr] = (w, n-1)
-                    # print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
+#                     print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
                     return w
             return None
         else:
@@ -272,7 +278,11 @@ class PatientAgent(peopleplaces.Person):
         self.newLocAddr = value
 
     def handleTierUpdate(self, timeNow):
-        return self.ward.tier
+        """
+        The PatientAgent computes a new needed CareTier and a (potentially empty) list
+        of modifiers, which the caller may use to relocate the PatientAgent as needed.
+        """
+        return self.ward.tier, []
 
     def handleDeath(self, timeNow):
         pass
@@ -283,8 +293,8 @@ class PatientAgent(peopleplaces.Person):
         return facAddrList
 
     def getNewLocAddr(self, timeNow):
-        tier = self.handleTierUpdate(timeNow)
-        if tier == self.tier:
+        tier, modifiers = self.handleTierUpdate(timeNow)
+        if tier == self.tier and TierUpdateModFlag.FORCE_MOVE not in modifiers:
             return self.locAddr  # things stay the same
         elif tier is None:
             return None  # signal death
@@ -325,6 +335,7 @@ class PatientAgent(peopleplaces.Person):
         locked the interactant self.loc.
         """
         self.tier = self.loc.tier
+        self.ward.handlePatientArrival(self, timeNow)
 
     def __getstate__(self):
         d = peopleplaces.Person.__getstate__(self)

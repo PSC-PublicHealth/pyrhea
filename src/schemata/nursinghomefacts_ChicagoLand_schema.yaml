@@ -1,0 +1,21 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/nursinghomefacts_schema.yaml'
+'title': 'ChicagoLand nursing home facts schema'
+'description': 'The basic facilityfacts schema modified for ChicagoLand nursinghomes'
+
+'$ref': '#/definitions/nursinghomefacts'
+
+'definitions':
+  'nursinghomefacts':
+    'allOf':
+    - {'$ref': 'facilityfacts_schema.yaml#/definitions/basicfacilityfacts'}
+    - 'properties':
+        'category': 
+          'type': 'string'
+          'enum': ['NURSINGHOME', 'SNF']
+      'required':
+      - 'totalDischarges'
+      - 'nBeds'
+      - 'meanPop'       
+  
+

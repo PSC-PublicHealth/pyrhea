@@ -10,6 +10,9 @@
   'rhea_input':
     'type': 'object'
     'properties':
+      'modelDir':
+        'type': 'string'
+        'description': '$(MODELDIR) in paths'
       'facilityDirs':
         'type': 'array'
         'items':
