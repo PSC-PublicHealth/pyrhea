@@ -1,0 +1,39 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/cre_constants_schema.yaml'
+'title': 'cre constants schema'
+'description': 'cre constants schema'
+
+'$ref': '#/definitions/creconstants'
+
+'definitions':
+  'fracByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category': {'$ref': 'facilityfacts_schema.yaml#definitions/category'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'category'
+        - 'frac'      
+
+  'creconstants':
+    'type': 'object'
+    'properties':
+      'initialFractionColonized': {'$ref': '#/definitions/fracByCategory'}
+      'initialFractionInfected': {'$ref': '#/definitions/fracByCategory'}
+      'colonizationDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'colonizationToInfectionFrac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'fractionColonizedChronic': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'beta': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+    'required':
+      - 'initialFractionColonized'
+      - 'initialFractionInfected'
+      - 'colonizationDurationPDF'
+      - 'infectionDurationPDF'
+      - 'colonizationToInfectionFrac'
+      - 'fractionColonizedChronic'
+      - 'beta'
+      
+      
