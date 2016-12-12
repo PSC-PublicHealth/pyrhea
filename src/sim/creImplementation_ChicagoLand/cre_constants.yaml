@@ -1,91 +1,321 @@
-'colonizationToInfectionFrac':
-  'value': 0.0
-  'prov': 'For this model, no distinction is made between colonization and infection'
-  
-#'initialFractionColonized':
-#  'value': 0.1
-#  'prov': >-
-#    Sarah 12/16/2015: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.
-#    Nursing home average is 25.9%, range 0% to 52%.  
-#    Numbers exist for the community but are not handy- Sarah will ask.
+##########################
+##########################
 
 'initialFractionColonized':
-- 'category': 'HOSPITAL'
-  'frac':
-    'value': 0.055
-    'prov': 'Sarah 12/16/2015: equilibrium prevalence in hospitals is 5% - 6%; maybe even 8%.'
-- 'category': 'LTAC'
-  'frac':
-    'value': 0.28
-    'prov': >
-      'Prevalence of methicillin-resistant Staphylococcus aureus and Acinetobacter baumannii 
-      in a long-term acute care facility', Furuno et al., 
-      Am J Infect Control. 2008 Sep; 36(7): 468–471.
-- 'category': 'NURSINGHOME'
-  'frac':
-    'value': 0.259
-    'prov': 'Sarah 12/16/2015: Nursing home average is 25.9%, range 0% to 52%.'
-- 'category': 'VSNF'
-  'frac':
-    'value': 0.259
-    'prov': 'Sarah 12/16/2015: Nursing home average is 25.9%, range 0% to 52%.'
-- 'category': 'COMMUNITY'
-  'frac':
-    'value': 0.259
-    'prov': 'DEBUGGING ONLY - Sarah 12/16/2015: Numbers exist for the community but are not handy- Sarah will ask.'
 
-'initialFractionInfected':
+##########################
 - 'category': 'HOSPITAL'
-  'frac':
-    'value': 0.0
-    'prov': 'For this model, no distinction is made between colonization and infection'
-- 'category': 'LTAC'
-  'frac':
-    'value': 0.0
-    'prov': 'For this model, no distinction is made between colonization and infection'
-- 'category': 'NURSINGHOME'
-  'frac':
-    'value': 0.0
-    'prov': 'For this model, no distinction is made between colonization and infection'
+  'facilities':
+  
+  - 'abbrev': 'ADVO_2320_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.06, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+      
+  - 'abbrev': 'ADVO_836_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'BETH_5025_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'COMM_5645_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'COOK_1901_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'HOLY_2701_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'JACK_7531_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.03, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'JOSE_1127_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.06, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'LORE_645_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.10, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'MERC_2525_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'MOUN_2028_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.02, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'NORT_251_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.04, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'NORW_1044_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.14, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'PRES_1127_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.03, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'PRES_7435_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.03, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'ROSE_45_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'RUSH_1653_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.02, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'SAIN_2875_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.07, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'ST_326_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.07, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'SWED_5145_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.0, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'THE_5841_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.03, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'THOR_850_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.29, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+  - 'abbrev': 'VHS_4646_H'
+    'tiers':
+    - 'tier': 'ICU'
+      'frac': {'value': 0.03, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit A'}
+
+##########################
+
 - 'category': 'VSNF'
-  'frac':
-    'value': 0.0
-    'prov': 'For this model, no distinction is made between colonization and infection'
-- 'category': 'COMMUNITY'
-  'frac':
-    'value': 0.0
-    'prov': 'For this model, no distinction is made between colonization and infection'
+  'facilities':
+  
+  - 'abbrev': 'ALDE_820_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'BALL_9300_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'ELMW_7733_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'GLEN_2451_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.07, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.44, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'GLEN_8333_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.05, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'GLEN_22660_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'OAK_9525_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'PARK_2320_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'PARK_6125_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+  - 'abbrev': 'STA_1725_V'
+    'tiers':
+    - 'tier': 'NURSING'
+      'frac': {'value': 0.01, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'SKILNRS'
+      'frac': {'value': 0.10, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+    - 'tier': 'VENT'
+      'frac': {'value': 0.30, 'prov': 'vSNF_floor_parameters_11-22-2016.xlsx Final 08b0dca5'}
+
+##########################
+
+- 'category': 'LTAC'
+  'facilities':
+  
+  - 'abbrev': 'ADVO_3435_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.30, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'PRES_100_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.10, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'RML_5601_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.10, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'THC_2544_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.55, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'THC_365_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.40, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'THC_4058_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.30, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+      
+  - 'abbrev': 'THC_6130_L'
+    'tiers':
+    - 'tier': 'LTAC'
+      'frac': {'value': 0.35, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 Exhibit B'}
+
+
+#########################
+#########################
+
+'categoryInitialFractionColonized':
+- 'category': 'HOSPITAL'
+  'tiers':
+  - 'tier': 'HOSP'
+    'frac': {'value': 0.005, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 main table'}
     
-'colonizationDurationPDF':
-    parms:
-    - 5.059e-3
-    pdf: 'expon(lambda=$0)'
-    prov: >-
-      Additionally, cre carriage was deemed to be persistent for one-third of carriers(22),
-      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
-      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
+- 'category': 'SNF'
+  'tiers':
+  - 'tier': 'NURSING'
+    'frac': {'value': 0.015, 'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 main table'}
 
-'fractionColonizedChronic':
-  'value': 0.33
-  'prov': >-
-      Additionally, cre carriage was deemed to be persistent for one-third of carriers(22),
-      while the remaining two-thirds experienced a linear spontaneous loss (25% over 274 days
-      after initial colonization(27)).  (Sarah Bartsch, email 12/16/2015)
 
-'infectionDurationPDF':
-    parms:
-    - 3.0
-    - 0.75
-    pdf: lognorm(mu=$0,sigma=$1)
-    prov: >-
-      DEBUGGING ONLY - the transition should be from infected to clear (Sarah).  This should only happen with treatment.
-      But since this model does not make a distinction between colonization and infection, no patient will
-      be affected by this PDF.
-        
+#########################
+#########################
+
 'beta':
-  'value': 8.5061848125100008e-05
-  'prov': >-
-    This is the median of the 102 beta valus in rhea-dante c91ea171:data/OC_2013/cre.INPUT_for_JOEL.txt
-    modify_beta(n)%beta(1).  The mean is 0.0005161267075923481, std dev 0.00081511260560777638.  
-    Excluding 0.0 values there are 94 samples, median 9.511040317044999e-05, 
-    mean 0.00056005238483425009, std dev 0.00083447785403349944
+- 'category': 'HOSPITAL'
+  'tiers':
+  - 'tier': 'ICU'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+  - 'tier': 'HOSP'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+- 'category': 'LTAC'
+  'tiers':
+  - 'tier': 'LTAC'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+- 'category': 'VSNF'
+  'tiers':
+  - 'tier': 'VENT'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+  - 'tier': 'SKILNRS'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+  - 'tier': 'NURSING'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+- 'category': 'SNF'
+  'tiers':
+  - 'tier': 'NURSING'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+- 'category': 'COMMUNITY'
+  'tiers':
+  - 'tier': 'HOME'
+    'frac': {'value': 0.5, 'prov': 'To be fit by optimization'}
+    
+
+#########################
+#########################
+
+'fracPermanentlyColonized':
+  'prov': 'CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 main table'
+  'value': 0.5
+  
+#########################
+#########################
+
+'spontaneousLossTimeConstant':
+  'prov': 'Estimated from CRE_Parameters_for_PROTECT_NON-INTERVENTION_11-28-20-16.docx 08b0dca5 main table Loss Rate graph'
+  'value': 187.0
+  
