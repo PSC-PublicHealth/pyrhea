@@ -251,8 +251,6 @@ class Community(Facility):
         careTier = ward.tier
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
-        assert treatment == TreatmentProtocol.NORMAL, \
-            "The community only offers treatment type 'NORMAL'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         if key in self.treeCache:
             return self.treeCache[key]

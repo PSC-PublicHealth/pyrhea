@@ -256,7 +256,7 @@ class BedRequest(patches.Agent):
 
 class PatientAgent(peopleplaces.Person):
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
-        super(PatientAgent, self).__init__(name, patch, ward, debug=False)
+        super(PatientAgent, self).__init__(name, patch, ward, debug=debug)
         self.tier = ward.tier
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 

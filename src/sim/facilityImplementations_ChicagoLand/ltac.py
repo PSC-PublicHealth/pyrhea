@@ -106,8 +106,6 @@ class LTAC(Facility):
                               patch, CareTier.LTAC, bedsPerWard))
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
-        assert treatment == TreatmentProtocol.NORMAL, \
-            "LTACs only offer 'NORMAL' treatment; found %s" % treatment
         careTier = ward.tier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants

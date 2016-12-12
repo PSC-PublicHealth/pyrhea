@@ -40,6 +40,7 @@ import math
 import pickle
 import types
 from imp import load_source
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -52,6 +53,12 @@ INPUT_SCHEMA = 'rhea_input_schema.yaml'
 DEFAULT_NOTES_FNAME = 'notes.pkl'
 
 CARE_TIERS = CareTierEnum.names.values()[:]
+
+FAC_TYPE_TO_CATEGORY_MAP = {'NursingHome': 'SNF',
+                            'LTAC': 'LTACH',
+                            'Community': 'COMMUNITY',
+                            'VentSNF': 'VSNF',
+                            'Hospital': 'HOSPITAL'}
 
 def checkInputFileSchema(fname, schemaFname):
     try:
@@ -350,7 +357,6 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
         clrs = []
         pairDict = {}
         if cat in allFacInfo:
-            print '%s: %s' % (cat, allFacInfo[cat])
             for lbl, val in allFacInfo[cat].items():
                 if lbl in catToImplDict:
                     toImpl = catToImplDict[lbl]
@@ -381,7 +387,7 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
 #     figs4.canvas.set_window_title("Patient Fates")
 
 
-def occupancyTimeFig(specialDict):
+def occupancyTimeFig(specialDict, meanPopByCat=None):
     figs5, axes5 = plt.subplots(nrows=1, ncols=len(specialDict))
     if len(specialDict) == 1:
         axes5 = [axes5]
@@ -390,11 +396,9 @@ def occupancyTimeFig(specialDict):
             occDataList = data['occupancy']
             assert isinstance(occDataList, types.ListType), \
                 'Special data %s is not a list' % patchName
-            fields = {}
+            fields = defaultdict(list)
             for d in occDataList:
                 for k, v in d.items():
-                    if k not in fields:
-                        fields[k] = []
                     fields[k].append(v)
             assert 'day' in fields, 'Date field is missing for special data %s' % patchName
             dayList = fields['day']
@@ -409,7 +413,14 @@ def occupancyTimeFig(specialDict):
                 if not k.endswith('_all'):
                     # The '_all' curves count every arrival at the facility and
                     # are no longer of interest
-                    axes5[offset].plot(dayList, l, label=k)
+                    baseLine, = axes5[offset].plot(dayList, l, label=k)
+                    if (meanPopByCat is not None and k in FAC_TYPE_TO_CATEGORY_MAP
+                            and FAC_TYPE_TO_CATEGORY_MAP[k] in meanPopByCat):
+                        meanPop = meanPopByCat[FAC_TYPE_TO_CATEGORY_MAP[k]]
+                        axes5[offset].plot(dayList, [meanPop] * len(dayList),
+                                           color=baseLine.get_color(),
+                                           linestyle='--')
+                            
             axes5[offset].set_xlabel('Days')
             axes5[offset].set_ylabel('Occupancy')
             axes5[offset].legend()
@@ -576,12 +587,13 @@ def readFacFiles(facilityDirs):
     return mtm.parseFacilityData(facilityDirs)
 
 def scanAllFacilities(facilityDirs):
-    result = {}
+    transOutByCat = defaultdict(dict)
+    meanPopByCat = defaultdict(lambda: 0.0)
     facDict = readFacFiles(facilityDirs)
     for fac in facDict.values():
         cat = fac['category']
-        if cat not in result:
-            result[cat] = {}
+        assert 'meanPop' in fac, '%s has no meanPop' % fac['abbrev']
+        meanPopByCat[cat] += fac['meanPop']['value']
         if 'totalDischarges' in fac:
             totDisch = fac['totalDischarges']['value']
         else:
@@ -592,18 +604,19 @@ def scanAllFacilities(facilityDirs):
             for dct in fac['totalTransfersOut']:
                 toCat = dct['category']
                 toN = dct['count']['value']
-                if toCat not in result[cat]:
-                    result[cat][toCat] = 0
-                result[cat][toCat] += toN
+                if toCat not in transOutByCat[cat]:
+                    transOutByCat[cat][toCat] = 0
+                transOutByCat[cat][toCat] += toN
                 knownDisch += toN
             if totDisch is not None:
                 delta = totDisch - knownDisch
-                if 'other' in result[cat]:
-                    result[cat]['other'] += delta
+                if 'other' in transOutByCat[cat]:
+                    transOutByCat[cat]['other'] += delta
                 else:
-                    result[cat]['other'] = delta
+                    transOutByCat[cat]['other'] = delta
 
-    return result
+    print 'meanPopByCat: %s' % meanPopByCat
+    return transOutByCat, meanPopByCat
 
 def main():
     """
@@ -662,7 +675,7 @@ def main():
     catNames = allOfCategoryDict.keys()[:]
     
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
-    allOfCategoryFacilityInfo = scanAllFacilities(facDirList)
+    allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
 
     if 'facilitySelectors' in inputDict:
         facImplRules = [(re.compile(rule['category']), rule['implementation'])
@@ -691,7 +704,7 @@ def main():
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
     patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
-    occupancyTimeFig(specialDict)
+    occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
 
     plt.show()
