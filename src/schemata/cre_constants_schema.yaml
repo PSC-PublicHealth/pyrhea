@@ -1,0 +1,101 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/cre_constants_schema.yaml'
+'title': 'cre constants schema'
+'description': 'cre constants schema'
+
+'$ref': '#/definitions/creconstants'
+
+'definitions':
+  'fracByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category': {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'category'
+        - 'frac'
+        
+  'fracByTier':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tier': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'tier'
+        - 'frac'
+
+  'fracByFacility':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'abbrev': {'type': string, 'description': 'Facility abbreviation'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'abbrev'
+        - 'frac'
+
+  'fracByTierByFacility':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'abbrev': {'type': string, 'description': 'Facility abbreviation'}
+        'tiers': {'$ref': '#/definitions/fracByTier'}
+      'required':
+        - 'abbrev'
+        - 'tiers'
+
+  'fracByTierByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category':  {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'tiers': {'$ref': '#/definitions/fracByTier'}
+      'required':
+        - 'category'
+        - 'tiers'
+
+  'fracByTierByFacilityByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category': {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'facilities': {'$ref': '#/definitions/fracByTierByFacility'}
+      'required':
+        - 'category'
+        - 'facilities'      
+
+  'creconstants':
+    'type': 'object'
+    'properties':
+      'initialFractionColonized':
+        '$ref': '#/definitions/fracByTierByFacilityByCategory'
+        'description': 'initial fraction colonized'
+      'categoryInitialFractionColonized':
+        '$ref': '#/definitions/fracByTierByCategory'
+        'description': 'Initial fraction colonized when no facility-specific value is available'
+      'beta':
+        '$ref': '#/definitions/fracByTierByCategory'
+        'description': 'transmission constants'
+      'fracPermanentlyColonized':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
+      'spontaneousLossTimeConstant':
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        'description': 'Exponential decay time constant for spontaneous loss of colonization, in days'
+    'required':
+      - 'initialFractionColonized'
+      - 'categoryInitialFractionColonized'
+      - 'beta'
+      - 'fracPermanentlyColonized'
+      - 'spontaneousLossTimeConstant'
+      
+      
+     
