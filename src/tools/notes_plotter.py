@@ -597,6 +597,9 @@ def scanAllFacilities(facilityDirs):
         if 'totalDischarges' in fac:
             totDisch = fac['totalDischarges']['value']
         else:
+            #if fac['category'] != 'COMMUNITY':
+            #    print fac['category']
+            #    print fac
             assert fac['category'] == 'COMMUNITY', '%s should have totDisch and does not' % fac['abbrev']
             totDisch = None
         if 'totalTransfersOut' in fac:
@@ -633,6 +636,8 @@ def main():
 
     parser.destroy()
 
+    runDesc = args[0]
+        
     schemautils.setSchemaBasePath(SCHEMA_DIR)
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -675,7 +680,8 @@ def main():
     catNames = allOfCategoryDict.keys()[:]
     
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
-    allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
+    if "ChicagoLand" in runDesc:
+        allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
 
     if 'facilitySelectors' in inputDict:
         facImplRules = [(re.compile(rule['category']), rule['implementation'])
@@ -690,21 +696,29 @@ def main():
     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
                           'sim_transfer_matrix.csv',
                           facDirList, catToImplDict)
-
+    
     countBirthsDeaths(catNames, allOfCategoryDict)
 
     overallLOSFig(catNames, allOfCategoryDict, catToImplDict, implDir)
 
-#     singleLOSFig('SJUD', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
-#     singleLOSFig('WAEC', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
-#     singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
-#     singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
-    singleLOSFig('MANO_512_S', notesDict, facDirList, catToImplDict, implDir)
+    if "2013" in runDesc:
+        #singleLOSFig('SJUD', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+        #singleLOSFig('WAEC', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+        #singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+        #singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
+        pass
+    
+    if "ChicagoLand" in runDesc:
+        singleLOSFig('MANO_512_S', notesDict, facDirList, catToImplDict, implDir)
+
 
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
-    patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
-    occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
+    if "ChicagoLand" in runDesc:
+        patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
+        occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
+    else:
+        occupancyTimeFig(specialDict) #, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
 
     plt.show()
