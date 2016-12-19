@@ -31,8 +31,13 @@ def pathTranslate(rawPath, lookupDict=None):
     if lookupDict is None:
         lookupDict = PATH_STRING_MAP
     path = rawPath
-    for key, val in lookupDict.items():
-        path = path.replace('$(%s)' % key, val)
+    changed = True
+    while changed:
+        changed = False
+        for key, val in lookupDict.items():
+            if ('$(%s)' % key) in path:
+                path = path.replace('$(%s)' % key, val)
+                changed = True
     return path
     
 

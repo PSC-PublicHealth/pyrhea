@@ -202,16 +202,17 @@ class VentSNF(Facility):
                                                        (self.lclRates['hospital'] / adverseProb,
                                                         ClassASetter(DiagClassA.SICK)),
                                                        (self.lclRates['icu'] / adverseProb,
-                                                        ClassASetter(DiagClassA.VERYSICK))])
+                                                        ClassASetter(DiagClassA.VERYSICK))],
+                                                      tag='FATE')
                 tree = BayesTree(BayesTree(adverseTree,
                                            ClassASetter(DiagClassA.HEALTHY),
                                            adverseProb),
                                  PatientStatusSetter(),
-                                 changeProb)
+                                 changeProb, tag='LOS')
             else:
                 tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
                                  PatientStatusSetter(),
-                                 changeProb)
+                                 changeProb, tag='LOS')
             self.treeCache[key] = tree
             return tree
 

@@ -464,19 +464,28 @@ def pathogenTimeFig(specialDict):
                     fields[k].append(v)
             assert 'day' in fields, 'Date field is missing for special data %s' % patchName
             dayList = fields['day']
+            dayVec = np.array(dayList)
             del fields['day']
 
             for rowOff, cat in enumerate(catList):
-                for pthLvl in xrange(len(pth.Status.names)):
+                curvesThisCat = {}
+                for pthLvl in xrange(len(pth.PthStatus.names)):
                     key = '%s_%d' % (cat, pthLvl)
                     if key in fields:
-                        lbl = '%s' % pth.Status.names[pthLvl]
                         l = fields[key]
                         assert len(l) == len(dayList), (('field %s is the wrong length in special'
                                                          ' data %s (%d vs. %d)')
                                                         % (k, patchName, len(l), len(dayList)))
-                        if not all([ll == 0 for ll in l]):
-                            axes6[rowOff, colOff].plot(dayList, l, label=lbl)
+                        curvesThisCat[pthLvl] = np.array(l)
+                totsThisCat = sum(curvesThisCat.values())
+                for pthLvl, lVec in curvesThisCat.items():
+                    lbl = '%s' % pth.PthStatus.names[pthLvl]
+                    if np.count_nonzero(lVec):
+                        with np.errstate(divide='ignore', invalid='ignore'):
+                            scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totsThisCat))
+                            scaleV[scaleV == np.inf] = 0.0
+                            scaleV = np.nan_to_num(scaleV)
+                            axes6[rowOff, colOff].plot(dayVec, scaleV, label=lbl)
                 axes6[rowOff, colOff].set_xlabel('Days')
                 axes6[rowOff, colOff].set_ylabel('Pathogen Prevalence')
                 axes6[rowOff, colOff].legend()
@@ -615,7 +624,6 @@ def scanAllFacilities(facilityDirs):
                 else:
                     transOutByCat[cat]['other'] = delta
 
-    print 'meanPopByCat: %s' % meanPopByCat
     return transOutByCat, meanPopByCat
 
 def main():

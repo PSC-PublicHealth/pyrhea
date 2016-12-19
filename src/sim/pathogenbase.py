@@ -17,18 +17,28 @@
 
 _rhea_svn_id_ = "$Id$"
 
-from phacsl.utils.collections.phacollections import enum
+from phacsl.utils.collections.phacollections import enum, namedtuple
 
-Status = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED')
-defaultStatus = Status.CLEAR
-
+PthStatus = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED')
+defaultPthStatus = PthStatus.CLEAR
 
 class Pathogen(object):
-    def __init__(self, ward, _useWardCategory):
+    def __init__(self, ward, useWardCategory):
+        """
+        useWardCategory will typically be the same as that listed in the facility
+        description file for the ward, but it may differ if category mapping has
+        occurred.  For example, ward.fac.category might be 'SNF' while useWardCategory
+        is 'NURSINGHOME' because that is the category definition in the class which
+        actually implements 'SNF'.  This is intended to support category name mapping
+        between facility descriptions and implementations.
+        """
         self.ward = ward
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         raise RuntimeError('Pathogen base class getStatusChangeTree was called.')
+
+    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime, timeNow):
+        return treeList[:]
 
     def initializePatientState(self, patient):
         """

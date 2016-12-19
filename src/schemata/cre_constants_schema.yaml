@@ -28,6 +28,10 @@
         - 'tier'
         - 'frac'
 
+  'tierList':
+    'type': 'array'
+    'items': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
+
   'fracByFacility':
     'type': 'array'
     'items':
@@ -81,7 +85,7 @@
       'categoryInitialFractionColonized':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'Initial fraction colonized when no facility-specific value is available'
-      'beta':
+      'tau':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'transmission constants'
       'fracPermanentlyColonized':
@@ -90,12 +94,27 @@
       'spontaneousLossTimeConstant':
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Exponential decay time constant for spontaneous loss of colonization, in days'
+      'colonizedDischargeDelayTime':
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        'description': 'Discharge delay time for colonized vs. clear patients, in days'
+      'colonizedDischargeDelayTiers':
+        'description': 'Care tiers to which the discharge delay due to colonization is applied'
+        'type': 'object'
+        'properties':
+          'prov': {'type': 'string'}
+          'values': {'$ref': '#/definitions/tierList'}
+        'required':
+          - 'prov'
+          - 'values'
+                
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
-      - 'beta'
+      - 'tau'
       - 'fracPermanentlyColonized'
       - 'spontaneousLossTimeConstant'
+      - 'colonizedDischargeDelayTime'
+      - 'colonizedDischargeDelayTiers'
       
       
      

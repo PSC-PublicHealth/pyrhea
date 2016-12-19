@@ -1,5 +1,7 @@
 'modelDir': '/home/welling/git/pyrhea/models/OrangeCounty2013'
 
+'notesFileName': 'tiny_notes_2013.pkl'
+
 'facilityDirs':
   - '$(MODELDIR)/facilityfactsCurrent2013'
   - '$(MODELDIR)/communitiesTiny'

@@ -22,9 +22,10 @@ import types
 
 import pyrheabase
 import pyrheautils
+from phacsl.utils.collections.phacollections import enum
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
-from facilitybase import PatientStatus, PatientDiagnosis, FacilityManager
+from facilitybase import PatientStatus, PatientDiagnosis, FacilityManager, PthStatus
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
@@ -39,6 +40,7 @@ _constants_values = '$(MODELDIR)/constants/community_constants.yaml'
 _constants_schema = 'community_constants_schema.yaml'
 _constants = None
 
+PatientCategory = enum('BASE', 'COLONIZED')
 
 def lencode(thing):
     if isinstance(thing, types.DictType):
@@ -112,63 +114,84 @@ class CommunityWard(Ward):
     class FreezerError(RuntimeError):
         pass
 
+    class Freezer(object):
+        def __init__(self, ward):
+            self.ward = ward
+            self.frozenAgentClass = PatientAgent
+            self.frozenAgentLoggerName = None
+            self.frozenAgentTypePattern = None
+            self.frozenAgentList = []
+
+        def freezeAndStore(self, agent):
+            if agent in self.ward._lockingAgentList:
+                self.ward._lockingAgentList.remove(agent)
+            self.ward.suspend(agent)
+            assert agent not in self.ward._lockingAgentList, 'It is still there!'
+            assert agent in self.ward._lockQueue, 'It is not there!'
+            self.ward._lockQueue.remove(agent)
+            d = agent.__getstate__()
+            agent.kill()
+            if d['newLocAddr'] is None or d['newLocAddr'] == self.ward.getGblAddr():
+                del d['newLocAddr']
+            else:
+                raise CommunityWard.FreezerError('%s cannot freezedry %s because it is still in motion'
+                                                 % (self.ward._name, d['name']))
+            if self.frozenAgentLoggerName is None:
+                self.frozenAgentLoggerName = d['loggerName']
+                del d['loggerName']
+            elif d['loggerName'] == self.frozenAgentLoggerName:
+                del d['loggerName']
+            else:
+                raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong logger'
+                                                 % (self.ward._name, d['name']))
+            typeTpl, linL, valL = lencode(d)  # @UnusedVariable
+    #         print 'dictionary: %s' % str(d)
+    #         print 'types: %s' % str(typeTpl)
+    #         print 'linearized: %s' % str(linL)
+    #         print 'values: %s' % str(valL)
+            if self.frozenAgentTypePattern is None:
+                self.frozenAgentTypePattern = typeTpl
+            elif typeTpl != self.frozenAgentTypePattern:
+                raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong type pattern'
+                                                 % (self.ward._name, d['name']))
+            self.frozenAgentList.append(tuple(valL))
+
+        def removeAndThaw(self, frozenAgent):
+            self.frozenAgentList.remove(frozenAgent)
+            valL = list(frozenAgent)
+            d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
+            assert not leftovers, ('%s had %s left over unfreezing agent'
+                                   % (self.ward._name, leftovers))
+            d['locAddr'] = self.ward.getGblAddr()
+            d['newLocAddr'] = self.ward.getGblAddr()
+            d['loggerName'] = self.frozenAgentLoggerName
+            agent = self.frozenAgentClass.__new__(self.frozenAgentClass)
+            agent.__setstate__(d)
+            agent.reHome(self.ward.patch)
+            # NEED to check locking agent count
+            self.ward._lockQueue.append(agent)
+            self.ward.awaken(agent)
+            self.ward._lockingAgentList.append(agent)
+            return agent
+
+
     def __init__(self, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
         self.checkInterval = 1  # so they get freeze dried promptly
-        self.frozenAgents = []
-        self.frozenAgentClass = PatientAgent
-        self.frozenAgentLoggerName = None
-        self.frozenAgentTypePattern = None
+        self.freezers = {}
+        for patientCategory in PatientCategory.names.keys():
+            self.freezers[patientCategory] = CommunityWard.Freezer(self)
         self.newArrivals = []
 
-    def freezeDry(self, agent):
-        if agent in self._lockingAgentList:
-            self._lockingAgentList.remove(agent)
-        self.suspend(agent)
-        assert agent not in self._lockingAgentList, 'It is still there!'
-        assert agent in self._lockQueue, 'It is not there!'
-        self._lockQueue.remove(agent)
-        d = agent.__getstate__()
-        agent.kill()
-        if d['newLocAddr'] is None or d['newLocAddr'] == self.getGblAddr():
-            del d['newLocAddr']
+    def classify(self, agent):
+        """Return the PatientCategory appropriate for this agent"""
+        if agent._status.pthStatus == PthStatus.COLONIZED:
+            return PatientCategory.COLONIZED
+        elif agent._status.pthStatus == PthStatus.CLEAR:
+            return PatientCategory.BASE
         else:
-            raise CommunityWard.FreezerError('%s cannot freezedry %s because it is still in motion'
-                                             % (self._name, d['name']))
-        if self.frozenAgentLoggerName is None:
-            self.frozenAgentLoggerName = d['loggerName']
-            del d['loggerName']
-        elif d['loggerName'] == self.frozenAgentLoggerName:
-            del d['loggerName']
-        else:
-            raise CommunityWard.FreezerError('%s has the wrong logger' % d['name'])
-        typeTpl, linL, valL = lencode(d)  # @UnusedVariable
-#         print 'dictionary: %s' % str(d)
-#         print 'types: %s' % str(typeTpl)
-#         print 'linearized: %s' % str(linL)
-#         print 'values: %s' % str(valL)
-        if self.frozenAgentTypePattern is None:
-            self.frozenAgentTypePattern = typeTpl
-        elif typeTpl != self.frozenAgentTypePattern:
-            raise CommunityWard.FreezerError('%s has the wrong type pattern' % d['name'])
-        return tuple(valL)
-
-    def unFreezeDry(self, frozenAgent):
-        valL = list(frozenAgent)
-        d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
-        assert not leftovers, ('%s had %s left over unfreezing agent'
-                               % (self._name, leftovers))
-        d['locAddr'] = self.getGblAddr()
-        d['newLocAddr'] = self.getGblAddr()
-        d['loggerName'] = self.frozenAgentLoggerName
-        agent = self.frozenAgentClass.__new__(self.frozenAgentClass)
-        agent.__setstate__(d)
-        agent.reHome(self.patch)
-        # NEED to check locking agent count
-        self._lockQueue.append(agent)
-        self.awaken(agent)
-        self._lockingAgentList.append(agent)
-        return agent
+            raise CommunityWard.FreezerError('%s has unexpected PthStatus %s' %
+                                             (agent.name, PthStatus.names[agent._status.pthStatus]))
 
     def flushNewArrivals(self):
         """
@@ -187,25 +210,27 @@ class CommunityManager(FacilityManager):
     def perTickActions(self, timeNow):
         dT = timeNow - self.fac.collectiveStatusStartDate
         for ward in self.fac.getWards():
-            for agent in ward.newArrivals:
-                ward.frozenAgents.append(ward.freezeDry(agent))
-                if agent.debug:
-                    agent.logger.debug('%s unfreezedried %s at %s'
-                                       % (ward._name, agent.name, timeNow))
-            ward.newArrivals = []
             if dT != 0:
-                r = self.fac.cachedCDF.intervalProb(0, dT)
-                nFroz = len(ward.frozenAgents)
-                nThawed = binom.rvs(nFroz, r)
-                changedList = random.sample(ward.frozenAgents, nThawed)[:]
-                for a in changedList:
-                    ward.frozenAgents.remove(a)
-                    thawedAgent = ward.unFreezeDry(a)
-                    if thawedAgent.debug:
-                        thawedAgent.logger.debug('%s unfreezedried %s at %s'
-                                                 % (ward._name, thawedAgent.name, timeNow))
+                for patCat, freezer in ward.freezers.items():
+                    assert patCat in self.fac.cachedCDFs, ('%s has no CDF for %s' %
+                                                           (self.fac.name, PatientCategory.names[patCat]))
+                    pThaw = self.fac.cachedCDFs[patCat].intervalProb(0, dT)
+                    nFroz = len(freezer.frozenAgentList)
+                    nThawed = binom.rvs(nFroz, pThaw)
+                    changedList = random.sample(freezer.frozenAgentList, nThawed)[:]
+                    for a in changedList:
+                        thawedAgent = freezer.removeAndThaw(a)
+                        if thawedAgent.debug:
+                            thawedAgent.logger.debug('%s unfreezedried %s at %s'
+                                                     % (ward._name, thawedAgent.name, timeNow))
+            for agent in ward.newArrivals:
+                if agent.debug:
+                    agent.logger.debug('%s freezedrying %s at %s'
+                                       % (ward._name, agent.name, timeNow))
+                ward.freezers[ward.classify(agent)].freezeAndStore(agent)
+            ward.newArrivals = []
+        self.fac.collectiveStatusStartDate = timeNow
 
-                self.fac.collectiveStatusStartDate = timeNow
 
     def allocateAvailableBed(self, tier):
         """
@@ -243,7 +268,10 @@ class Community(Facility):
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
         self.addWard(CommunityWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                    patch, nBeds))
-        self.cachedCDF = CachedCDFGenerator(expon(scale=1.0/losModel['parms'][0]))
+        baseRate = losModel['parms'][0]
+        colonizedRate = _constants['communityColonizedReadmissionRateScale']['value'] * baseRate
+        self.cachedCDFs = {PatientCategory.BASE: CachedCDFGenerator(expon(scale=1.0/baseRate)),
+                           PatientCategory.COLONIZED: CachedCDFGenerator(expon(scale=1.0/colonizedRate))}
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
@@ -271,9 +299,9 @@ class Community(Facility):
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
                                                       (needsLTACRate,
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      ]),
+                                                      ], tag='FATE'),
                              PatientStatusSetter(),
-                             changeProb)
+                             changeProb, tag='LOS')
             self.treeCache[key] = tree
             return tree
 
@@ -304,7 +332,6 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop']['value'])
     logger.info('Generating the population for %s (%s freeze-dried people)'
                 % (descr['abbrev'], meanPop))
-    agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOME)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
@@ -314,8 +341,8 @@ def _populate(fac, descr, patch):
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               0)
         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
-        ward.frozenAgents.append(ward.freezeDry(a))
-    return agentList
+        ward.freezers[ward.classify(a)].freezeAndStore(a)
+    return []
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):

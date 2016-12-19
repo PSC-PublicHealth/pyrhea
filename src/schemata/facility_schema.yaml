@@ -7,7 +7,7 @@
 
   'caretier':
     'type': 'string'
-    'enum': ['HOME', 'ASSISTED', 'NURSING', 'LTAC', 'HOSP', 'ICU', 'SKILNRS', 'VENT']
+    'enum': ['HOME', 'ASSISTED','NURSING', 'LTAC', 'HOSP', 'ICU', 'SKILNRS', 'VENT']
     
   'ward':
     'type': 'object'

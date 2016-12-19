@@ -104,6 +104,8 @@ def loadPolicyImplementations(implementationDir):
 
 def loadPathogenImplementations(implementationDir):
     logger.info('Loading infectious agent implementations')
+    implementationDir = pyrheautils.pathTranslate(implementationDir)
+    pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['pathogenName',
@@ -514,6 +516,9 @@ def main():
         clData = comm.bcast(clData, root=0)
         if 'modelDir' in clData['input']:
             pyrheautils.PATH_STRING_MAP['MODELDIR'] = clData['input']['modelDir']
+        if 'pathTranslations' in clData['input']:
+            for elt in clData['input']['pathTranslations']:
+                pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     
         verbose = clData['verbose']  # @UnusedVariable

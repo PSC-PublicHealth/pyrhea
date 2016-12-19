@@ -130,11 +130,10 @@ class NursingHome(Facility):
                                                   (self.lclRates['icu'],
                                                    ClassASetter(DiagClassA.VERYSICK)),
                                                   (self.lclRates['home'],
-                                                   healthySetter)])
+                                                   healthySetter)], tag='FATE')
 
-            tree = BayesTree(changeTree,
-                             innerTree,
-                             changeProb)
+            tree = BayesTree(changeTree, innerTree, changeProb,
+                             tag='LOS')
             if treatment == TreatmentProtocol.REHAB:
                 self.frailRehabTreeCache[key] = tree
             else:
@@ -170,16 +169,17 @@ class NursingHome(Facility):
                                                                 ClassASetter(DiagClassA.SICK)),
                                                                (self.lclRates['icu']
                                                                 / adverseProb,
-                                                                ClassASetter(DiagClassA.VERYSICK))])
+                                                                ClassASetter(DiagClassA.VERYSICK))],
+                                                              tag='FATE')
                         tree = BayesTree(BayesTree(adverseTree,
                                                    ClassASetter(DiagClassA.HEALTHY),
                                                    adverseProb),
                                          PatientStatusSetter(),
-                                         changeProb)
+                                         changeProb, tag='LOS')
                     else:
                         tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
                                          PatientStatusSetter(),
-                                         changeProb)
+                                         changeProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
             elif treatment == TreatmentProtocol.NORMAL:

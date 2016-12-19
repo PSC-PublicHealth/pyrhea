@@ -15,30 +15,71 @@
 #                                                                                 #
 ###################################################################################
 
-import os.path
 import logging
 import math
+import types
+from random import random
+from scipy.stats import expon
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
-from facilitybase import PatientStatusSetter, Pathogen, PthStatus, PthStatusSetter
+from facilitybase import PatientStatusSetter, Pathogen, PthStatus, defaultPthStatus
+from facilitybase import PthStatusSetter
 
 pathogenName = 'CRE'
-_constants_values = 'cre_constants.yaml'
+_constants_values = '$(CONSTANTS)/cre_constants.yaml'
 _constants_schema = 'cre_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
 
 
-def _valFromCategoryEntry(key, ctg, constantsJSON):
-    if key not in constantsJSON:
-        raise RuntimeError('Constant list for %s was not found' % key)
-    for v in constantsJSON[key]:
-        if v['category'] == ctg:
-            return v['frac']['value']
-    raise RuntimeError('Constant entry for category %s was not found' % ctg)
+def _parseFracByTierByFacilityByCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['category']
+        facilities = elt['facilities']
+        if cat not in topD:
+            topD[cat] = {}
+        for facElt in facilities:
+            abbrev = facElt['abbrev']
+            tiers = facElt['tiers']
+            if abbrev not in topD[cat]:
+                topD[cat][abbrev] = {}
+                for tierElt in tiers:
+                    tier = tierElt['tier']
+                    val = tierElt['frac']['value']
+                    assert tier not in topD[cat][abbrev], ('Redundant %s for %s %s' %
+                                                          (fieldStr, abbrev, CareTier.names[tier]))
+                    topD[cat][abbrev][tier] = val
+    return topD
+
+
+def _parseFracByTierByCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['category']
+        tiers = elt['tiers']
+        if cat not in topD:
+            topD[cat] = {}
+        for tierElt in tiers:
+            tier = tierElt['tier']
+            val = tierElt['frac']['value']
+            assert tier not in topD[cat], ('Redundant categoryInitialFracColonized for %s %s' %
+                                           (cat, CareTier.names[tier]))
+            topD[cat][tier] = val
+    return topD
+
+
+def _getFracByTierByCategory(tbl, tblNameForErr, ward, useWardCategory):
+    wardCat = ward.fac.category
+    tierStr = CareTier.names[ward.tier]
+    if (wardCat in tbl and tierStr in tbl[wardCat]):
+        return tbl[wardCat][tierStr]
+    else:
+        raise RuntimeError('No way to set %s for %s tier %s' %
+                           (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
 
 
 class CRECore(object):
@@ -46,45 +87,52 @@ class CRECore(object):
     __metaclass__ = SingletonMetaClass
 
     def __init__(self):
-        colCRV = fullCRVFromPDFModel(_constants['colonizationDurationPDF'])
-        self.colCachedCDF = CachedCDFGenerator(colCRV)
-        self.colTreeCache = {}
-        infCRV = fullCRVFromPDFModel(_constants['infectionDurationPDF'])
-        self.infCachedCDF = CachedCDFGenerator(infCRV)
-        self.infTreeCache = {}
-
-        self.exposureTreeCache = {}  # so simple we don't need a CachedCDFGenerator
-
+        self.initialFracColonizedTbl = _parseFracByTierByFacilityByCategory('initialFractionColonized')
+        self.categoryInitialFracColonizedTbl = \
+            _parseFracByTierByCategory('categoryInitialFractionColonized')
+        self.tauTbl = _parseFracByTierByCategory('tau')
+        self.fracPermanentlyColonized = _constants['fracPermanentlyColonized']['value']
+        self.spontaneousLossTimeConstant = _constants['spontaneousLossTimeConstant']['value']
+        self.exposureTreeCache = {}
+        self.spontaneousLossTreeCache = {}
+        self.spontaneousLossCachedCDF = CachedCDFGenerator(expon(scale=self.spontaneousLossTimeConstant))
 
 class CRE(Pathogen):
     def __init__(self, ward, useWardCategory):
         """
         useWardCategory will typically be the same as that listed in the facility
         description file for the ward, but it may differ if category mapping has
-        occurred.  For example, ward.category might be 'SNF' while useWardCategory
-        is 'NURSINGHOME'.  This is intended to support category name mapping between
-        facility descriptions and implementations.
+        occurred.  For example, ward.fac.category might be 'SNF' while useWardCategory
+        is 'NURSINGHOME' because that is the category definition in the class which
+        actually implements 'SNF'.  This is intended to support category name mapping
+        between facility descriptions and implementations.
         """
         super(CRE, self).__init__(ward, useWardCategory)
         self.core = CRECore()
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
-        initialFractionColonized = _valFromCategoryEntry('initialFractionColonized',
-                                                         useWardCategory,
-                                                         _constants)
-        initialFractionInfected = _valFromCategoryEntry('initialFractionInfected',
-                                                        useWardCategory,
-                                                        _constants)
-        colTree = BayesTree(PthStatusSetter(PthStatus.CHRONIC),
-                             PthStatusSetter(PthStatus.COLONIZED),
-                             _constants['fractionColonizedChronic']['value'])
-        fracClear = 1.0 - (initialFractionColonized + initialFractionInfected)
-        self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,
-                                                                 colTree),
-                                                                (initialFractionInfected,
-                                                                 PthStatusSetter(PthStatus.INFECTED)),
-                                                                (fracClear,
-                                                                 PatientStatusSetter())])
+
+        wardCat = ward.fac.category
+        tierStr = CareTier.names[ward.tier]
+        if (wardCat in self.core.initialFracColonizedTbl
+                and ward.fac.abbrev in self.core.initialFracColonizedTbl[wardCat]
+                and tierStr in self.core.initialFracColonizedTbl[wardCat][ward.fac.abbrev]):
+            self.initialFracColonized = (self.core.initialFracColonizedTbl[wardCat]
+                                         [ward.fac.abbrev][tierStr])
+        elif (wardCat in self.core.categoryInitialFracColonizedTbl
+              and tierStr in self.core.categoryInitialFracColonizedTbl[wardCat]):
+            self.initialFracColonized = (self.core.categoryInitialFracColonizedTbl[wardCat]
+                                         [tierStr])
+        else:
+            raise RuntimeError('No way to set initialFracColonized for %s tier %s' %
+                               (ward.fac.abbrev, CareTier.names[ward.tier]))
+
+        self.tau = _getFracByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory)
+        
+        if CareTier.names[self.ward.tier] in _constants['colonizedDischargeDelayTiers']['values']:
+            self.colDischDelayTime = _constants['colonizedDischargeDelayTime']['value']
+        else:
+            self.colDischDelayTime = 0.0
 
     def _emptyPatientPth(self):
         return {k:0 for k in PthStatus.names.keys()}
@@ -97,7 +145,10 @@ class CRE(Pathogen):
         This method assigns the patient a Status appropriate to time 0- that is,
         it implements the initial seeding of the patient population with pathogen.
         """
-        patient._status = self.initializationBayesTree.traverse().set(patient._status, 0)
+        pthStatus = (PthStatus.COLONIZED if (random() <= self.initialFracColonized)
+                     else defaultPthStatus)
+        canClear = (random() > self.core.fracPermanentlyColonized)
+        patient._status = patient._status._replace(pthStatus=pthStatus)._replace(canClear=canClear)
 
     def getPatientPthCounts(self, timeNow):
         """
@@ -114,51 +165,64 @@ class CRE(Pathogen):
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         if patientStatus.pthStatus == PthStatus.CLEAR:
             pP = self.getPatientPthCounts(timeNow)
-            nExposures = pP[PthStatus.COLONIZED] + pP[PthStatus.INFECTED] + pP[PthStatus.CHRONIC]
+            nExposures = pP[PthStatus.COLONIZED]
             nTot = sum(pP.values())
             dT = timeNow - startTime
-            key = (nExposures, nTot, dT)
-            if key in self.core.exposureTreeCache:
-                return self.core.exposureTreeCache[key]
-            else:
-                pSafe = math.pow((1.0 - _constants['beta']['value']), dT)
+            #
+            # Note that this caching scheme assumes all wards with the same category and tier
+            # have the same infectivity constant(s)
+            #
+            key = (self.ward.fac.category, self.ward.tier, nExposures, nTot, dT)
+            if key not in self.core.exposureTreeCache:
+                pSafe = math.pow((1.0 - self.tau), dT)
                 tree = BayesTree(PatientStatusSetter(),
-                                 BayesTree(PthStatusSetter(PthStatus.CHRONIC),
-                                           PthStatusSetter(PthStatus.COLONIZED),
-                                           _constants['fractionColonizedChronic']['value']),
+                                 PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
                 self.core.exposureTreeCache[key] = tree
-                return tree
+            return self.core.exposureTreeCache[key]
         else:
+            assert patientStatus.pthStatus == PthStatus.COLONIZED, ('patient has unexpeced PthStatus %s' %
+                                                                    PthStatus.names[patientStatus.pthStatus])
             key = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
-            if patientStatus.pthStatus == PthStatus.COLONIZED:
-                if key in self.core.colTreeCache:
-                    return self.core.colTreeCache[key]
-                else:
-                    changeProb = self.core.colCachedCDF.intervalProb(*key)
-                    infFrac = _constants['colonizationToInfectionFrac']['value']
-                    tree = BayesTree(BayesTree(PthStatusSetter(PthStatus.INFECTED),
-                                               PthStatusSetter(PthStatus.CLEAR),
-                                               infFrac),
+            if patientStatus.canClear:
+                if key not in self.core.spontaneousLossTreeCache:
+                    changeProb = self.core.spontaneousLossCachedCDF.intervalProb(*key)
+                    tree = BayesTree(PthStatusSetter(PthStatus.CLEAR),
                                      PatientStatusSetter(),
                                      changeProb)
-                    self.core.colTreeCache[key] = tree
-                    return tree
-            elif patientStatus.pthStatus == PthStatus.INFECTED:
-                if key in self.core.infTreeCache:
-                    return self.core.infTreeCache[key]
-                else:
-                    changeProb = self.core.infCachedCDF.intervalProb(*key)
-                    tree = BayesTree(PthStatusSetter(PthStatus.COLONIZED),
-                                     PatientStatusSetter(),
-                                     changeProb)
-                    self.core.infTreeCache[key] = tree
-                    return tree
-            elif patientStatus.pthStatus == PthStatus.CHRONIC:
-                    return BayesTree(PatientStatusSetter())
+                    self.core.spontaneousLossTreeCache[key] = tree
+                return self.core.spontaneousLossTreeCache[key]
             else:
-                raise RuntimeError('Unexpected %s status %s at %s' %
-                                   (self, patientStatus.pthStatus, self.ward._name))
+                return BayesTree(PatientStatusSetter())
+
+    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime, timeNow):
+        # Find and edit any trees containing the 'LOS' tag
+        newTreeList = []
+        if patientStatus.pthStatus == PthStatus.CLEAR:
+            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        elif patientStatus.pthStatus == PthStatus.COLONIZED:
+            delayedS = max(startTime - (patientStatus.startDateA + self.colDischDelayTime), 0.0)
+            delayedE = delayedS + (timeNow - startTime)
+            key = (delayedS, delayedE)
+        else:
+            raise RuntimeError('patient has unexpected PthStatus %s' % PthStatus.names[patientStatus.pthStatus])
+        for tree in treeList:
+            losTree = tree.findTag('LOS')
+            if losTree:
+                lTree, rTree, notReallyProb, topTag = losTree.getParts()  # @UnusedVariable
+                if isinstance(notReallyProb, (types.FunctionType, types.MethodType)):
+                    prob = notReallyProb(*key)
+                    assert isinstance(prob, types.FloatType), 'LOS function did not return a float'
+                    replacementTree = BayesTree(lTree, rTree, prob, tag="DELAYEDLOS")
+                    newTreeList.append(tree.replaceSubtree('LOS', replacementTree))
+                else:
+                    if self.colDischDelayTime != 0.0:
+                        logger.warn('%s filterStatusChangeTrees found LOS that was already evaluated',
+                                    pathogenName)
+                    newTreeList.append(tree)
+            else:
+                newTreeList.append(tree)
+        return newTreeList
 
 
 def getPathogenClass():
@@ -168,6 +232,5 @@ def getPathogenClass():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)
