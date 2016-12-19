@@ -1,4 +1,4 @@
-'modelDir': '/home/welling/git/pyrhea/models/OrangeCounty2013'
+'modelDir': '../../../pyrhea/models/OrangeCounty2013'
 
 'facilityDirs':
   - '$(MODELDIR)/facilityfactsCurrent2013'
