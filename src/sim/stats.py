@@ -59,6 +59,7 @@ class CachedCDFGenerator:
     """
     def __init__(self, frozenCRV):
         self.frozenCRV = frozenCRV
+        self.mdn = frozenCRV.median()
         self.cache = {}
 
     def intervalProb(self, start, end):
@@ -66,39 +67,68 @@ class CachedCDFGenerator:
         if key in self.cache:
             return self.cache[key]
         else:
-            sv = self.frozenCRV.cdf(start)
-            cP = ((self.frozenCRV.cdf(end) - sv)
-                  / (1.0 - sv))
+            if end <= self.mdn:
+                # both must be to the left of median
+                sv = self.frozenCRV.cdf(start)
+                cP = ((self.frozenCRV.cdf(end) - sv) / (1.0 - sv))
+
+            elif start <= self.mdn:
+                # spans median
+                sv = self.frozenCRV.cdf(start)
+                esf = self.frozenCRV.sf(end)
+                cP = (1.0 - (sv + esf)) / (1.0 - sv)
+            else:
+                # both must be to the right of median
+                ssf = self.frozenCRV.sf(start)
+                esf = self.frozenCRV.sf(end)
+                cP = (ssf - esf) / ssf
             self.cache[key] = cP
             return cP
 
 
 class BayesTree(object):
-    def __init__(self, v1, v2=None, p=1.0):
+    def __init__(self, v1, v2=None, p=1.0, tag=None):
         """
         Caution: neither v1 nor v2 should be a sequence type!
         """
         if isinstance(v1, BayesTree):
+            v1TT = v1.tagTree
             v1 = v1.tree
+        else:
+            v1TT = None
         if isinstance(v2, BayesTree):
+            v2TT = v2.tagTree
             v2 = v2.tree
+        else:
+            v2TT = None
         if p == 1.0:
-            self.tree = v1
+            if tag is None and v2TT is None:
+                # Trim this trivial level
+                self.tree = v1
+                self.tagTree = v1TT
+            else:
+                # Cannot trim the level without losing the tag
+                self.tree = (p, v1, v2)
+                self.tagTree = (tag, v1TT, v2TT)
         else:
             assert v2 is not None, 'BayesTree defined with transition to None'
             self.tree = (p, v1, v2)
+            self.tagTree = (tag, v1TT, v2TT)
 
     @staticmethod
-    def fromTuple(tpl):
+    def fromTuple(tpl, tag=None):
         """
         This convenience function expects a tuple of the form (p, v1, v2) where
         the components match the inputs to __init__().
         """
-        p, v1, v2 = tpl
-        return BayesTree(v1, v2, p)
+        if isinstance(tpl, types.TupleType):
+            p, v1, v2 = tpl
+            return BayesTree(v1, v2, p, tag=tag)
+        else:
+            return BayesTree(tpl, tag=tag)
 
     @staticmethod
-    def fromLinearCDF(linearCDF, tol=0.00001):
+    def fromLinearCDF(linearCDF, tol=0.00001, tag=None):
         """
         Given a linear CDF in list form, return an equivalent CDF in BayesTree form.
 
@@ -112,50 +142,58 @@ class BayesTree(object):
         if lCDF == 1:
             p, r = linearCDF[0]
             assert fabs(p - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
-            return BayesTree(r)
+            return BayesTree(r, tag=tag)
         elif lCDF == 2:
             p1, r1 = linearCDF[0]
             p2, r2 = linearCDF[1]
             assert fabs(p1 + p2 - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
             if p2 >= p1:
-                return BayesTree(r1, r2, p1)
+                return BayesTree(r1, r2, p1, tag=tag)
             else:
-                return BayesTree(r2, r1, p2)
+                return BayesTree(r2, r1, p2, tag=tag)
         else:
             linearCDF.sort()
             part1 = linearCDF[:lCDF/2]
             part2 = linearCDF[lCDF/2:]
             pivot = part1[-1][0]
             if pivot == 0.0:
-                return BayesTree.fromLinearCDF(part2)
+                return BayesTree.fromLinearCDF(part2, tag=tag)
             else:
                 w1 = sum([p for p, r in part1])
                 w2 = sum([p for p, r in part2])
                 assert fabs(w1 + w2 - 1.0) <= tol, 'CDF terms do not sum to 1 (%s)' % linearCDF
                 return BayesTree(BayesTree.fromLinearCDF([(p / w1, r) for p, r in part1]),
                                  BayesTree.fromLinearCDF([(p / w2, r) for p, r in part2]),
-                                 w1)
+                                 w1, tag=tag)
 
     @staticmethod
-    def _innerDump(tree, indent=0, ofile=sys.stdout):
+    def _innerDump(tree, tagTree, indent=0, ofile=sys.stdout):
         if isinstance(tree, types.TupleType):
             prob, path1, path2 = tree
-            ofile.write('%s(%f\n' % (' '*indent, prob))
-            BayesTree._innerDump(path1, indent+4, ofile=ofile)
-            BayesTree._innerDump(path2, indent+4, ofile=ofile)
+            topTag, tagPath1, tagPath2 = tagTree
+            if topTag:
+                ofile.write('%s(%s  tag=%s\n' % (' '*indent, prob, topTag))
+            else:
+                ofile.write('%s(%f\n' % (' '*indent, prob))
+            BayesTree._innerDump(path1, tagPath1, indent+4, ofile=ofile)
+            BayesTree._innerDump(path2, tagPath2, indent+4, ofile=ofile)
             ofile.write('%s)\n' % (' '*indent))
         else:
             ofile.write('%s%s\n' % (' '*indent, tree))
 
     def dump(self, ofile=sys.stdout):
-        self._innerDump(self.tree, ofile=ofile)
+        self._innerDump(self.tree, self.tagTree, ofile=ofile)
 
     @staticmethod
     def _innerTraverse(tree, rng):
         # PatientAgent._printBayesTree(tree)
         while True:
             if isinstance(tree, types.TupleType):
-                if rng() <= tree[0]:
+                if isinstance(tree[0], (types.FunctionType, types.MethodType)):
+                    import pdb
+                    pdb.set_trace()
+                    #raise RuntimeError('Cannot traverse BayesTree; encountered unevaluated %s' % repr(tree[0]))
+                elif rng() <= tree[0]:
                     tree = tree[1]
                 else:
                     tree = tree[2]
@@ -176,6 +214,69 @@ class BayesTree(object):
             rng = randomNumberGenerator.random
         return self._innerTraverse(self.tree, rng)
 
+    @staticmethod
+    def _innerFindTag(tree, tagTree, target):
+        if isinstance(tree, types.TupleType):
+            assert isinstance(tagTree, types.TupleType), 'Ran out of tree looking for tag %s' % target
+            prob, lTree, rTree = tree  # @UnusedVariable
+            topTag, lTag, rTag = tagTree
+            if topTag == target:
+                return BayesTree.fromTuple(tree, tag=tagTree)
+            else:
+                lRslt = BayesTree._innerFindTag(lTree, lTag, target)
+                if lRslt:
+                    return lRslt
+                else:
+                    return BayesTree._innerFindTag(rTree, rTag, target)
+                
+        else:
+            assert not isinstance(tagTree, types.TupleType), 'Ran out of tags looking for tag %s' % target
+            if tagTree == target:
+                return BayesTree.fromTuple(tree, tag=tagTree)
+            else:
+                return None
+
+    def findTag(self, target):
+        return self._innerFindTag(self.tree, self.tagTree, target)
+
+    def replaceSubtree(self, target, replTree):
+        if isinstance(self.tree, types.TupleType):
+            prob, lTree, rTree = self.tree
+            topTag, lTag, rTag = self.tagTree
+            if topTag == target:
+                return replTree
+            else:
+                lBT = BayesTree.fromTuple(lTree, tag=lTag).replaceSubtree(target, replTree)
+                if lBT.tree is not lTree:
+                    return BayesTree(lBT,
+                                     BayesTree.fromTuple(rTree, tag=rTag),
+                                     prob)
+                else:
+                    return BayesTree(BayesTree.fromTuple(lTree, tag=lTag),
+                                     BayesTree.fromTuple(rTree, tag=rTag)).replaceSubtree(target,
+                                                                                          replTree)
+        else:
+            if self.tagTree == target:
+                return replTree
+            else:
+                return BayesTree.fromTuple(self.tree, tag=self.tagTree)
+
+    def getParts(self):
+        """
+        This method returns a tuple (leftSubTree, rightSubTree, p, topTag).
+        Note that if this tree is already a leaf, it will return an essentially identical tree
+        in place of its left subtree and 'None' for the right subtree.
+        """
+        if isinstance(self.tree, types.TupleType):
+            prob, lTree, rTree = self.tree
+            topTag, lTag, rTag = self.tagTree
+            return (BayesTree.fromTuple(lTree, tag=lTag),
+                    BayesTree.fromTuple(rTree, tag=rTag),
+                    prob, topTag)
+        else:
+            return (BayesTree.fromTuple(self.tree, tag=self.tagTree),
+                    None,
+                    1.0, None)
 
 def fullLogNormCRVFromMean(mean, sigma):
     """

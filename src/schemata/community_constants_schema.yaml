@@ -16,6 +16,7 @@
       'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
+      'communityColonizedReadmissionRateScale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
     'required':
       - 'communityLOSModel'
       - 'communityDeathRate'

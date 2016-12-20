@@ -21,8 +21,7 @@ from phacsl.utils.collections.phacollections import enum, namedtuple
 import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree
-from pathogenbase import Status as PthStatus, defaultStatus as defaultPthStatus
-from pathogenbase import Pathogen  # @UnusedImport
+from pathogenbase import PthStatus, defaultPthStatus, Pathogen
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +35,16 @@ DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEA
 TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
 
 PatientStatus = namedtuple('PatientStatus',
-                           ['overall',              # one of patientOverallHealth
+                           ['overall',              # one of PatientOverallHealth
                             'diagClassA',           # one of DiagClassA
                             'startDateA',           # date diagClassA status was entered
                             'pthStatus',            # one of PthStatus
                             'startDatePth',         # date PthStatus status was entered
-                            'relocateFlag'          # true if patient needs relocation
+                            'relocateFlag',         # true if patient needs relocation
+                            'canClear'              # true if patient can spontaneously clear infection
                             ],
-                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None, bool])
+                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,
+                                        bool, bool])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
@@ -202,7 +203,8 @@ class Facility(pyrheabase.Facility):
             self.categoryNameMapper = (lambda(descrCat): descrCat)
         else:
             self.categoryNameMapper = categoryNameMapper
-        self.category = self.categoryNameMapper(descr['category'])
+#         self.category = self.categoryNameMapper(descr['category'])
+        self.category = descr['category']
         self.abbrev = descr['abbrev']
         if 'longitude' in descr and 'latitude' in descr:
             self.coords = (descr['longitude'], descr['latitude'])
@@ -217,6 +219,9 @@ class Facility(pyrheabase.Facility):
                 if issubclass(pC, TransferDestinationPolicy):
                     transferDestinationPolicyClass = pC
         self.transferDestinationPolicy = transferDestinationPolicyClass(patch)
+        
+    def __str__(self):
+        return '<%s>' % self.name
 
     def setNoteHolder(self, noteHolder):
         self.noteHolder = noteHolder
@@ -451,7 +456,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
-                                     False)
+                                     False, True)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)[0:2]
         self.lastUpdateTime = timeNow
@@ -469,17 +474,33 @@ class PatientAgent(pyrheabase.PatientAgent):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
-            for src in [self.ward.fac, self.ward.iA]:
-                try:
+            treeL = []
+            try:
+                for src in [self.ward.fac, self.ward.iA]:
                     tree = src.getStatusChangeTree(self._status, self.ward, self._treatment,
                                                    self.lastUpdateTime, timeNow)
-                    setter = tree.traverse()
-                    self._status = setter.set(self._status, timeNow)
-                except Exception, e:
-                    print 'Got exception %s on patient %s' % (str(e), self.name)
-                    self.logger.critical('Got exception %s on patient %s (id %s)'
-                                         % (str(e), self.name, self.id))
-                    raise
+                    treeL.append(tree)
+            except Exception, e:
+                print ('Got exception %s on patient %s tree for %s' %
+                       (str(e), self.name, str(src)))
+                self.logger.critical('Got exception %s on patient %s (id %s) for tree %s'
+                                     % (str(e), self.name, self.id, str(src)))
+                raise
+            try:
+                treeL = self.ward.iA.filterStatusChangeTrees(treeL, self._status, self.ward, self._treatment,
+                                                             self.lastUpdateTime, timeNow)
+            except Exception, e:
+                print ('Got exception %s on patient %s filtering trees' %
+                       (str(e), self.name))
+                self.logger.critical('Got exception %s on patient %s (id %s) filtering trees'
+                                     % (str(e), self.name, self.id))
+                for tree in treeL:
+                    print tree.tree
+                    print tree.tagTree
+                raise
+            for tree in treeL:
+                setter = tree.traverse()
+                self._status = setter.set(self._status, timeNow)
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)

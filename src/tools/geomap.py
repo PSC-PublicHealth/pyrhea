@@ -260,25 +260,42 @@ class Map(object):
                              fontsize=Map.tractLabelDefaultSz,
                              ha='center', va='center')
 
-    def plotMarker(self, lon, lat, mark, label, clr):
+    def plotMarker(self, lon, lat, mark, label, clr, sz=None):
+        if sz is None:
+            sz = 1.0
         coords = (self.mapProj.project(lon, lat), label)
-        if (mark, clr) in self.mrkCoordDict:
-            self.mrkCoordDict[(mark, clr)].append(coords)
+        key = (mark, clr)
+        if key in self.mrkCoordDict:
+            self.mrkCoordDict[key].append((coords, sz))
         else:
-            self.mrkCoordDict[(mark, clr)] = [coords]
+            self.mrkCoordDict[key] = [(coords, sz)]
+        
 
-    def draw(self):
+    def draw(self, mrkLegendDict=None):
+        legendL = []
+        artistL = []
         for (mrk, clr), coordList in self.mrkCoordDict.items():
             if mrk in self.mrkSzDict:
                 mrkSz = self.mrkSzDict[mrk]
             else:
                 mrkSz = Map.mrkDefaultSz
-            self.ax.scatter([x for (x, y), abbrev in coordList],
-                            [y for (x, y), abbrev in coordList],
-                            c=clr, marker=mrk)
+            artist = self.ax.scatter([x for ((x, y), abbrev), sz in coordList],
+                                     [y for ((x, y), abbrev), sz in coordList],
+                                     c=clr,
+                                     s=[(sz * mrkSz) for ((x, y), abbrev), sz in coordList],
+                                     marker=mrk,
+                                     alpha=0.5)
+            if mrkLegendDict:
+                artistL.append(artist)
+                if mrk in mrkLegendDict:
+                    legendL.append(mrkLegendDict[mrk])
+                else:
+                    legendL.append('???')
             if self.annotateMarkers:
-                for (x, y), abbrev in coordList:
+                for ((x, y), abbrev), sz in coordList:
                     self.ax.annotate(abbrev, (x, y), (x, y),
-                                     ha='left', va='bottom', fontsize=mrkSz)
+                                     ha='left', va='bottom', fontsize=sz*mrkSz)
+        if mrkLegendDict:
+            self.ax.legend(artistL, legendL)
         self.ax.axis('scaled')
         plt.show()

@@ -1,5 +1,9 @@
 'modelDir': '/home/welling/git/pyrhea/models/ChicagoLand'
 
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
 'facilityDirs':
   - '$(MODELDIR)/facilityfacts'
   - '$(MODELDIR)/synthCommunities'
@@ -17,7 +21,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/mrsaImplementation_ChicagoLand'
+'pathogenImplementationDir': '../sim/creImplementation_ChicagoLand'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

@@ -128,11 +128,11 @@ class LTAC(Facility):
                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       (self.lclRates['home'],
                                                        ClassASetter(DiagClassA.HEALTHY))
-                                                      ])
+                                                      ], tag='FATE')
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
-                                 changeProb)
+                                 changeProb, tag='LOS')
                 self.treeCache[key] = tree
                 return tree
         else:

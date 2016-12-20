@@ -51,6 +51,14 @@
       'notesFileName':
         'description': 'Specify a filename for the run output notes'
         'type': 'string'
+      'pathTranslations':
+        'description': 'Additional translation strings to be used in specifying file paths'
+        'type': 'array'
+        'items':
+          'type': 'object'
+          'properties':
+            'key': { 'type': 'string' }
+            'value': { 'type': 'string' }
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'

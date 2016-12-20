@@ -218,11 +218,12 @@ class Hospital(Facility):
                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       (self.lclRates['home'],
                                                        ClassASetter(DiagClassA.HEALTHY)),
-                                                      ])
+                                                      ], tag='FATE')
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
-                                 changeProb)
+#                                  changeProb, tag='LOS')
+                                 self.hospCachedCDF.intervalProb, tag='LOS')
                 self.hospTreeCache[key] = tree
                 return tree
         elif careTier == CareTier.ICU:
@@ -233,9 +234,10 @@ class Hospital(Facility):
                 tree = BayesTree(BayesTree.fromLinearCDF([(self.icuDischargeViaDeathFrac,
                                                            ClassASetter(DiagClassA.DEATH)),
                                                           ((1.0 - self.icuDischargeViaDeathFrac),
-                                                           ClassASetter(DiagClassA.SICK))]),
+                                                           ClassASetter(DiagClassA.SICK))],
+                                                         tag='FATE'),
                                  PatientStatusSetter(),
-                                 changeProb)
+                                 changeProb, tag='LOS')
                 self.icuTreeCache[key] = tree
                 return tree
         else:

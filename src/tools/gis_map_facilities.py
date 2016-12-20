@@ -23,6 +23,7 @@ import yaml
 import cPickle as pickle
 
 import schemautils
+import pyrheautils
 from map_transfer_matrix import parseFacilityData
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
@@ -124,15 +125,16 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
             pass  # Already drew these while plotting tracts above
         else:
             try:
-                mrk = {'SNF': '+', 'VSNF': '+', 'NURSINGHOME': '+', 'HOSPITAL': '*',
-                       'LTAC': 'o', 'LTACH': 'o', 'CHILDREN': 'x'}[r['category']]
+                mrk = {'SNF': '^', 'VSNF': '^', 'NURSINGHOME': '^', 'HOSPITAL': '*',
+                       'LTAC': 'o', 'LTACH': 'o', 'CHILDREN': 'D'}[r['category']]
             except KeyError:
                 print 'No marker type for %s' % r['category']
                 mrk = 'x'
             if name:
-                myMap.plotMarker(float(r['longitude']), float(r['latitude']), mrk, name, 'black')
+                myMap.plotMarker(float(r['longitude']), float(r['latitude']), mrk, name, 'black',
+                                 sz=0.1*r['meanPop']['value'])
 
-    myMap.draw()
+    myMap.draw(mrkLegendDict={'*': 'Hospitals', '^': 'SNFs, VSNFs', 'o': 'LTACHs', 'D': "Children's"})
 
 
 def checkInputFileSchema(fname, schemaFname):
@@ -182,12 +184,14 @@ def main():
 
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+    if 'modelDir' in inputDict:
+        pyrheautils.PATH_STRING_MAP['MODELDIR'] = pyrheautils.pathTranslate(inputDict['modelDir'])
     implDir = inputDict['facilityImplementationDir']
 
     if opts.notes:
         notesFName = opts.notes
     elif 'notesFileName' in inputDict:
-        notesFName = inputDict['notesFileName']
+        notesFName = pyrheautils.pathTranslate(inputDict['notesFileName'])
     else:
         notesFName = DEFAULT_NOTES_FNAME
 
@@ -195,7 +199,8 @@ def main():
 
     gDM = geodatamanager.GeoDataManager()
 
-    facDict = parseFacilityData(inputDict['facilityDirs'])
+    facDirList = [pyrheautils.pathTranslate(fD) for fD in inputDict['facilityDirs']]
+    facDict = parseFacilityData(facDirList)
     countySet = set()
     for rec in facDict.values():
         if 'FIPS' in rec:
