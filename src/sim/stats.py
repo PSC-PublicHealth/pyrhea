@@ -27,7 +27,6 @@ import logging
 import unittest
 import cStringIO
 import numpy as np
-import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +251,8 @@ _bayestree_test_traversal_dict = {'line 1': 280, 'line 2': 565, 'line 3': 1518,
 
 def main():
     "This is a simple test routine which takes kvp files as arguments"
+
+    import matplotlib.pyplot as plt
 
     # Test CachedCDFGenerator
     print 'testing CachedCDFGenerator'

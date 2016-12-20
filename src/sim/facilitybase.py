@@ -171,21 +171,21 @@ class TransferDestinationPolicy(object):
         return facAddrList
 
 
+class PatientRecord(object):
+    def __init__(self, patientID, arrivalDate, isFrail):
+        self.patientID = patientID
+        self.arrivalDate = arrivalDate
+        self.departureDate = None
+        self.prevVisits = 0
+        self.isFrail = isFrail
+
+    def __str__(self):
+        return '<patient %s, %s -> %s, %s>' % (self.patientID,
+                                               self.arrivalDate,
+                                               self.departureDate,
+                                               'Frail' if self.isFrail else 'Healthy')
+
 class Facility(pyrheabase.Facility):
-    class PatientRecord(object):
-        def __init__(self, patientID, arrivalDate, isFrail):
-            self.patientID = patientID
-            self.arrivalDate = arrivalDate
-            self.departureDate = None
-            self.prevVisits = 0
-            self.isFrail = isFrail
-
-        def __str__(self):
-            return '<patient %s, %s -> %s, %s>' % (self.patientID,
-                                                   self.arrivalDate,
-                                                   self.departureDate,
-                                                   'Frail' if self.isFrail else 'Healthy')
-
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
                  managerClass=FacilityManager, categoryNameMapper=None):
         """
@@ -255,7 +255,8 @@ class Facility(pyrheabase.Facility):
                 patientRec.arrivalDate = timeNow
                 patientRec.departureDate = None
             else:
-                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
+#                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
+                patientRec = PatientRecord(patientID, timeNow, isFrail)
                 self.patientDataDict[patientID] = patientRec
             if timeNow != 0:  # Exclude initial populations
                 nh = self.getNoteHolder()

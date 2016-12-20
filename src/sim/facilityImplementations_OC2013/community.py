@@ -21,6 +21,8 @@ from scipy.stats import expon, binom
 import logging
 import types
 
+import pickle,gzip
+
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
@@ -156,9 +158,11 @@ class CommunityWard(Ward):
 
     def unFreezeDry(self, frozenAgent):
         valL = list(frozenAgent)
+        #print self.frozenAgentTypePattern
+        #print valL
         d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
-        assert not leftovers, ('%s had %s left over unfreezing agent'
-                               % (self._name, leftovers))
+        assert not leftovers, ('%s created %s and had %s left over unfreezing agent'
+                               % (self._name, d, leftovers))
         d['locAddr'] = self.getGblAddr()
         d['newLocAddr'] = self.getGblAddr()
         d['loggerName'] = self.frozenAgentLoggerName
@@ -317,14 +321,66 @@ def _populate(fac, descr, patch):
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               0)
         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
+#        fda = ward.freezeDry(a)
+#        print fda
+#        ward.frozenAgents.append(fda)
         ward.frozenAgents.append(ward.freezeDry(a))
     return agentList
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+    cacheVer = 3
+    
     fac = Community(facilityDescr, patch, policyClasses=policyClasses,
                     categoryNameMapper=categoryNameMapper)
-    return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
+
+    fname = 'cache/%s.pkz'%facilityDescr['abbrev']
+    wards = fac.getWards()
+    ward = wards[0]
+    if len(wards) != 1:
+        raise "caching wards assumes 1 ward per community"
+
+    
+    try:
+        with gzip.GzipFile(fname) as f:
+            wardInfo = pickle.load(f)
+
+        if wardInfo[0] != cacheVer:
+            raise
+        
+        ver, fDesc,typePattern,loggerName,fa,patientDataDict = wardInfo
+        if fDesc != facilityDescr:
+            raise
+        ward.frozenAgentTypePattern = typePattern
+        ward.frozenAgents = fa
+        ward.frozenAgentLoggerName = loggerName
+        fac.patientDataDict = patientDataDict
+        logger.info('read population for %s from cache (%s freeze-dried people)'
+                    % (fDesc['abbrev'], len(fa)))
+        return [fac], fac.getWards(), []
+
+    except:
+        # fall out of the exception
+        pass
+    
+    pop = _populate(fac, facilityDescr, patch)
+
+    
+    typePattern = ward.frozenAgentTypePattern
+    loggerName = ward.frozenAgentLoggerName
+    fa = ward.frozenAgents
+    patientDataDict = fac.patientDataDict
+
+    # presumably we don't use up beds now that we have frozen agents.
+
+    # pickle the (frozen) agents in the facility
+    if not os.path.exists('cache'):
+        os.makedirs('cache')
+
+    with gzip.GzipFile(fname, "w") as f:
+        pickle.dump((cacheVer,facilityDescr, typePattern, loggerName, fa, patientDataDict), f)
+
+    return [fac], fac.getWards(), pop
 
 
 def estimateWork(facRec):
