@@ -205,7 +205,6 @@ class Hospital(Facility):
             if key in self.hospTreeCache:
                 return self.hospTreeCache[key]
             else:
-                changeProb = self.hospCachedCDF.intervalProb(*key)
                 changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (self.lclRates['hospital'],
@@ -222,7 +221,6 @@ class Hospital(Facility):
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
-#                                  changeProb, tag='LOS')
                                  self.hospCachedCDF.intervalProb, tag='LOS')
                 self.hospTreeCache[key] = tree
                 return tree
@@ -230,14 +228,13 @@ class Hospital(Facility):
             if key in self.icuTreeCache:
                 return self.icuTreeCache[key]
             else:
-                changeProb = self.icuCachedCDF.intervalProb(*key)
                 tree = BayesTree(BayesTree.fromLinearCDF([(self.icuDischargeViaDeathFrac,
                                                            ClassASetter(DiagClassA.DEATH)),
                                                           ((1.0 - self.icuDischargeViaDeathFrac),
                                                            ClassASetter(DiagClassA.SICK))],
                                                          tag='FATE'),
                                  PatientStatusSetter(),
-                                 changeProb, tag='LOS')
+                                 self.icuCachedCDF.intervalProb, tag='LOS')
                 self.icuTreeCache[key] = tree
                 return tree
         else:

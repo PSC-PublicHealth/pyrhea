@@ -115,7 +115,6 @@ class NursingHome(Facility):
                     return self.frailTreeCache[key]
                 else:
                     innerTree = PatientStatusSetter()  # No change of state
-            changeProb = self.frailCachedCDF.intervalProb(*key)
             healthySetter = OverallHealthSetter(PatientOverallHealth.HEALTHY)
             changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                    ClassASetter(DiagClassA.DEATH)),
@@ -132,8 +131,8 @@ class NursingHome(Facility):
                                                   (self.lclRates['home'],
                                                    healthySetter)], tag='FATE')
 
-            tree = BayesTree(changeTree, innerTree, changeProb,
-                             tag='LOS')
+            tree = BayesTree(changeTree, innerTree,
+                             self.frailCachedCDF.intervalProb, tag='LOS')
             if treatment == TreatmentProtocol.REHAB:
                 self.frailRehabTreeCache[key] = tree
             else:
@@ -144,7 +143,6 @@ class NursingHome(Facility):
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
                 else:
-                    changeProb = self.rehabCachedCDF.intervalProb(*key)
                     adverseProb = (self.lclRates['death']
                                    + self.lclRates['hospital']
                                    + self.lclRates['icu']
@@ -175,11 +173,11 @@ class NursingHome(Facility):
                                                    ClassASetter(DiagClassA.HEALTHY),
                                                    adverseProb),
                                          PatientStatusSetter(),
-                                         changeProb, tag='LOS')
+                                         self.rehabCachedCDF.intervalProb, tag='LOS')
                     else:
                         tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
                                          PatientStatusSetter(),
-                                         changeProb, tag='LOS')
+                                         self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
             elif treatment == TreatmentProtocol.NORMAL:

@@ -217,7 +217,7 @@ class CommunityManager(FacilityManager):
                     pThaw = self.fac.cachedCDFs[patCat].intervalProb(0, dT)
                     nFroz = len(freezer.frozenAgentList)
                     nThawed = binom.rvs(nFroz, pThaw)
-                    changedList = random.sample(freezer.frozenAgentList, nThawed)[:]
+                    changedList = random.sample(freezer.frozenAgentList, nThawed)
                     for a in changedList:
                         thawedAgent = freezer.removeAndThaw(a)
                         if thawedAgent.debug:
@@ -230,7 +230,6 @@ class CommunityManager(FacilityManager):
                 ward.freezers[ward.classify(agent)].freezeAndStore(agent)
             ward.newArrivals = []
         self.fac.collectiveStatusStartDate = timeNow
-
 
     def allocateAvailableBed(self, tier):
         """
@@ -288,7 +287,8 @@ class Community(Facility):
             verySickRate = _constants['communityVerySickRate']['value']
             needsLTACRate = _constants['communityNeedsLTACRate']['value']
             needsRehabRate = _constants['communityNeedsRehabRate']['value']
-            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate)
+            needsSkilNrsRate = _constants['communityNeedsSkilNrsRate']['value']
+            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate + needsSkilNrsRate)
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (sickRate,
@@ -299,6 +299,8 @@ class Community(Facility):
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
                                                       (needsLTACRate,
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
+                                                      (needsSkilNrsRate,
+                                                       ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       ], tag='FATE'),
                              PatientStatusSetter(),
                              changeProb, tag='LOS')
@@ -320,6 +322,8 @@ class Community(Facility):
             return (CareTier.HOSP, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
             return (CareTier.ICU, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
+            return (CareTier.SKILNRS, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
             return (None, TreatmentProtocol.NORMAL)
         else:

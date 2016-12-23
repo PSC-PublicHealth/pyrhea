@@ -113,7 +113,6 @@ class LTAC(Facility):
             if key in self.treeCache:
                 return self.treeCache[key]
             else:
-                changeProb = self.cachedCDF.intervalProb(*key)
                 changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (self.lclRates['icu'],
@@ -132,7 +131,7 @@ class LTAC(Facility):
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
-                                 changeProb, tag='LOS')
+                                 self.cachedCDF.intervalProb, tag='LOS')
                 self.treeCache[key] = tree
                 return tree
         else:

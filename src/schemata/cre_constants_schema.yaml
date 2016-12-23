@@ -28,6 +28,19 @@
         - 'tier'
         - 'frac'
 
+  'nonnegfloatByTier':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tier': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
+        'value': {'type': 'number', 'minimum': 0.0}
+        'prov': {'type': string}
+      'required':
+        - 'tier'
+        - 'value'
+        - 'prov'
+
   'tierList':
     'type': 'array'
     'items': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
@@ -95,17 +108,8 @@
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Exponential decay time constant for spontaneous loss of colonization, in days'
       'colonizedDischargeDelayTime':
-        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
-        'description': 'Discharge delay time for colonized vs. clear patients, in days'
-      'colonizedDischargeDelayTiers':
-        'description': 'Care tiers to which the discharge delay due to colonization is applied'
-        'type': 'object'
-        'properties':
-          'prov': {'type': 'string'}
-          'values': {'$ref': '#/definitions/tierList'}
-        'required':
-          - 'prov'
-          - 'values'
+        '$ref': '#/definitions/nonnegfloatByTier'
+        'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
                 
     'required':
       - 'initialFractionColonized'
@@ -114,7 +118,6 @@
       - 'fracPermanentlyColonized'
       - 'spontaneousLossTimeConstant'
       - 'colonizedDischargeDelayTime'
-      - 'colonizedDischargeDelayTiers'
       
       
      

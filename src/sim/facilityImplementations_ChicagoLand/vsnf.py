@@ -182,7 +182,6 @@ class VentSNF(Facility):
         if key in self.treeCache:
             return self.treeCache[key]
         else:
-            changeProb = self.cachedCDF.intervalProb(*key)
             adverseProb = (self.lclRates['death']
                            + self.lclRates['hospital']
                            + self.lclRates['icu']
@@ -208,11 +207,11 @@ class VentSNF(Facility):
                                            ClassASetter(DiagClassA.HEALTHY),
                                            adverseProb),
                                  PatientStatusSetter(),
-                                 changeProb, tag='LOS')
+                                 self.cachedCDF.intervalProb, tag='LOS')
             else:
                 tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
                                  PatientStatusSetter(),
-                                 changeProb, tag='LOS')
+                                 self.cachedCDF.intervalProb, tag='LOS')
             self.treeCache[key] = tree
             return tree
 

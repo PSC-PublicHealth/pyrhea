@@ -129,10 +129,12 @@ class CRE(Pathogen):
 
         self.tau = _getFracByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory)
         
-        if CareTier.names[self.ward.tier] in _constants['colonizedDischargeDelayTiers']['values']:
-            self.colDischDelayTime = _constants['colonizedDischargeDelayTime']['value']
-        else:
-            self.colDischDelayTime = 0.0
+        tierName = CareTier.names[self.ward.tier]
+        self.colDischDelayTime = 0.0  # the default
+        for ent in _constants['colonizedDischargeDelayTime']:
+            if ent['tier'] == tierName:
+                self.colDischDelayTime = ent['value']
+                break
 
     def _emptyPatientPth(self):
         return {k:0 for k in PthStatus.names.keys()}
