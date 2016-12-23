@@ -1,4 +1,4 @@
-'modelDir': '/home/welling/git/pyrhea/models/ChicagoLand'
+'modelDir': '../../../pyrhea/models/ChicagoLand'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'

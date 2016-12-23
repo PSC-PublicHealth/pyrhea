@@ -22,6 +22,7 @@ import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree
 from pathogenbase import PthStatus, defaultPthStatus, Pathogen
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -172,21 +173,21 @@ class TransferDestinationPolicy(object):
         return facAddrList
 
 
+class PatientRecord(object):
+    def __init__(self, patientID, arrivalDate, isFrail):
+        self.patientID = patientID
+        self.arrivalDate = arrivalDate
+        self.departureDate = None
+        self.prevVisits = 0
+        self.isFrail = isFrail
+
+    def __str__(self):
+        return '<patient %s, %s -> %s, %s>' % (self.patientID,
+                                               self.arrivalDate,
+                                               self.departureDate,
+                                               'Frail' if self.isFrail else 'Healthy')
+
 class Facility(pyrheabase.Facility):
-    class PatientRecord(object):
-        def __init__(self, patientID, arrivalDate, isFrail):
-            self.patientID = patientID
-            self.arrivalDate = arrivalDate
-            self.departureDate = None
-            self.prevVisits = 0
-            self.isFrail = isFrail
-
-        def __str__(self):
-            return '<patient %s, %s -> %s, %s>' % (self.patientID,
-                                                   self.arrivalDate,
-                                                   self.departureDate,
-                                                   'Frail' if self.isFrail else 'Healthy')
-
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
                  managerClass=FacilityManager, categoryNameMapper=None):
         """
@@ -260,7 +261,8 @@ class Facility(pyrheabase.Facility):
                 patientRec.arrivalDate = timeNow
                 patientRec.departureDate = None
             else:
-                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
+#                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
+                patientRec = PatientRecord(patientID, timeNow, isFrail)
                 self.patientDataDict[patientID] = patientRec
             if timeNow != 0:  # Exclude initial populations
                 nh = self.getNoteHolder()
@@ -447,7 +449,7 @@ class Facility(pyrheabase.Facility):
     
 
 class PatientAgent(pyrheabase.PatientAgent):
-    idCounter = 0  # to provide a reliable identifier for each patient
+    idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
@@ -459,8 +461,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)[0:2]
         self.lastUpdateTime = timeNow
-        self.id = (patch.patchId, PatientAgent.idCounter)
-        PatientAgent.idCounter += 1
+        abbrev = self.ward.fac.abbrev
+        self.id = (abbrev, PatientAgent.idCounters[abbrev])
+        PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
     def printSummary(self):
