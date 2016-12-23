@@ -24,7 +24,8 @@ import types
 from collections import defaultdict
 
 
-import pickle,gzip
+import cPickle as pickle
+import gzip
 
 import pyrheabase
 import pyrheautils
