@@ -22,6 +22,7 @@ import logging
 from phacsl.utils.notes.statval import HistoVal
 from stats import BayesTree
 from pathogenbase import PthStatus, defaultPthStatus, Pathogen
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -448,7 +449,7 @@ class Facility(pyrheabase.Facility):
     
 
 class PatientAgent(pyrheabase.PatientAgent):
-    idCounter = 0  # to provide a reliable identifier for each patient
+    idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
@@ -460,8 +461,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)[0:2]
         self.lastUpdateTime = timeNow
-        self.id = (patch.patchId, PatientAgent.idCounter)
-        PatientAgent.idCounter += 1
+        abbrev = self.ward.fac.abbrev
+        self.id = (abbrev, PatientAgent.idCounters[abbrev])
+        PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
     def printSummary(self):
