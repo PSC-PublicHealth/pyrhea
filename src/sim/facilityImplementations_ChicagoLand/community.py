@@ -42,3 +42,4 @@ class Community(genericCommunity.Community):
                            PatientCategory.COLONIZED: CachedCDFGenerator(expon(scale=1.0/colonizedRate))}
         
 
+genericCommunity.importCommunity(__name__)
