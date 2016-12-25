@@ -174,24 +174,34 @@ class Freezer(object):
         else:
             raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong logger'
                                              % (self.ward._name, d['name']))
-        typeTpl, linL, valL = lencode(d)  # @UnusedVariable
-#         print 'dictionary: %s' % str(d)
-#         print 'types: %s' % str(typeTpl)
-#         print 'linearized: %s' % str(linL)
-#         print 'values: %s' % str(valL)
+        if 0:
+            typeTpl, linL, valL = lencode(d)  # @UnusedVariable
+            #print 'dictionary: %s' % str(d)
+            #print 'types: %s' % str(typeTpl)
+            #print 'linearized: %s' % str(linL)
+            #print 'values: %s' % str(valL)
+        else:
+            typeTpl = 1
+            valL = pickle.dumps(d, 2)
         if self.frozenAgentTypePattern is None:
             self.frozenAgentTypePattern = typeTpl
         elif typeTpl != self.frozenAgentTypePattern:
             raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong type pattern'
                                              % (self.ward._name, d['name']))
-        self.frozenAgentList.append(tuple(valL))
+        if 0:
+            self.frozenAgentList.append(tuple(valL))
+        else:
+            self.frozenAgentList.append(valL)
 
     def removeAndThaw(self, frozenAgent):
         self.frozenAgentList.remove(frozenAgent)
-        valL = list(frozenAgent)
-        d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
-        assert not leftovers, ('%s had %s left over unfreezing agent'
-                               % (self.ward._name, leftovers))
+        if 0:
+            valL = list(frozenAgent)
+            d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
+            assert not leftovers, ('%s had %s left over unfreezing agent'
+                                   % (self.ward._name, leftovers))
+        else:
+            d = pickle.loads(frozenAgent)
         d['locAddr'] = self.ward.getGblAddr()
         d['newLocAddr'] = self.ward.getGblAddr()
         d['loggerName'] = self.frozenAgentLoggerName
@@ -381,7 +391,7 @@ def _populate(fac, descr, patch):
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
-    cacheVer = 5
+    cacheVer = 7
 
     fac = Community(facilityDescr, patch, policyClasses=policyClasses,
                     categoryNameMapper=categoryNameMapper)
@@ -400,7 +410,6 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
             raise
 
         ver, fDesc,freezerList,patientDataDict = wardInfo
-        #ver, fDesc,typePattern,loggerName,fa,patientDataDict = wardInfo
         if fDesc != facilityDescr:
             raise
 
@@ -439,7 +448,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         os.makedirs('cache')
 
     with gzip.GzipFile(fname, "w") as f:
-        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict), f)
+        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict), f, 2)
 
     return [fac], fac.getWards(), pop
 
