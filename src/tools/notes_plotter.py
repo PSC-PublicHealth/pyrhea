@@ -313,7 +313,7 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
               'VSNF': 'pink',
               'SKILNRS': 'gray',
               'VENT': 'purple',
-              'NURSING+SKILNRS+VENT': 'red',
+              'NURSING+SKILNRS+VENT': 'gray',
               'HOSP': 'blue',
               'HOSP+ICU': 'blue',
               'ICU': 'cyan',

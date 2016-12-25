@@ -30,8 +30,8 @@ class CommunityWard(genericCommunity.CommunityWard):
         elif agent._status.pthStatus == PthStatus.CLEAR:
             return PatientCategory.BASE
         else:
-            raise CommunityWard.FreezerError('%s has unexpected PthStatus %s' %
-                                             (agent.name, PthStatus.names[agent._status.pthStatus]))
+            raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
+                                                (agent.name, PthStatus.names[agent._status.pthStatus]))
 
         
 class Community(genericCommunity.Community):
