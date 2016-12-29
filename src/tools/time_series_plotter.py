@@ -250,76 +250,27 @@ def getLocPathogenTimeSeriesList(abbrev, specialDict):
 
 
 def oneFacPathogenTimeFig(abbrev, specialDict):
-    patchList = []
-    indList = []
-    for enumPatchName, data in specialDict.items():
-        patchName, ind = splitEnumNameStr(enumPatchName)
-        if patchName not in patchList:
-            patchList.append(patchName)
-        if ind not in indList:
-            indList.append(ind)
-        pthDataList = data['localpathogen']
-        assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
-    patchList.sort()
-    indList.sort()
+    tplList = getLocPathogenTimeSeriesList(abbrev, specialDict)
     fig, axes = plt.subplots(1,1)
     clrDict = defaultdict(lambda: None)
-    for ind in indList:
-        for patchName in patchList:
-            try:
-                enumPatchName = buildEnumNameStr(patchName, ind)
-                if enumPatchName not in specialDict:
-                    continue
-                pthDataList = specialDict[enumPatchName]['localpathogen']
-                assert isinstance(pthDataList, types.ListType), \
-                    'Special data %s is not a list' % enumPatchName
-                fields = defaultdict(list)
-                for d in pthDataList:
-                    for k, v in d.items():
-                        fields[k].append(v)
-                assert 'day' in fields, 'Date field is missing for special data %s' % patchName
-                dayList = fields['day']
-                dayVec = np.array(dayList)
-                del fields['day']
-                
-                curves = {}
-                for pthLvl in xrange(len(pth.PthStatus.names)):
-                    key = buildEnumNameStr(abbrev, pthLvl)
-                    if key in fields:
-                        l = fields[key]
-                        assert len(l) == len(dayList), (('field %s is the wrong length in special'
-                                                         ' data %s (%d vs. %d)')
-                                                        % (key, patchName, len(l), len(dayList)))
-                        curves[pthLvl] = np.array(l)
-                tots = sum(curves.values())
-                for pthLvl, lVec in curves.items():
-                    if ind == indList[0]:
-                        lbl = '%s' % pth.PthStatus.names[pthLvl]
-                    else:
-                        lbl = None
-                    if np.count_nonzero(lVec):
-                        with np.errstate(divide='ignore', invalid='ignore'):
-                            scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(tots))
-                            scaleV[scaleV == np.inf] = 0.0
-                            scaleV = np.nan_to_num(scaleV)
-                            thisP = axes.plot(dayVec, scaleV, label=lbl, c=clrDict[pthLvl])
-                        if ind == indList[0]:
-                            clrDict[pthLvl] = thisP[0].get_color()
-                if ind == indList[0]:
-                    axes.set_xlabel('Days')
-                    axes.set_ylabel('Pathogen Prevalence')
-                    axes.legend()
-                    axes.set_title(abbrev)
-            except Exception, e:
-                print 'Exception %s' % e
+    for idx, (dayVec, scaledCurves) in enumerate(tplList):
+        for pthLvl, lVec in scaledCurves.items():
+            lbl = (None if idx else ('%s' % pth.PthStatus.names[pthLvl]))
+            if np.count_nonzero(lVec):
+                thisP, = axes.plot(dayVec, lVec, label=lbl, c=clrDict[pthLvl])
+                clrDict[pthLvl] = thisP.get_color()
+    axes.set_xlabel('Days')
+    axes.set_ylabel('Pathogen Prevalence')
+    axes.legend()
+    axes.set_title("%s History of Infection Status" % abbrev)
     fig.tight_layout()
-    fig.canvas.set_window_title("Time History of Infection Status")
+    fig.canvas.set_window_title(abbrev)
 
 
 def mergeNotesFiles(notesPathList):
     """
-    Given a list of path strings pointing to notes files, produce a dict containing all the time series
-    info and all 'unusual' info in those notes.
+    Given a list of path strings pointing to notes files, produce a dict containing all the
+    time series info and all 'unusual' info in those notes.
     """
     specialDict = {}
     for ind, notesFName in enumerate(notesPathList):
@@ -376,8 +327,6 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             oneFacPathogenTimeFig(abbrev, specialDict)
-
-
 
     plt.show()
 
