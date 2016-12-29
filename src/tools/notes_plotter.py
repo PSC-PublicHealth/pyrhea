@@ -595,10 +595,11 @@ def findFacImplCategory(facImplDict,
 def readFacFiles(facilityDirs):
     return mtm.parseFacilityData(facilityDirs)
 
-def scanAllFacilities(facilityDirs):
+def scanAllFacilities(facilityDirs, facDict=None):
     transOutByCat = defaultdict(dict)
     meanPopByCat = defaultdict(lambda: 0.0)
-    facDict = readFacFiles(facilityDirs)
+    if not facDict:
+        facDict = readFacFiles(facilityDirs)
     for fac in facDict.values():
         cat = fac['category']
         assert 'meanPop' in fac, '%s has no meanPop' % fac['abbrev']
@@ -716,8 +717,9 @@ def main():
         #singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         pass
     
-    if "ChicagoLand" in runDesc:
-        singleLOSFig('MANO_512_S', notesDict, facDirList, catToImplDict, implDir)
+    if 'trackedFacilities' in inputDict:
+        for abbrev in inputDict['trackedFacilities']:
+            singleLOSFig(abbrev, notesDict, facDirList, catToImplDict, implDir)
 
 
     bedBounceFig(allOfCategoryDict)

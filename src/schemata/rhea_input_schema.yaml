@@ -59,6 +59,11 @@
           'properties':
             'key': { 'type': 'string' }
             'value': { 'type': 'string' }
+      'trackedFacilities':
+        'description': 'A list of facility abbreviations for which extra data will be saved'
+        'type': 'array'
+        'items':
+          'type': 'string'
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'
