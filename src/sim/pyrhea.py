@@ -40,6 +40,9 @@ INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 DEFAULT_OUTPUT_NOTES_NAME = 'notes.pkl'
 
+_TRACKED_FACILITIES = []
+_TRACKED_FACILITIES_SET = None
+
 logger = None
 
 def buildFacOccupancyDict(patch, timeNow):
@@ -84,9 +87,48 @@ def buildFacPthDict(patch, timeNow):
     return facPthDict
 
 
-PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
-                          'pathogen': buildFacPthDict}
+def buildLocalOccupancyDict(patch, timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientDataDict'):
+            patientCount = 0
+            for rec in fac.patientDataDict.values():
+                if rec.departureDate is None:
+                    patientCount += 1
+            facDict[fac.abbrev] = patientCount
+    return facDict
 
+
+def buildLocalPthDict(patch, timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = {}
+        for ward in fac.getWards():
+            pPC = ward.iA.getPatientPthCounts(timeNow)
+            for k, v in pPC.items():
+                if k in facPPC:
+                    facPPC[k] += v
+                else:
+                    facPPC[k] = v
+        for k, v in facPPC.items():
+            facPthDict['%s_%s' % (fac.abbrev, k)] = v
+    return facPthDict
+
+
+PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
+                          'localoccupancy': buildLocalOccupancyDict,
+                          'pathogen': buildFacPthDict,
+                          'localpathogen': buildLocalPthDict}
 
 
 def loadPolicyImplementations(implementationDir):
@@ -515,7 +557,7 @@ def main():
         patchGroup = None  # for the benefit of diagnostics during init
         clData = comm.bcast(clData, root=0)
         if 'modelDir' in clData['input']:
-            pyrheautils.PATH_STRING_MAP['MODELDIR'] = clData['input']['modelDir']
+            pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
         if 'pathTranslations' in clData['input']:
             for elt in clData['input']['pathTranslations']:
                 pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
@@ -529,7 +571,13 @@ def main():
     
         if deterministic:
             seed(1234 + comm.rank)  # Set the random number generator seed
-    
+        elif 'randomSeed' in inputDict:
+            seed(inputDict['randomSeed'] + comm.rank)
+
+        if 'trackedFacilities' in inputDict:
+            global _TRACKED_FACILITIES
+            _TRACKED_FACILITIES.extend(inputDict['trackedFacilities'])
+
         schemautils.setSchemaBasePath(SCHEMA_DIR)
         pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
         assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'

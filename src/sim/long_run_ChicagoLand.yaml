@@ -1,0 +1,72 @@
+'notesFileName': 'notes_long.pkl'
+'randomSeed': 1245
+
+'modelDir': '../../../pyrhea/models/ChicagoLand'
+
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
+'facilityDirs':
+  - '$(MODELDIR)/facilityfacts'
+  - '$(MODELDIR)/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilitySelectors':
+  - 'category': 'SNF'
+    'implementation': 'NURSINGHOME'
+  - 'category': 'VSNF'
+    'implementation': 'VSNF'
+  - 'category': 'LTACH'
+    'implementation': 'LTAC'
+  - 'category': 'HOSPITAL'
+    'implementation': 'HOSPITAL'
+  - 'category': 'COMMUNITY'
+    'implementation': 'COMMUNITY'
+
+'pathogenImplementationDir': '../sim/creImplementation_ChicagoLand'
+
+'policyImplementationDir': '../sim/policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    'policyClass': 'CapacityTransferDestinationPolicy'
+
+'runDurationDays': 1825  # five years (2010 - 2015 inclusive)
+
+'burnInDays': 100
+
+'trackedFacilities':
+  - 'ADVO_2320_H'
+  - 'ADVO_3435_L'
+  - 'ADVO_836_H'
+  - 'BETH_5025_H'
+  - 'COMM_5645_H'
+  - 'COOK_1901_H'
+  - 'HOLY_2701_H'
+  - 'JACK_7531_H'
+  - 'JOSE_1127_H'
+  - 'LORE_645_H'
+  - 'MERC_2525_H'
+  - 'MOUN_2028_H'
+  - 'NORT_251_H'
+  - 'NORW_1044_H'
+  - 'PRES_100_L'
+  - 'PRES_1127_H'
+  - 'PRES_7435_H'
+  - 'RML_5601_L'
+  - 'ROSE_45_H'
+  - 'RUSH_1653_H'
+  - 'SAIN_2875_H'
+  - 'ST_326_H'
+  - 'SWED_5145_H'
+  - 'THC_2544_L'
+  - 'THC_365_L'
+  - 'THC_4058_L'
+  - 'THC_6130_L'
+  - 'THE_1740_H'
+  - 'THE_5841_H'
+  - 'THOR_850_H'
+  - 'VHS_4646_H'

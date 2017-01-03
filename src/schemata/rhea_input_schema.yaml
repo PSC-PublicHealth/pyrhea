@@ -64,6 +64,9 @@
         'type': 'array'
         'items':
           'type': 'string'
+      'randomSeed':
+        'description': 'Optional seed for random number generator'
+        'type': 'integer'
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'
