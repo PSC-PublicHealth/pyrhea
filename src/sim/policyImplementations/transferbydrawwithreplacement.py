@@ -100,7 +100,7 @@ class DWRCore(object):
     def getTierWeightedList(self, srcName, tier):
         """
         Returns a tuple containing:
-        - a list of the form [(wt, (abbrev, addr)), ...] to be shuffled shuffled
+        - a list of the form [(wt, (abbrev, addr)), ...] to be shuffled
         - a value wtSum equal to the sum of the weights in the list
         """
         if self.tbl is None:
@@ -109,8 +109,8 @@ class DWRCore(object):
 
 
 class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = DWRCore(patch)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):

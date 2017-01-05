@@ -25,10 +25,11 @@
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC))'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
-    'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    'policyClass': 'CapacityTransferDestinationPolicy'
 
 #'runDurationDays': 1095
 'runDurationDays': 365
@@ -41,3 +42,4 @@ burnInDays: 100
   - 'ADVO_836_H'
   - 'BETH_5025_H'
   - 'COMM_5645_H'
+  

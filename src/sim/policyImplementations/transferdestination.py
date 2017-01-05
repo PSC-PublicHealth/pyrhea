@@ -50,8 +50,8 @@ class MinTravelTimeCore(object):
 
 
 class MinTravelTimeTransferDestinationPolicy(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(MinTravelTimeTransferDestinationPolicy, self).__init__(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(MinTravelTimeTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = MinTravelTimeCore()
         self.cache = {}
 

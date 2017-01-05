@@ -26,7 +26,7 @@ from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPol
 from facilitybase import CareTier, tierToQueueMap
 
 _validator = None
-_constants_values = 'transferbycapacity_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/transferbycapacity_constants.yaml'
 _constants_schema = 'transferbycapacity_constants_schema.yaml'
 _constants = None
 
@@ -37,7 +37,7 @@ class CapacityCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
 
-    def __init__(self, patch):
+    def __init__(self, patch, categoryNameMapper):
         self.patch = patch
         self.tierAddrMap = None
         transferMatrixFilePath = _constants['capacityFilePath']
@@ -48,7 +48,7 @@ class CapacityCore(object):
         self.tbl = {tier: [] for tier in nmDict.keys()}
         for rec in rawTbl:
             abbrev = rec['abbrev']
-            ctg = rec['category']
+            ctg = categoryNameMapper(rec['category'])
             if ctg == 'HOSPITAL':
                 self.tbl[CareTier.HOSP].append((rec['capacity'], abbrev))
                 if 'icuCapacity' in rec:
@@ -57,6 +57,8 @@ class CapacityCore(object):
                 self.tbl[CareTier.LTAC].append((rec['capacity'], abbrev))
             elif ctg == 'NURSINGHOME':
                 self.tbl[CareTier.NURSING].append((rec['capacity'], abbrev))
+            elif ctg == 'VSNF':
+                self.tbl[CareTier.SKILNRS].append((rec['capacity'], abbrev))
             elif ctg == 'COMMUNITY':
                 self.tbl[CareTier.HOME].append((rec['capacity'], abbrev))
             else:
@@ -87,9 +89,9 @@ class CapacityCore(object):
 
 
 class CapacityTransferDestinationPolicy(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(CapacityTransferDestinationPolicy, self).__init__(patch)
-        self.core = CapacityCore(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(CapacityTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
+        self.core = CapacityCore(patch, categoryNameMapper)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
         pairList = deque(self.core.tbl[newTier])
@@ -133,6 +135,5 @@ def getPolicyClasses():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(pyrheautils.pathTranslate(_constants_values),
                                          _constants_schema)

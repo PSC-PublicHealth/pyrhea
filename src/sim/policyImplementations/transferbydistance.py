@@ -67,8 +67,8 @@ class MinDistanceCore(object):
 
 
 class MinDistanceTransferDestinationPolicy(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(MinDistanceTransferDestinationPolicy, self).__init__(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(MinDistanceTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = MinDistanceCore()
         self.cache = {}
 
