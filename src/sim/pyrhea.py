@@ -134,6 +134,8 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
 def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
     implList = []
+    implementationDir = pyrheautils.pathTranslate(implementationDir)
+    pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['getPolicyClasses']):
         newPolicyClasses = newMod.getPolicyClasses()

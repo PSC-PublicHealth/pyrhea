@@ -25,7 +25,7 @@ from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPol
 from facilitybase import CareTier, tierToQueueMap
 
 _validator = None
-_constants_values = 'transferatrandom_constants.yaml'
+_constants_values = '$(POLICYDIR)/transferatrandom_constants.yaml'
 _constants_schema = 'transferatrandom_constants_schema.yaml'
 _constants = None
 

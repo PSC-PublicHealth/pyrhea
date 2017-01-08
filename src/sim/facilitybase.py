@@ -163,14 +163,12 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
 
 
 class TransferDestinationPolicy(object):
-    def __init__(self, patch):
+    def __init__(self, patch, categoryNameMapper):
         self.patch = patch
+        self.categoryNameMapper = categoryNameMapper
 
     def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
-        queueClass = tierToQueueMap[newTier]
-        facAddrList = [tpl[1] for tpl in self.patch.serviceLookup(queueClass.__name__)]
-        shuffle(facAddrList)
-        return facAddrList
+        raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 
 class PatientRecord(object):
@@ -219,7 +217,7 @@ class Facility(pyrheabase.Facility):
             for pC in policyClasses:
                 if issubclass(pC, TransferDestinationPolicy):
                     transferDestinationPolicyClass = pC
-        self.transferDestinationPolicy = transferDestinationPolicyClass(patch)
+        self.transferDestinationPolicy = transferDestinationPolicyClass(patch, self.categoryNameMapper)
         
     def __str__(self):
         return '<%s>' % self.name
@@ -276,7 +274,8 @@ class Facility(pyrheabase.Facility):
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
             patientRec = self.patientDataDict[patientID]
             patientRec.departureDate = timeNow
-            if patientRec.arrivalDate != 0:  # exclude initial populations
+            #if patientRec.arrivalDate != 0:  # exclude initial populations
+            if True:  # include initial populations
                 lengthOfStay = timeNow - patientRec.arrivalDate
                 losKey = (CareTier.names[tier] + '_LOS')
                 nh = self.getNoteHolder()
@@ -316,7 +315,8 @@ class Facility(pyrheabase.Facility):
     def handleBedRequestFate(self, ward, payload, timeNow):
         """
         This routine is called in the time slice of the Facility Manager when the manager
-        responds to a request for a bed.  If the search for a bed failed, 'ward' will be None.
+        receives the final response to a bed request it initiated. If the search for a bed
+        failed, 'ward' will be None.
         """
         nBounces, tier, senderAbbrev = payload
         if ward is None:
@@ -330,10 +330,12 @@ class Facility(pyrheabase.Facility):
         transferKey = '%s_transfer' % senderAbbrev
         if bounceKey not in nh:
             nh.addNote({bounceKey: HistoVal([])})
+        fromToKey = 'fromTo:%s:%s' % (senderAbbrev, tier)
         self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
                                       (CareTier.names[tier] + '_notfound'): nFail,
                                       bounceKey: nBounces,
-                                      transferKey: nSuccess})
+                                      transferKey: nSuccess,
+                                      fromToKey: nSuccess})
 
     def diagnose(self, patientStatus, oldDiagnosis):
         """
