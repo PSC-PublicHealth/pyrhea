@@ -82,7 +82,7 @@ def main():
     if len(args) != 1:
         parser.error('A YAML run description is required')
 
-    if not len(opts.notes):
+    if not opts.notes:
         parser.error('At least one --notes option is required')
 
     parser.destroy()
