@@ -53,9 +53,6 @@ def extractSamples(abbrev, time, specialDict):
             if len(sampV):
                 sampListDict[pth.PthStatus.names[pthLvl]].append(float(sampV[0]))
     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
-    print time
-    print dayVec
-    print dayVec == time
     for dayVec, popVec in popTplList:
         popV = np.asfarray(popVec)[dayVec == time]
         if len(popV): 
