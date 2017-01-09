@@ -492,7 +492,7 @@ def main():
 
     if comm.rank == 0:
         parser = TweakedOptParser(usage="""
-        %prog [-v][-d][-t][-D][-p=npatch][-C][-L=loglevel][-P=partitionfile.yaml] input.yaml
+        %prog [-v][-d][-t][-D][-p=npatch][-C][-L=loglevel][-P=partitionfile.yaml][--seed SEED] input.yaml
         """)
         parser.setComm(comm)
         parser.add_option("-v", "--verbose", action="store_true",
@@ -517,6 +517,8 @@ def main():
         parser.add_option("-P", "--partition", action="store", type="string",
                           help=("yaml file defining the partition of locations to ranks"
                                 " (no default)"))
+        parser.add_option("--seed", action="store", type="int",
+                          help="Use this value as the random seed")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -536,6 +538,7 @@ def main():
                   'logCfgDict': getLoggerConfig(),
                   'loggingExtra': numLogLevel,
                   'partitionFile': opts.partition,
+                  'randomSeed': opts.seed
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -573,6 +576,8 @@ def main():
     
         if deterministic:
             seed(1234 + comm.rank)  # Set the random number generator seed
+        elif clData['randomSeed']:
+            seed(clData['randomSeed'] + comm.rank)
         elif 'randomSeed' in inputDict:
             seed(inputDict['randomSeed'] + comm.rank)
 
