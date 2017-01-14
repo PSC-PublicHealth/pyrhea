@@ -161,8 +161,7 @@ class VentSNF(Facility):
         """Specialized to prioritize transfers to our own wards if possible"""
         facAddrList = super(VentSNF, self).getOrderedCandidateFacList(oldTier, newTier,
                                                                       timeNow)
-        if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]
-                and oldTier == newTier):
+        if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]):
             queueClass = tierToQueueMap[newTier]
             lclList = [rQ for rQ in self.reqQueues if isinstance(rQ, queueClass)]
             lclList = [q.getGblAddr() for q in lclList]
