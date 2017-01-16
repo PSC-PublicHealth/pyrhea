@@ -19,10 +19,8 @@ import os.path
 import sys
 from optparse import OptionParser
 import yaml
-from collections import defaultdict
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
@@ -65,7 +63,7 @@ def main():
     main
     """
     parser = OptionParser(usage="""
-    %prog [--notes notes_file.pkl] run_descr.yaml
+    %prog [--notes notes_file.pkl] [--glob] [--proto prototype.yaml] [--out outname.yaml] run_descr.yaml
     """)
     parser.add_option('-n', '--notes', action='append', type='string',
                       help="Notes filename - may be repeated")
@@ -75,6 +73,10 @@ def main():
     
     parser.add_option('-o', '--out', action='store', type='string',
                       help="Output file (defaults to %s)" % DEFAULT_OUT_FILE)
+    
+    parser.add_option('--glob', action='store_true',
+                      help=("Apply filename globbing for notes files."
+                            "  (Remember to protect the filename string from the shell!)"))
     opts, args = parser.parse_args()
     if len(args) != 1:
         parser.error('A YAML run description is required')
@@ -122,7 +124,7 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
 
-    specialDict = mergeNotesFiles(opts.notes)
+    specialDict = mergeNotesFiles(opts.notes, opts.glob)
     
     sampleL = []
     if 'trackedFacilities' in inputDict:
