@@ -142,12 +142,12 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
                     else:
                         newPL.append((capacity, destTpl))
         except IndexError, e:
-            logger.warning('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
+            logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
                            oldTier, newTier, timeNow)
-            logger.warning('tot = %s, lim = %s, capSum = %s', tot, lim, capSum)
-            logger.warning('newPL is %s', str(newPL))
+            logger.error('tot = %s, lim = %s, capSum = %s', tot, lim, capSum)
+            logger.error('newPL is %s', str(newPL))
             pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
-            logger.warning('initial tot = %s, pairList = %s', tot, pairList)
+            logger.error('initial tot = %s, pairList = %s', tot, pairList)
             raise
         return [b for a, b in facList]
 
