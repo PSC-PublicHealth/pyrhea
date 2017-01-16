@@ -144,6 +144,7 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
         except IndexError, e:
             logger.warning('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
                            oldTier, newTier, timeNow)
+            logger.warning('tot = %s, lim = %s, capSum = %s', tot, lim, capSum)
             logger.warning('newPL is %s', str(newPL))
             pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
             logger.warning('initial tot = %s, pairList = %s', tot, pairList)
