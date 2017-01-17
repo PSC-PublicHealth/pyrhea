@@ -129,18 +129,21 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
     #             print 'pairList: %s' % pairList
     #             print 'lim: %s' % lim
                 while True:
-                    capacity, destTpl = pairList.popleft()
-    #                 print 'sum = %s tpl = (%s, %s)' % (capSum, capacity, destTpl)
-                    capSum += capacity
-                    if capSum >= lim:
-                        facList.append(destTpl)
-                        tot -= capacity
-                        newPL.extend(pairList)
-                        pairList = newPL
-    #                     print 'breaking; facList = %s' % facList
-                        break
+                    if pairList:
+                        capacity, destTpl = pairList.popleft()
+    #                     print 'sum = %s tpl = (%s, %s)' % (capSum, capacity, destTpl)
+                        capSum += capacity
+                        if capSum >= lim:
+                            facList.append(destTpl)
+                            tot -= capacity
+                            newPL.extend(pairList)
+                            pairList = newPL
+    #                         print 'breaking; facList = %s' % facList
+                            break
+                        else:
+                            newPL.append((capacity, destTpl))
                     else:
-                        newPL.append((capacity, destTpl))
+                        break
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
                            oldTier, newTier, timeNow)
