@@ -382,6 +382,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
         a.reHome(fac.manager.patch)
+        a._status = a._status._replace(homeAddr=ward.getGblAddr())
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               0)

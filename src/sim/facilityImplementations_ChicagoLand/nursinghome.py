@@ -216,7 +216,8 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         if random() <= residentFrac:
-            a._status = a._status._replace(overall=PatientOverallHealth.FRAIL)
+            a._status = (a._status._replace(overall=PatientOverallHealth.FRAIL)
+                         ._replace(homeAddr=ward.getGblAddr()))  # They live here
         else:  # They must be here for rehab
             a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
             a._treatment = TreatmentProtocol.REHAB

@@ -20,6 +20,7 @@ import pyrheabase
 from phacsl.utils.collections.phacollections import enum, namedtuple
 import logging
 from phacsl.utils.notes.statval import HistoVal
+from quilt.netinterface import GblAddr
 from stats import BayesTree
 from pathogenbase import PthStatus, defaultPthStatus, Pathogen
 from collections import defaultdict
@@ -42,10 +43,11 @@ PatientStatus = namedtuple('PatientStatus',
                             'pthStatus',            # one of PthStatus
                             'startDatePth',         # date PthStatus status was entered
                             'relocateFlag',         # true if patient needs relocation
-                            'canClear'              # true if patient can spontaneously clear infection
+                            'canClear',             # true if patient can spontaneously clear infection
+                            'homeAddr'              # GblAddr of patient's home tract or NH
                             ],
                            field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,
-                                        bool, bool])
+                                        bool, bool, GblAddr])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
@@ -459,7 +461,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
-                                     False, True)
+                                     False, True, None)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TreatmentProtocol.NORMAL)[0:2]
         self.lastUpdateTime = timeNow
