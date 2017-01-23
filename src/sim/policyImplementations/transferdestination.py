@@ -22,6 +22,7 @@ import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
+from transferbydistance import MinDistanceTransferDestinationPolicy
 
 _validator = None
 _constants_values = 'transferdestination_constants.yaml'
@@ -54,28 +55,34 @@ class MinTravelTimeTransferDestinationPolicy(BaseTransferDestinationPolicy):
         super(MinTravelTimeTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = MinTravelTimeCore()
         self.cache = {}
+        self.fallbackPolicy = MinDistanceTransferDestinationPolicy(patch, categoryNameMapper)
 
     def buildCacheEntry(self, oldFacility, newTier):
         srcAbbrev = oldFacility.abbrev
         queueClass = tierToQueueMap[newTier]
-        tplList = []
-        for info, addr in self.patch.serviceLookup(queueClass.__name__):
-            innerInfo, destAbbrev, destCoords = info  # @UnusedVariable
-            travelTime = self.core.tbl[srcAbbrev][destAbbrev]['seconds']
-            tplList.append((travelTime, info, addr))
-        tplList.sort()
-        return [c for a, b, c in tplList]  # @UnusedVariable
+        try:
+            tplList = []
+            for info, addr in self.patch.serviceLookup(queueClass.__name__):
+                innerInfo, destAbbrev, destCoords = info  # @UnusedVariable
+                travelTime = self.core.tbl[srcAbbrev][destAbbrev]['seconds']
+                tplList.append((travelTime, info, addr))
+            tplList.sort()
+            return [c for a, b, c in tplList]  # @UnusedVariable
+        except KeyError:
+            # At least one dest has no travel time info
+            print 'fallback for %s -> %s' % (oldFacility.abbrev, newTier)
+            return self.fallbackPolicy.buildCacheEntry(oldFacility, newTier)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
-        if oldTier == CareTier.HOME or newTier == CareTier.HOME:
-            # We have no travel time info for Community, so fall back
-            return (super(MinTravelTimeTransferDestinationPolicy, self)
-                    .getOrderedCandidateFacList(oldFacility, oldTier, newTier, timeNow))
-        else:
-            if newTier not in self.cache:
-                self.cache[newTier] = self.buildCacheEntry(oldFacility, newTier)
+#         if oldTier == CareTier.HOME or newTier == CareTier.HOME:
+#             # We have no travel time info for Community, so fall back
+#             return (super(MinTravelTimeTransferDestinationPolicy, self)
+#                     .getOrderedCandidateFacList(oldFacility, oldTier, newTier, timeNow))
+#         else:
+        if newTier not in self.cache:
+            self.cache[newTier] = self.buildCacheEntry(oldFacility, newTier)
 #             print 'clause 3 %s: %s' % (oldFacility.abbrev, self.cache[newTier][:3])
-            return self.cache[newTier][:]
+        return self.cache[newTier][:]
 
 
 def getPolicyClasses():
