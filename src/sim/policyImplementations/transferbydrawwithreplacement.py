@@ -100,7 +100,7 @@ class DWRCore(object):
     def getTierWeightedList(self, srcName, tier):
         """
         Returns a tuple containing:
-        - a list of the form [(wt, (abbrev, addr)), ...] to be shuffled shuffled
+        - a list of the form [(wt, (abbrev, addr)), ...] to be shuffled
         - a value wtSum equal to the sum of the weights in the list
         """
         if self.tbl is None:
@@ -109,8 +109,8 @@ class DWRCore(object):
 
 
 class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = DWRCore(patch)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
@@ -121,25 +121,37 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
 #         print 'newTier: %s' % CareTier.names[newTier]
         facList = []
 #        facList_sav = [destTpl for capacity, destTpl in pairList]
-        while pairList:
-            capSum = 0.0
-            lim = random.random() * tot
-            newPL = deque()
-#             print 'pairList: %s' % pairList
-#             print 'lim: %s' % lim
-            while True:
-                capacity, destTpl = pairList.popleft()
-#                 print 'sum = %s tpl = (%s, %s)' % (capSum, capacity, destTpl)
-                capSum += capacity
-                if capSum >= lim:
-                    facList.append(destTpl)
-                    tot -= capacity
-                    newPL.extend(pairList)
-                    pairList = newPL
-#                     print 'breaking; facList = %s' % facList
-                    break
-                else:
-                    newPL.append((capacity, destTpl))
+        try:
+            while pairList:
+                capSum = 0.0
+                lim = random.random() * tot
+                newPL = deque()
+    #             print 'pairList: %s' % pairList
+    #             print 'lim: %s' % lim
+                while True:
+                    if pairList:
+                        capacity, destTpl = pairList.popleft()
+    #                     print 'sum = %s tpl = (%s, %s)' % (capSum, capacity, destTpl)
+                        capSum += capacity
+                        if capSum >= lim:
+                            facList.append(destTpl)
+                            tot -= capacity
+                            newPL.extend(pairList)
+                            pairList = newPL
+    #                         print 'breaking; facList = %s' % facList
+                            break
+                        else:
+                            newPL.append((capacity, destTpl))
+                    else:
+                        break
+        except IndexError, e:
+            logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
+                           oldTier, newTier, timeNow)
+            logger.error('tot = %s, lim = %s, capSum = %s', tot, lim, capSum)
+            logger.error('newPL is %s', str(newPL))
+            pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
+            logger.error('initial tot = %s, pairList = %s', tot, pairList)
+            raise
         return [b for a, b in facList]
 
 

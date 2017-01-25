@@ -1,0 +1,12 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/pathogen_schema.yaml'
+'title': 'pathogen schema'
+'description': 'pathogen schema'
+
+'definitions':
+
+  'pathogenstatus':
+    'type': 'string'
+    'enum': ['CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED']
+    
+

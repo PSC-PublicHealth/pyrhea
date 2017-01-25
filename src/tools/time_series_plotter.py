@@ -19,6 +19,7 @@ import os.path
 import sys
 from optparse import OptionParser
 import types
+import glob
 from collections import defaultdict
 
 import numpy as np
@@ -193,12 +194,18 @@ def pathogenTimeFig(specialDict):
     figs6.canvas.set_window_title("Time History of Infection Status")
 
 
-def mergeNotesFiles(notesPathList):
+def mergeNotesFiles(notesPathList, globFlag=False):
     """
     Given a list of path strings pointing to notes files, produce a dict containing all the
     time series info and all 'unusual' info in those notes.
     """
     specialDict = {}
+    if globFlag:
+        newNotesPathList = []
+        for notesFName in notesPathList:
+            newNotesPathList += glob.glob(notesFName)
+        newNotesPathList.sort()
+        notesPathList = newNotesPathList
     for ind, notesFName in enumerate(notesPathList):
         notesDict = importNotes(notesFName)
         for nm, dct in notesDict.items():

@@ -300,6 +300,11 @@ class PatientAgent(peopleplaces.Person):
             return None  # signal death
         else:
             facAddrList = self.getCandidateFacilityList(timeNow, tier)
+            homeAddr = self._status.homeAddr
+            if homeAddr and (homeAddr in facAddrList):
+                # Prioritize going home if possible
+                facAddrList.remove(homeAddr)
+                facAddrList = [homeAddr] + facAddrList
             key = self.ward.fac.holdQueue.getUniqueKey()
             self.patch.launch(BedRequest(self.name + '_bedReq', self.patch,
                                          tier, self.ward.getGblAddr(),

@@ -1,5 +1,7 @@
 'modelDir': '../../../pyrhea/models/ChicagoLand'
 
+'notesFileName': 'tiny_Chicagoland_notes.pkl'
+
 'pathTranslations':
   - 'key': 'CONSTANTS'
     'value': '$(MODELDIR)/constants'
@@ -31,15 +33,16 @@
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     'policyClass': 'CapacityTransferDestinationPolicy'
 
-#'runDurationDays': 1095
-'runDurationDays': 365
+'runDurationDays': 8
 
-#'burnInDays': 365
-burnInDays: 100
+burnInDays: 0
 
 'trackedFacilities':
   - 'ADVO_2320_H'
   - 'ADVO_836_H'
   - 'BETH_5025_H'
   - 'COMM_5645_H'
+  - 'ADVO_3435_L'
+  - 'OAK_9525_V'
+  - 'ALDE_1221_S'
   

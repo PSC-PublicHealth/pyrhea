@@ -1,0 +1,41 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/time_samples_schema.yaml'
+'title': 'time_samples schema'
+'description': 'schema for samples from a collection of time series'
+
+'$ref': '#/definitions/timesamplelist'
+
+'definitions':
+  'fracarray':
+    'type': 'array'
+    'items': {'type': 'number', 'minimum': 0.0, 'maximum': 1.0}
+  'nonnegarray':
+    'type': 'array'
+    'items': {'type': 'number', 'minimum': 0.0}
+  'onetimesamplelist':
+    'type': 'object'
+    'properties':
+      'abbrev': {'type': 'string', 'description': 'facility abbrev at which the samples were taken'}
+      'time': {'type':'number', 'description': 'time at which the samples were taken'}
+      'samples':
+        'type': 'object'
+        'properties':
+          'CLEAR': {'$ref': '#/definitions/fracarray',
+                    'description': 'fraction at the corresponding pathogen status'}
+          'COLONIZED': {'$ref': '#/definitions/fracarray',
+                        'description': 'fraction at the corresponding pathogen status'}
+          'CHRONIC': {'$ref': '#/definitions/fracarray',
+                      'description': 'fraction at the corresponding pathogen status'}
+          'INFECTED': {'$ref': '#/definitions/fracarray',
+                       'description': 'fraction at the corresponding pathogen status'}
+          'RECOVERED': {'$ref': '#/definitions/fracarray',
+                        'description': 'fraction at the corresponding pathogen status'}
+          'occupancy': {'$ref': '#/definitions/nonnegarray', 
+                        'description': 'total facility occupancy'}
+        'additionalProperties': false
+    
+  'timesamplelist':
+    'type': 'array'
+    'items': { '$ref': '#definitions/onetimesamplelist' }
+    
+      
