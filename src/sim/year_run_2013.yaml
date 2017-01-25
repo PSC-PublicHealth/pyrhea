@@ -11,7 +11,8 @@
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
-    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicyOC2013'
+#    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'MinDistanceTransferDestinationPolicy'
 
@@ -20,3 +21,17 @@
 
 #'burnInDays': 365
 burnInDays: 100
+
+'trackedFacilities':
+  - 'AGEN'
+  - 'AMMC'
+  - 'CHAP'
+  - 'COAS'
+  - 'FVRH'
+  - 'GGMC'
+  - 'HBHO'
+  - 'HOAG'
+  - 'KAIA'
+  - 'LAMC'
+  - 'SCLE'
+  - 'WAMC'

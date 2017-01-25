@@ -286,6 +286,12 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
     return rsltL
 
 def oneFacTimeFig(abbrev, specialDict, meanPop=None):
+    print abbrev
+    if abbrev == 'CHOC':
+        return
+    if abbrev == 'CMIS':
+        return
+    
     fig, axes = plt.subplots(2,1)
     axes[0].set_xlabel('Days')
     axes[0].set_ylabel('Pathogen Prevalence')
@@ -315,6 +321,7 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
     popClr = None
     for dayVec, popVec in popTplList:
+        print dayVec, popVec
         baseLine, = axes[1].plot(dayVec, popVec, c=popClr)
         popClr = baseLine.get_color()
     if meanPop is not None:
@@ -370,7 +377,10 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
-                oneFacTimeFig(abbrev, specialDict, meanPop=facDict[abbrev]['meanPop']['value'])
+                if 'meanPop' in facDict[abbrev]:
+                    oneFacTimeFig(abbrev, specialDict, meanPop=facDict[abbrev]['meanPop']['value'])
+                else:
+                    oneFacTimeFig(abbrev, specialDict)
 
     plt.show()
 
