@@ -25,7 +25,7 @@ import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, ForcedStateWard
-from facilitybase import PatientStatusSetter, HOSPQueue, ICUQueue, tierToQueueMap
+from facilitybase import PatientStatusSetter, ClassASetter, HOSPQueue, ICUQueue, tierToQueueMap
 from facilitybase import FacilityManager
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
@@ -38,21 +38,6 @@ _validator = None
 _constants = None
 
 logger = logging.getLogger(__name__)
-
-
-class ClassASetter(PatientStatusSetter):
-    def __init__(self, newClassA):
-        self.newClassA = newClassA
-
-    def set(self, patientStatus, timeNow):
-        return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
-                ._replace(relocateFlag=True))
-    
-    def __str__(self):
-        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
-
-    def __repr__(self):
-        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
 
 
 class OverallHealthSetter(PatientStatusSetter):

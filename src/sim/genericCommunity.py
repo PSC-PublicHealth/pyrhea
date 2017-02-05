@@ -31,10 +31,9 @@ import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
-from facilitybase import PatientStatus, PatientDiagnosis, FacilityManager
+from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
-from hospital import ClassASetter
 import schemautils
 
 logger = logging.getLogger(__name__)
@@ -217,7 +216,6 @@ class Freezer(object):
 
 class CommunityWard(Ward):
     """This 'ward' type represents being out in the community"""
-
     
     def __init__(self, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
@@ -244,16 +242,23 @@ class CommunityWard(Ward):
 
 class CommunityManager(FacilityManager):
 
+    def getProbThaw(self, patientCategory, dT):
+        return self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
+
     def perTickActions(self, timeNow):
         dT = timeNow - self.fac.collectiveStatusStartDate
         for ward in self.fac.getWards():
             if dT != 0:
                 for patCat, freezer in ward.freezers.items():
-                    assert patCat in self.fac.cachedCDFs, ('%s has no CDF for %s' %
-                                                           (self.fac.name, PatientCategory.names[patCat]))
-                    pThaw = self.fac.cachedCDFs[patCat].intervalProb(0, dT)
+                    assert patCat in self.fac.cachedCDFs, ('%s has no CDF for patient category %s' %
+                                                           (self.fac.name, patCat))
+                    pThaw = self.getProbThaw(patCat, dT)
                     nFroz = len(freezer.frozenAgentList)
-                    nThawed = binom.rvs(nFroz, pThaw)
+                    try:
+                        nThawed = binom.rvs(nFroz, pThaw)
+                    except ValueError:
+                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz, pThaw)
+                        raise
                     self.fac.getNoteHolder().addNote({('thawed_%s' % timeNow) : nThawed })
                     changedList = random.sample(freezer.frozenAgentList, nThawed)
                     for a in changedList:
@@ -291,12 +296,15 @@ class CommunityManager(FacilityManager):
 
 
 class Community(Facility):
-    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
+    def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None,
+                 managerClass=None):
+        if managerClass is None:
+            managerClass = CommunityManager
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
                           policyClasses=policyClasses,
-                          managerClass=CommunityManager,
+                          managerClass=managerClass,
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         meanPop = descr['meanPop']['value']
@@ -391,11 +399,14 @@ def _populate(fac, descr, patch):
     return []
 
 
-def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
+def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
+                 communityClass=None):
     cacheVer = 7
 
-    fac = Community(facilityDescr, patch, policyClasses=policyClasses,
-                    categoryNameMapper=categoryNameMapper)
+    if communityClass is None:
+        communityClass = Community
+    fac = communityClass(facilityDescr, patch, policyClasses=policyClasses,
+                         categoryNameMapper=categoryNameMapper)
 
     fname = 'cache/%s.zkl'%facilityDescr['abbrev']
     wards = fac.getWards()
