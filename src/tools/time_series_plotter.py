@@ -315,14 +315,15 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
         for pthLvl, lVec in scaledCurves.items():
             lbl = (None if idx else ('%s' % pth.PthStatus.names[pthLvl]))
             if np.count_nonzero(lVec):
-                thisP, = axes[0].plot(dayVec, lVec, label=lbl, c=clrDict[pthLvl])
+                thisP, = axes[0].plot(dayVec, lVec, label=lbl, c=clrDict[pthLvl],
+                                      alpha=0.2)
                 clrDict[pthLvl] = thisP.get_color()
     axes[0].legend()
 
     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
     popClr = None
     for dayVec, popVec in popTplList:
-        baseLine, = axes[1].plot(dayVec, popVec, c=popClr)
+        baseLine, = axes[1].plot(dayVec, popVec, c=popClr, alpha=0.2)
         popClr = baseLine.get_color()
     if meanPop is not None:
         axes[1].plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
@@ -336,10 +337,12 @@ def main():
     main
     """
     parser = OptionParser(usage="""
-    %prog [--notes notes_file.pkl] run_descr.yaml
+    %prog [--notes notes_file.pkl] [--glob] run_descr.yaml
     """)
     parser.add_option('-n', '--notes', action='append', type='string',
                       help="Notes filename - may be repeated")
+    parser.add_option('--glob', action='store_true',
+                      help="Apply filename globbing to the given notes files")
     opts, args = parser.parse_args()
     if len(args) != 1:
         parser.error('A YAML run description is required')
@@ -366,7 +369,7 @@ def main():
         allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList,
                                                                          facDict=facDict)  # @UnusedVariable
 
-    specialDict = mergeNotesFiles(opts.notes)
+    specialDict = mergeNotesFiles(opts.notes, opts.glob)
 
     if "ChicagoLand" in runDesc:
         occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
