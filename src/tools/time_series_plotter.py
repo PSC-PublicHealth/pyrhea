@@ -203,6 +203,7 @@ def mergeNotesFiles(notesPathList, globFlag=False):
     if globFlag:
         newNotesPathList = []
         for notesFName in notesPathList:
+            print '%s yields %s' % (notesFName, glob.glob(notesFName))
             newNotesPathList += glob.glob(notesFName)
         newNotesPathList.sort()
         notesPathList = newNotesPathList
