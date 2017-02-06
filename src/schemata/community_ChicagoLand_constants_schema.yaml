@@ -1,0 +1,38 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/community_constants_schema.yaml'
+'title': 'community constants schema'
+'description': 'community constants schema'
+
+'$ref': '#/definitions/communityconstants'
+
+'definitions':
+    
+  'communityconstants':
+    'type': 'object'
+    'properties':
+      'communityLOSModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsSkilNrsRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
+      'communityColonizedReadmissionRateScale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
+      'kalmanQ':
+        - '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        - 'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
+      'kalmanH':
+        - '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        - 'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
+    'required':
+      - 'communityLOSModel'
+      - 'communityDeathRate'
+      - 'communityVerySickRate'
+      - 'communityNeedsLTACRate'
+      - 'communityNeedsRehabRate'
+      - 'communityNeedsSkilNrsRate'
+      - 'communityPatientCheckInterval'
+      - 'kalmanQ'
+      - 'kalmanH'
+      
+      

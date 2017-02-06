@@ -18,107 +18,78 @@ import logging
 logger = logging.getLogger(__name__)
 
 from scipy.stats import expon
-from phacsl.utils.collections.phacollections import enum
+from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
 import genericCommunity
 
-# class CommunityManagerCore(object):
-#     """This is a place to put infrastructure we must share between communities"""
-#     __metaclass__ = SingletonMetaClass
-#     
-#     def __init__(self):
-#         self.x = 1.0
-#         self.p = 1.0
-#     
-#     def getRateScale(self):
-#         """
-#         Returns the current best estimate for the rate scaling factor needed to bring
-#         the population to the expected mean level.
-#         """
-#         return self.x
-#     
-#     def updateRateScale(self, currentPop, meanPop, rateConst):
-#         """
-#         Perform a Kalman update of the rate scaling factor.  The nomenclature is
-#         from Welch & Bishop, "An Introduction to the Kalman Filter" and
-#         http://scipy-cookbook.readthedocs.io/items/KalmanFiltering.html .
-#         
-#         x is the 'actual' rate constant, which is unknown but near 1.0  .
-#         z is an observation, the ratio of the current population to the known meanPop
-#         xhat is the estimated rate constant
-#         p is the a posteriori error estimate 
-#         xhatminus is the a priori estimate of x (starts at 1.0)
-#         r is estimated measurement error variance (a constant)
-#         q is process variance
-#         
-#         currentPop is the current population in the ward producing this update. 
-#         meanPop is the 'known' mean population of the ward- the target value.
-#         rateConst is the current rate constant, useful for estimating measurement error 
-#         
-#         rateScale is expected to be constant over time- thus Welch & Bishop's A is 1.0 and
-#         Q is 0.0.
-#         """
-#         xhatminus = self.x
-#         pminus = self.p + q
-#         k = pminus / (pminus + r)
-#         xhat = xhatminus + (k * (z - xhatminus))
-#         p = (1.0 - k) * pminus
-#         
-#         self.x = xhat
-#         self.p = p
+
+_constants_schema = 'community_ChicagoLand_constants_schema.yaml'
 
 
-class CommunityManager(genericCommunity.CommunityManager):
-    def __init__(self, name, patch, facility):
-        super(CommunityManager, self).__init__(name, patch, facility)
+class CommunityManagerCore(object):
+    """This is a place to put infrastructure we must share between communities"""
+    __metaclass__ = SingletonMetaClass
+     
+    def __init__(self):
         self.rateScale = 1.0
         self.p = 1.0
-        self.meanPop = self.fac.meanPop
-        self.lastKalmanUpdateTime = 0
+        self.Q = _constants['kalmanQ']['value']
+        self.H = _constants['kalmanH']['value']
+     
+    def kalmanUpdate(self, totPop, meanPop, callerAbbrev):
+        """
+        Perform a Kalman update of the rate scaling factor.  The nomenclature is
+        from Welch & Bishop, "An Introduction to the Kalman Filter" and
+        http://scipy-cookbook.readthedocs.io/items/KalmanFiltering.html .
         
-    def getProbThaw(self, patientCategory, dT):
-        return self.rateScale * self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
-    
-    def perTickActions(self, timeNow):
-        super(CommunityManager, self).perTickActions(timeNow)
-        if timeNow != self.lastKalmanUpdateTime:
-            self.kalmanUpdate()
-            self.lastKalmanUpdateTime = timeNow
-
-    def kalmanUpdate(self):
-        totPop = sum([sum([len(frz.frozenAgentList) for frz in ward.freezers.values()])
-                      for ward in self.fac.getWards()])
-        #
-        # x is the scale factor for the rate constant (to be estimated),
-        #   expected to be near 1.0
-        # z is the population delta: z = totPop - meanPop
-        # H is dz/dx, an input constant
-        # So our model equation is z = H(x - 1.0)
-        # p is the estimate error covariance- to be estimated
-        # A is dxNew/dxOld = 1.0
-        # Q is the process variance, also an input constant
-        # R is the measurement variance, which we expect scales as 1/totPop
-        #   since the standard deviation scales as 1/sqrt(N)
-        # W and V are 1.0
-        #
+        x is the scale factor for the rate constant (to be estimated),
+          expected to be near 1.0
+        z is the population delta: z = totPop - meanPop
+        H is dz/dx, an input constant
+        So our model equation is z = H(x - 1.0)
+        p is the estimate error covariance- to be estimated
+        A is dxNew/dxOld = 1.0
+        Q is the process variance, also an input constant
+        R is the measurement variance, which we expect scales as 1/totPop
+          since the standard deviation scales as 1/sqrt(N)
+        W and V are 1.0
+        """
+        
         x = self.rateScale
         P = self.p
-        z = totPop - self.meanPop
-        Q = 1.0e-5
+        z = totPop - meanPop
+        Q = self.Q
         A = 1.0
-        H = 1000.0
+        H = self.H
         R = 1.0/totPop
         xHatMinus = x
         PMinus = A*P*A + Q
         K = (PMinus * H) / (H * PMinus * H + R)
         xHat = xHatMinus + (K * (z - H*(xHatMinus - 1.0)))
         P = (1.0 - K * H) * PMinus
-        print ('Kalman update for %s: x= %s P=%s z=%s R=%s -> x=%s P=%s' %
-               (self.fac.name, x, self.p, z, R, xHat, P))
+#         print ('Kalman update for %s: x= %s P=%s z=%s R=%s -> x=%s P=%s' %
+#                (callerAbbrev, x, self.p, z, R, xHat, P))
         self.rateScale = xHat
         self.p = P
-        
 
+
+class CommunityManager(genericCommunity.CommunityManager):
+    def __init__(self, name, patch, facility):
+        super(CommunityManager, self).__init__(name, patch, facility)
+        self.core = CommunityManagerCore()
+        self.meanPop = self.fac.meanPop
+        self.lastKalmanUpdateTime = 0
+        
+    def getProbThaw(self, patientCategory, dT):
+        return self.core.rateScale * self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
+    
+    def perTickActions(self, timeNow):
+        super(CommunityManager, self).perTickActions(timeNow)
+        if timeNow != self.lastKalmanUpdateTime:
+            totPop = sum([sum([len(frz.frozenAgentList) for frz in ward.freezers.values()])
+                          for ward in self.fac.getWards()])
+            self.core.kalmanUpdate(totPop, self.meanPop, self.fac.name)
+            self.lastKalmanUpdateTime = timeNow
         
 
 class CommunityWard(genericCommunity.CommunityWard):
