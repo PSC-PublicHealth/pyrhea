@@ -109,8 +109,8 @@ class DWRCore(object):
 
 
 class DrawWithReplacementTransferDestinationPolicyOC2013(BaseTransferDestinationPolicy):
-    def __init__(self, patch):
-        super(DrawWithReplacementTransferDestinationPolicyOC2013, self).__init__(patch)
+    def __init__(self, patch, categoryNameMapper):
+        super(DrawWithReplacementTransferDestinationPolicyOC2013, self).__init__(patch, categoryNameMapper)
         self.core = DWRCore(patch)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):

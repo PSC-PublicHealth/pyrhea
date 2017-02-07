@@ -392,7 +392,7 @@ def _populate(fac, descr, patch):
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
-    cacheVer = 7
+    cacheVer = 8
 
     fac = Community(facilityDescr, patch, policyClasses=policyClasses,
                     categoryNameMapper=categoryNameMapper)
