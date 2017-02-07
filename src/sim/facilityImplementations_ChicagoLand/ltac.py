@@ -80,9 +80,16 @@ class LTAC(Facility):
                 self.lclRates[key.lower()] = 0.0
             logger.warning('%s has no transfers out', self.name)
 
-        self.lclRates['icu'] = _c['hospTransferToICURate']['value'] * self.lclRates['hospital']
-        self.lclRates['hospital'] = ((1.0 -_c['hospTransferToICURate']['value'])
-                                     * self.lclRates['hospital'])
+        for subCat, cat, key in [('icu', 'hospital', 'hospTransferToICURate'),
+                                 ('vent', 'vsnf', 'vsnfTransferToVentRate'),
+                                 ('skilnrs', 'vsnf', 'vsnfTransferToSkilNrsRate')]:
+            self.lclRates[subCat] = _c[key]['value'] * self.lclRates[cat]
+            self.lclRates[cat] -= self.lclRates[subCat]
+
+        # VSNF-specific care tiers have been separated out, so any remaining vsnf fraction
+        # is actually just nursing.
+        self.lclRates['nursinghome'] += self.lclRates['vsnf']
+        self.lclRates['vsnf'] = 0.0
 
         if 'nBeds' in descr:
             nBeds = descr['nBeds']['value']
@@ -123,7 +130,9 @@ class LTAC(Facility):
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       (self.lclRates['nursinghome'],
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (self.lclRates['vsnf'],
+                                                      (self.lclRates['vent'],
+                                                       ClassASetter(DiagClassA.NEEDSVENT)),
+                                                      (self.lclRates['skilnrs'],
                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       (self.lclRates['home'],
                                                        ClassASetter(DiagClassA.HEALTHY))

@@ -337,7 +337,9 @@ class Community(Facility):
             needsLTACRate = _constants['communityNeedsLTACRate']['value']
             needsRehabRate = _constants['communityNeedsRehabRate']['value']
             needsSkilNrsRate = _constants['communityNeedsSkilNrsRate']['value']
-            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate + needsSkilNrsRate)
+            needsVentRate = _constants['communityNeedsVentRate']['value']
+            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate
+                              + needsSkilNrsRate + needsVentRate)
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (sickRate,
@@ -350,6 +352,8 @@ class Community(Facility):
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       (needsSkilNrsRate,
                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
+                                                      (needsVentRate,
+                                                       ClassASetter(DiagClassA.NEEDSVENT)),
                                                       ], tag='FATE'),
                              PatientStatusSetter(),
                              changeProb, tag='LOS')
@@ -375,6 +379,8 @@ class Community(Facility):
             return (CareTier.SKILNRS, TreatmentProtocol.NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
             return (None, TreatmentProtocol.NORMAL)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
+            return (CareTier.VENT, TreatmentProtocol.NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 

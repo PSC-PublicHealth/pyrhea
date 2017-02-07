@@ -13,7 +13,10 @@
       'capacity': {'type': 'number', 'minimum': 0}
       'category': { '$ref': 'facilityfacts_schema.yaml#definitions/category' }
       'icuCapacity': {'type': 'number', 'minimum': 0}
+      'skilNrsCapacity': {'type': 'number', 'minimum': 0}
+      'ventCapacity': {'type': 'number', 'minimum': 0}
     'required': ['abbrev', 'capacity', 'category']  # only HOSPITALs have icuCapacity
+    'additionalProperties': false
     
   'bedcapacitylist':
     'type': 'array'

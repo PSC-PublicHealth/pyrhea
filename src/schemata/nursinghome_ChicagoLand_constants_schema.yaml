@@ -63,10 +63,20 @@
       }
       'hospTransferToICURate': {
         '$ref': '#/definitions/fraction',
-        'description': 'Fraction of hospital bed requests which are ICU bed requests'
+        'description': 'Probability a transfer to a HOSPITAL will be into ICU care'
+      }
+      'vsnfTransferToVentRate': {
+        '$ref': '#/definitions/fraction',
+        'description': 'Probability a transfer to a VSNF will require VENT care'
+      }
+      'vsnfTransferToSkilNrsRate': {
+        '$ref': '#/definitions/fraction',
+        'description': 'Probability a transfer to a VSNF will require SKILNRS care'
       }
     'required':
       - 'deathRate'
       - 'hospTransferToICURate'
+      - 'vsnfTransferToVentRate'
+      - 'vsnfTransferToSkilNrsRate'
       
       

@@ -33,6 +33,17 @@ for rec in recs:
             nCap -= icuCap
             entry['capacity'] = nCap
             entry['icuCapacity'] = icuCap
+        elif rec['category'] == 'VSNF':
+            baseCap = nCap
+            for oKey, nKey in [('fracVentBeds', 'ventCapacity'),
+                               ('fracSkilledBeds', 'skilNrsCapacity')]:
+                if oKey in rec and rec[oKey]['value'] > 0.0:
+                    delta = int(round(rec[oKey]['value'] * baseCap))
+                    nCap -= delta
+                    entry[nKey] = delta
+            assert nCap >= 0.0, ('%s: Not enough capacity to cover bed categories'
+                                % entry['abbrev'])
+            entry['capacity'] = nCap
         else:
             entry['capacity'] = nCap
         newRecs.append(entry)

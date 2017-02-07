@@ -33,7 +33,8 @@
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
-    'policyClass': 'CapacityTransferDestinationPolicy'
+    #'policyClass': 'CapacityTransferDestinationPolicy'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
 
 #'runDurationDays': 1095
 'runDurationDays': 365

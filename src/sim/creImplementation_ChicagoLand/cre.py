@@ -176,14 +176,14 @@ class CRE(Pathogen):
             #
             key = (self.ward.fac.category, self.ward.tier, nExposures, nTot, dT)
             if key not in self.core.exposureTreeCache:
-                pSafe = math.pow((1.0 - self.tau), dT)
+                pSafe = math.pow((1.0 - self.tau), nExposures * dT)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
                 self.core.exposureTreeCache[key] = tree
             return self.core.exposureTreeCache[key]
         else:
-            assert patientStatus.pthStatus == PthStatus.COLONIZED, ('patient has unexpeced PthStatus %s' %
+            assert patientStatus.pthStatus == PthStatus.COLONIZED, ('patient has unexpected PthStatus %s' %
                                                                     PthStatus.names[patientStatus.pthStatus])
             key = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
             if patientStatus.canClear:

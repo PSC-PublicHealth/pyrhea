@@ -16,14 +16,15 @@
       'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsSkilNrsRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'communityNeedsVentRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
       'communityColonizedReadmissionRateScale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
       'kalmanQ':
-        - '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
-        - 'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
       'kalmanH':
-        - '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
-        - 'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
     'required':
       - 'communityLOSModel'
       - 'communityDeathRate'
@@ -31,6 +32,7 @@
       - 'communityNeedsLTACRate'
       - 'communityNeedsRehabRate'
       - 'communityNeedsSkilNrsRate'
+      - 'communityNeedsVentRate'
       - 'communityPatientCheckInterval'
       - 'kalmanQ'
       - 'kalmanH'

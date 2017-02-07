@@ -64,7 +64,6 @@ class ICUWard(ForcedStateWard):
         self.forceState(patientAgent, CareTier.ICU, DiagClassA.VERYSICK)
 
 
-
 class HospitalManager(FacilityManager):
     def allocateAvailableBed(self, requestedTier, strict=False):
         """
@@ -118,11 +117,16 @@ class Hospital(Facility):
                 self.lclRates[key.lower()] = 0.0
             logger.warning('%s has no transfers out', self.name)
 
-        # All patients getting rehab must be in the transfer streams to rehab-providing facilities
-#         fracWhoMayHaveRehab = self.lclRates['nursinghome'] + self.lclRates['vsnf']
-#         assert fracWhoMayHaveRehab >= _c['fracOfDischargesRequiringRehab']['value'], \
-#             ("%s has only %s of discharges going to rehab facilities but should rehab %s of patients" %
-#              (self.name, fracWhoMayHaveRehab, _c['fracOfDischargesRequiringRehab']['value']))
+        for subCat, cat, key in [('icu', 'hospital', 'hospTransferToICURate'),
+                                 ('vent', 'vsnf', 'vsnfTransferToVentRate'),
+                                 ('skilnrs', 'vsnf', 'vsnfTransferToSkilNrsRate')]:
+            self.lclRates[subCat] = _c[key]['value'] * self.lclRates[cat]
+            self.lclRates[cat] -= self.lclRates[subCat]
+
+        # VSNF-specific care tiers have been separated out, so any remaining vsnf fraction
+        # is actually just nursing.
+        self.lclRates['nursinghome'] += self.lclRates['vsnf']
+        self.lclRates['vsnf'] = 0.0
 
         self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
         if 'nBeds' in descr:
@@ -194,11 +198,15 @@ class Hospital(Facility):
                                                        ClassASetter(DiagClassA.DEATH)),
                                                       (self.lclRates['hospital'],
                                                        ClassASetter(DiagClassA.SICK)),
+                                                      (self.lclRates['icu'],
+                                                       ClassASetter(DiagClassA.VERYSICK)),
                                                       (self.lclRates['ltac'],
                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
                                                       (self.lclRates['nursinghome'],
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (self.lclRates['vsnf'],
+                                                      (self.lclRates['vent'],
+                                                       ClassASetter(DiagClassA.NEEDSVENT)),
+                                                      (self.lclRates['skilnrs'],
                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                       (self.lclRates['home'],
                                                        ClassASetter(DiagClassA.HEALTHY)),

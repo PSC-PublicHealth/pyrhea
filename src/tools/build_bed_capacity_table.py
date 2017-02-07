@@ -22,11 +22,17 @@ for rec in recs:
             cap = rec['nBeds']['value']
         else:
             cap = rec['meanPop']['value']
-        assert cap > 0.0, 'cap is non-positive'
-        if 'fracAdultPatientDaysICU' in rec and rec['fracAdultPatientDaysICU']['value'] > 0.0:
-            icuCap = rec['fracAdultPatientDaysICU']['value'] * cap
-            cap -= icuCap
-            entry['icuCapacity'] = icuCap
+        assert cap > 0.0, 'cap for %s is non-positive' % entry['abbrev']
+        baseCap = cap
+        for oKey, nKey in [('fracAdultPatientDaysICU', 'icuCapacity'),
+                           ('fracVentBeds', 'ventCapacity'),
+                           ('fracSkilledBeds', 'skilNrsCapacity')]:
+            if oKey in rec and rec[oKey]['value'] > 0.0:
+                delta = rec[oKey]['value'] * baseCap
+                cap -= delta
+                entry[nKey] = delta
+        assert cap >= 0.0, ('%s: Not enough capacity to cover bed categories'
+                            % entry['abbrev'])
         entry['capacity'] = cap
         newRecs.append(entry)
     except Exception, e:

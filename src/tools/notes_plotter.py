@@ -19,6 +19,8 @@ _rhea_svn_id_ = "$Id$"
 
 import sys
 import os.path
+import logging
+import logging.config
 from optparse import OptionParser
 
 cwd = os.path.dirname(__file__)
@@ -41,11 +43,14 @@ import pickle
 import types
 from imp import load_source
 from collections import defaultdict
+from pyrhea import getLoggerConfig
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 from scipy.stats import lognorm, expon
+
+logger = None
 
 SCHEMA_DIR = '../schemata'
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -634,6 +639,11 @@ def main():
     """
     main
     """
+
+    global logger
+    logging.config.dictConfig(getLoggerConfig())
+    logger = logging.getLogger(__name__)
+    
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] run_descr.yaml
     """)

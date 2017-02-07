@@ -17,6 +17,8 @@
 
 import os.path
 import sys
+import logging
+import logging.config
 from optparse import OptionParser
 import types
 import glob
@@ -34,6 +36,9 @@ import pathogenbase as pth
 from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
+from pyrhea import getLoggerConfig
+
+logger = None
 
 def buildEnumNameStr(name, ind):
     return '%s_%d' % (name, ind)
@@ -337,6 +342,10 @@ def main():
     """
     main
     """
+    global logger
+    logging.config.dictConfig(getLoggerConfig())
+    logger = logging.getLogger(__name__)
+    
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] [--glob] run_descr.yaml
     """)
