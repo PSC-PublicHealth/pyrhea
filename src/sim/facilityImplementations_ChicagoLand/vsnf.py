@@ -46,48 +46,15 @@ class NursingWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
         super(NursingWard, self).__init__(name, patch, CareTier.NURSING, nBeds)
         
-    def handlePatientArrival(self, patientAgent, timeNow):
-        """
-        Patient is arriving by triage, so force the patient's internal status and diagnosis
-        to correspond to those of the ward.
-        """
-        self.forceState(patientAgent, CareTier.NURSING, DiagClassA.NEEDSREHAB)
 
 class SkilNrsWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
         super(SkilNrsWard, self).__init__(name, patch, CareTier.SKILNRS, nBeds)
 
-    def handlePatientArrival(self, patientAgent, timeNow):
-        """
-        Patient is a direct transfer, so no special processing is needed.
-        """
-        self.forceState(patientAgent, CareTier.SKILNRS, DiagClassA.NEEDSSKILNRS)
 
 class VentWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
         super(VentWard, self).__init__(name, patch, CareTier.VENT, nBeds)
-
-    def handlePatientArrival(self, patientAgent, timeNow):
-        """
-        Patient is arriving by triage, so force the patient's internal status and diagnosis
-        to correspond to those of the ward.
-        """
-        self.forceState(patientAgent, CareTier.VENT, DiagClassA.NEEDSVENT)
-
-class VSNFManager(FacilityManager):
-    def allocateAvailableBed(self, requestedTier, strict=False):
-        """
-        In general, triage incoming patients randomly into the wards.
-        """
-        if strict:
-            tier = requestedTier
-        else:
-            if requestedTier != CareTier.SKILNRS:
-                return None
-#                 raise RuntimeError('%s: VSNF was only supposed to get SKILNRS tier requests; got %s'
-#                                    % (self.name, CareTier.names[requestedTier]))
-            tier = self.fac.triageTree.traverse()
-        return super(VSNFManager, self).allocateAvailableBed(tier)
 
 
 class VentSNF(Facility):
@@ -96,7 +63,6 @@ class VentSNF(Facility):
                           descr, patch,
                           reqQueueClasses=[SKILNRSQueue, NURSINGQueue, VENTQueue],
                           policyClasses=policyClasses,
-                          managerClass=VSNFManager,
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         _c = _constants
@@ -129,9 +95,16 @@ class VentSNF(Facility):
                 self.lclRates[key.lower()] = 0.0
             logger.warning('%s has no transfers out', self.name)
 
-        self.lclRates['icu'] = _c['hospTransferToICURate']['value'] * self.lclRates['hospital']
-        self.lclRates['hospital'] = ((1.0 -_c['hospTransferToICURate']['value'])
-                                     * self.lclRates['hospital'])
+        for subCat, cat, key in [('icu', 'hospital', 'hospTransferToICURate'),
+                                 ('vent', 'vsnf', 'vsnfTransferToVentRate'),
+                                 ('skilnrs', 'vsnf', 'vsnfTransferToSkilNrsRate')]:
+            self.lclRates[subCat] = _c[key]['value'] * self.lclRates[cat]
+            self.lclRates[cat] -= self.lclRates[subCat]
+
+        # VSNF-specific care tiers have been separated out, so any remaining vsnf fraction
+        # is actually just nursing.
+        self.lclRates['nursinghome'] += self.lclRates['vsnf']
+        self.lclRates['vsnf'] = 0.0
 
         nBeds = int(descr['nBeds']['value'])
         nBedsVent = int(nBeds * descr['fracVentBeds']['value'])
@@ -144,15 +117,6 @@ class VentSNF(Facility):
         self.addWard(VentWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                               patch, nBedsVent))
 
-        pVent = descr['fracVentAdmissions']['value']
-        pSkil = descr['fracSkilledAdmissions']['value']
-        pOther = 1.0 - (pVent + pSkil)
-        self.triageTree = BayesTree.fromLinearCDF([(pVent, CareTier.VENT),
-                                                   (pSkil, CareTier.SKILNRS),
-                                                   (pOther, CareTier.NURSING)
-                                                   ])
-
-        
         k, mu, sigma, lmda = losModel['parms']
         self.cachedCDF = CachedCDFGenerator(lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda))
         self.treeCache = {}
@@ -161,13 +125,14 @@ class VentSNF(Facility):
         """Specialized to prioritize transfers to our own wards if possible"""
         facAddrList = super(VentSNF, self).getOrderedCandidateFacList(oldTier, newTier,
                                                                       timeNow)
-        if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]):
+        if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]
+            and oldTier != newTier):
             queueClass = tierToQueueMap[newTier]
             lclList = [rQ for rQ in self.reqQueues if isinstance(rQ, queueClass)]
             lclList = [q.getGblAddr() for q in lclList]
             facAddrList = lclList + facAddrList
         return facAddrList
-        
+
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         careTier = ward.tier
         assert careTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT],\
@@ -186,15 +151,19 @@ class VentSNF(Facility):
                            + self.lclRates['icu']
                            + self.lclRates['ltac']
                            + self.lclRates['nursinghome']
-                           + self.lclRates['vsnf'])
+                           + self.lclRates['vsnf']
+                           + self.lclRates['vent']
+                           + self.lclRates['skilnrs'])
             if adverseProb > 0.0:
                 adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
                                                         / adverseProb,
                                                         ClassASetter(DiagClassA.DEATH)),
                                                        (self.lclRates['nursinghome'] / adverseProb,
                                                         ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                       (self.lclRates['vsnf'] / adverseProb,
+                                                       (self.lclRates['skilnrs'] / adverseProb,
                                                         ClassASetter(DiagClassA.NEEDSSKILNRS)),
+                                                       (self.lclRates['vent'] / adverseProb,
+                                                        ClassASetter(DiagClassA.NEEDSVENT)),
                                                        (self.lclRates['ltac'] / adverseProb,
                                                         ClassASetter(DiagClassA.NEEDSLTAC)),
                                                        (self.lclRates['hospital'] / adverseProb,
@@ -235,7 +204,7 @@ def _populate(fac, descr, patch):
                         (nSkil, CareTier.SKILNRS),
                         (nOther, CareTier.NURSING)]:
         for i in xrange(count):
-            ward = fac.manager.allocateAvailableBed(tier, strict=True)
+            ward = fac.manager.allocateAvailableBed(tier)
             if ward is None:
                 logger.warn('Ran out of beds populating %s tier %s after %s of %s!',
                             descr['abbrev'], CareTier.names[tier], i, count)
@@ -254,7 +223,7 @@ def _populate(fac, descr, patch):
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
     fac = VentSNF(facilityDescr, patch, policyClasses=policyClasses,
-                      categoryNameMapper=categoryNameMapper)
+                  categoryNameMapper=categoryNameMapper)
     return [fac], fac.getWards(), _populate(fac, facilityDescr, patch)
 
 

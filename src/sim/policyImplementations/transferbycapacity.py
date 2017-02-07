@@ -58,7 +58,13 @@ class CapacityCore(object):
             elif ctg == 'NURSINGHOME':
                 self.tbl[CareTier.NURSING].append((rec['capacity'], abbrev))
             elif ctg == 'VSNF':
-                self.tbl[CareTier.SKILNRS].append((rec['capacity'], abbrev))
+                self.tbl[CareTier.NURSING].append((rec['capacity'], abbrev))
+                if 'skilNrsCapacity' in rec:
+                    print 'ping!'
+                    self.tbl[CareTier.SKILNRS].append((rec['skilNrsCapacity'], abbrev))
+                if 'ventCapacity' in rec:
+                    print 'pong!'
+                    self.tbl[CareTier.VENT].append((rec['ventCapacity'], abbrev))
             elif ctg == 'COMMUNITY':
                 self.tbl[CareTier.HOME].append((rec['capacity'], abbrev))
             else:

@@ -81,9 +81,17 @@ class NursingHome(Facility):
                 self.lclRates[key.lower()] = 0.0
             logger.warning('%s has no transfers out', self.name)
 
-        self.lclRates['icu'] = _c['hospTransferToICURate']['value'] * self.lclRates['hospital']
-        self.lclRates['hospital'] = ((1.0 -_c['hospTransferToICURate']['value'])
-                                     * self.lclRates['hospital'])
+        for subCat, cat, key in [('icu', 'hospital', 'hospTransferToICURate'),
+                                 ('vent', 'vsnf', 'vsnfTransferToVentRate'),
+                                 ('skilnrs', 'vsnf', 'vsnfTransferToSkilNrsRate')]:
+            self.lclRates[subCat] = _c[key]['value'] * self.lclRates[cat]
+            self.lclRates[cat] -= self.lclRates[subCat]
+
+        # VSNF-specific care tiers have been separated out, so any remaining vsnf fraction
+        # is actually just nursing.
+        self.lclRates['nursinghome'] += self.lclRates['vsnf']
+        self.lclRates['vsnf'] = 0.0
+
 
         lMP = losModel['parms']
         self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
@@ -120,7 +128,9 @@ class NursingHome(Facility):
                                                    ClassASetter(DiagClassA.DEATH)),
                                                   (self.lclRates['nursinghome'],
                                                    ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                  (self.lclRates['vsnf'],
+                                                  (self.lclRates['vent'],
+                                                   ClassASetter(DiagClassA.NEEDSVENT)),
+                                                  (self.lclRates['skilnrs'],
                                                    ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                   (self.lclRates['ltac'],
                                                    ClassASetter(DiagClassA.NEEDSLTAC)),
@@ -148,7 +158,9 @@ class NursingHome(Facility):
                                    + self.lclRates['icu']
                                    + self.lclRates['ltac']
                                    + self.lclRates['nursinghome']
-                                   + self.lclRates['vsnf'])
+                                   + self.lclRates['vsnf']
+                                   + self.lclRates['vent']
+                                   + self.lclRates['skilnrs'])
                     if adverseProb > 0.0:
                         adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
                                                                 / adverseProb,
@@ -156,7 +168,10 @@ class NursingHome(Facility):
                                                                (self.lclRates['nursinghome']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                               (self.lclRates['vsnf']
+                                                               (self.lclRates['vent']
+                                                                / adverseProb,
+                                                                ClassASetter(DiagClassA.NEEDSVENT)),
+                                                               (self.lclRates['skilnrs']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                                                (self.lclRates['ltac']

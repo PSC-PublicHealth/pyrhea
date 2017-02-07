@@ -62,6 +62,8 @@ def main():
     """
     main
     """
+    import sys
+    print sys.argv
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] [--glob] [--proto prototype.yaml] [--out outname.yaml] run_descr.yaml
     """)

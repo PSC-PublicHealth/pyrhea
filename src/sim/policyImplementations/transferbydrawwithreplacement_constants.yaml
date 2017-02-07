@@ -1,9 +1,9 @@
 'transferFilePaths': 
   - '$(MODELDIR)/transfer_counts.yaml'
   - '$(MODELDIR)/fac_to_community_inv_sep.yaml'
-  - '$(MODELDIR)/com_to_hosp_inv_sep.yaml'
-  - '$(MODELDIR)/com_to_ltach_inv_sep.yaml'
-  - '$(MODELDIR)/com_to_snf_inv_sep.yaml'
-  - '$(MODELDIR)/com_to_vsnf_inv_sep.yaml'
+  - '$(MODELDIR)/com_to_hosp_inv_sep_wide_pass9.yaml'
+  - '$(MODELDIR)/com_to_ltach_inv_sep_wide_pass9.yaml'
+  - '$(MODELDIR)/com_to_snf_inv_sep_wide_pass9.yaml'
+  - '$(MODELDIR)/com_to_vsnf_inv_sep_wide_pass9.yaml'
   
 'transferFileSchema': 'transfermatrix_schema.yaml'

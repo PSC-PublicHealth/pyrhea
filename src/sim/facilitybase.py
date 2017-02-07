@@ -70,6 +70,22 @@ class PatientStatusSetter(object):
         return 'PatientStatusSetter()'
 
 
+class ClassASetter(PatientStatusSetter):
+    def __init__(self, newClassA):
+        super(ClassASetter, self).__init__()
+        self.newClassA = newClassA
+
+    def set(self, patientStatus, timeNow):
+        return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
+                ._replace(relocateFlag=True))
+
+    def __str__(self):
+        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+
+    def __repr__(self):
+        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+
+
 class PthStatusSetter(PatientStatusSetter):
     def __init__(self, newPthStatus):
         self.newPthStatus = newPthStatus
