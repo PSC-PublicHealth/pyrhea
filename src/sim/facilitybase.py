@@ -24,6 +24,7 @@ from quilt.netinterface import GblAddr
 from stats import BayesTree
 from pathogenbase import PthStatus, defaultPthStatus, Pathogen
 from collections import defaultdict
+import cPickle as pickle
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,19 @@ class PatientRecord(object):
                                                self.departureDate,
                                                'Frail' if self.isFrail else 'Healthy')
 
+class PatientStats(object):
+    def __init__(self):
+        self.currentOccupancy = 0
+        self.totalOccupancy = 0
+
+    def addPatient(self):
+        self.currentOccupancy += 1
+        self.totalOccupancy += 1
+
+    def remPatient(self):
+        self.currentOccupancy -=1
+
+        
 class Facility(pyrheabase.Facility):
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
                  managerClass=FacilityManager, categoryNameMapper=None):
@@ -230,6 +244,7 @@ class Facility(pyrheabase.Facility):
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}
+        self.patientStats = PatientStats()
         transferDestinationPolicyClass = TransferDestinationPolicy
         if policyClasses is not None:
             for pC in policyClasses:
@@ -272,14 +287,19 @@ class Facility(pyrheabase.Facility):
             patientID, tier, isFrail, patientName = myPayload
             if patientID in self.patientDataDict:
                 logger.debug('Patient %s has returned to %s' % (patientID, self.name))
-                patientRec = self.patientDataDict[patientID]
+                patientRec = pickle.loads(self.patientDataDict[patientID])
+                if patientRec.departureDate is None:  # ie patient is being readmitted without previously leaving
+                    self.patientStats.remPatient()
                 patientRec.prevVisits += 1
                 patientRec.arrivalDate = timeNow
                 patientRec.departureDate = None
+                self.patientDataDict[patientID] = pickle.dumps(patientRec)
             else:
 #                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
                 patientRec = PatientRecord(patientID, timeNow, isFrail)
-                self.patientDataDict[patientID] = patientRec
+                self.patientDataDict[patientID] = pickle.dumps(patientRec,2)
+                
+            self.patientStats.addPatient()
             if timeNow != 0:  # Exclude initial populations
                 nh = self.getNoteHolder()
                 if nh:
@@ -290,8 +310,10 @@ class Facility(pyrheabase.Facility):
             patientID, tier, isFrail, patientName = myPayload
             if patientID not in self.patientDataDict:
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
-            patientRec = self.patientDataDict[patientID]
+            patientRec = pickle.loads(self.patientDataDict[patientID])
             patientRec.departureDate = timeNow
+            self.patientDataDict[patientID] = pickle.dumps(patientRec,2)
+            self.patientStats.remPatient()
             #if patientRec.arrivalDate != 0:  # exclude initial populations
             if True:  # include initial populations
                 lengthOfStay = timeNow - patientRec.arrivalDate
