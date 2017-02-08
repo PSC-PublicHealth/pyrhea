@@ -119,6 +119,18 @@ class Ward(pyrheabase.Ward):
     def initializePatientPthState(self):
         for p in self.getPatientList():
             self.iA.initializePatientState(p)
+            
+    def initializePatientTreatment(self):
+        for p in self.getPatientList():
+            self.fac.treatmentPolicy.initializePatientTreatment(self, p)
+
+    def handlePatientArrival(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the arrival processing of patients"""
+        self.fac.treatmentPolicy.handlePatientArrival(self, patientAgent, timeNow)
+
+    def handlePatientDeparture(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the departure processing of patients"""
+        self.fac.treatmentPolicy.handlePatientDeparture(self, patientAgent, timeNow)
 
 
 class ForcedStateWard(Ward):
@@ -196,6 +208,33 @@ class TransferDestinationPolicy(object):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 
+class TreatmentPolicy(object):
+    def __init__(self, patch, categoryNameMapper):
+        self.patch = patch
+        self.categoryNameMapper = categoryNameMapper
+        
+    def initializePatientTreatment(self, ward, patient):
+        """
+        This is called on patients at time zero, when they are first assigned to the
+        ward in which they start the simulation.
+        """
+        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
+
+    def handlePatientArrival(self, ward, patient):
+        """
+        This is called on patients when they arrive at a ward.
+        """
+        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
+
+    def handlePatientDeparture(self, ward, patient):
+        """
+        This is called on patients when they depart from a ward.
+        """
+        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
+        
+        
+
+
 class PatientRecord(object):
     def __init__(self, patientID, arrivalDate, isFrail):
         self.patientID = patientID
@@ -238,11 +277,15 @@ class Facility(pyrheabase.Facility):
         self.idCounter = 0
         self.patientDataDict = {}
         transferDestinationPolicyClass = TransferDestinationPolicy
+        treatmentPolicyClass = TreatmentPolicy
         if policyClasses is not None:
             for pC in policyClasses:
                 if issubclass(pC, TransferDestinationPolicy):
                     transferDestinationPolicyClass = pC
+                if issubclass(pC, TreatmentPolicy):
+                    treatmentPolicyClass = pC
         self.transferDestinationPolicy = transferDestinationPolicyClass(patch, self.categoryNameMapper)
+        self.treatmentPolicy = treatmentPolicyClass(patch, self.categoryNameMapper)
         
     def __str__(self):
         return '<%s>' % self.name

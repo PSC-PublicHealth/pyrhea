@@ -45,6 +45,10 @@ class Ward(peopleplaces.Location):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         pass
 
+    def handlePatientDeparture(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the departure processing of patients"""
+        pass
+
 
 class FacRequestQueue(peopleplaces.RequestQueue):
     pass
@@ -341,6 +345,14 @@ class PatientAgent(peopleplaces.Person):
         """
         self.tier = self.loc.tier
         self.ward.handlePatientArrival(self, timeNow)
+
+    def handleDeparture(self, timeNow):
+        """
+        An opportunity to do bookkeeping on departure from self.loc.  The patient has not yet
+        unlocked self.loc .  This call happens even if departure is via death.
+        """
+        self.ward.handlePatientDeparture(self, timeNow)
+
 
     def __getstate__(self):
         d = peopleplaces.Person.__getstate__(self)

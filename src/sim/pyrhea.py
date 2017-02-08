@@ -447,6 +447,7 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
             for w in wards:
                 w.setInfectiousAgent(PthClass(w, useWardCategory=facImplCategory))
                 w.initializePatientPthState()
+                w.initializePatientTreatment()
             for fac in facilities:
                 nh = noteHolderGroup.createNoteHolder()
                 nh.addNote({'rank': comm.rank})
