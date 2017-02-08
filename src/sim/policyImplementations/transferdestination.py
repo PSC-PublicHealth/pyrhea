@@ -70,7 +70,8 @@ class MinTravelTimeTransferDestinationPolicy(BaseTransferDestinationPolicy):
             return [c for a, b, c in tplList]  # @UnusedVariable
         except KeyError:
             # At least one dest has no travel time info
-            print 'fallback for %s -> %s' % (oldFacility.abbrev, newTier)
+            logger.debug('fallback to geo distance for transfer %s -> %s',
+                         oldFacility.abbrev, CareTier.names[newTier])
             return self.fallbackPolicy.buildCacheEntry(oldFacility, newTier)
 
     def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):

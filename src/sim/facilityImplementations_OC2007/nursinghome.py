@@ -29,6 +29,7 @@ from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter
+from facilitybase import TREATMENT_NORMAL, TREATMENT_REHAB
 from hospital import checkSchema as hospitalCheckSchema, estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
 
@@ -76,7 +77,7 @@ class NursingHome(Facility):
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if patientStatus.overall == PatientOverallHealth.FRAIL:
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 if key in self.frailRehabTreeCache:
                     return self.frailRehabTreeCache[key]
                 else:
@@ -110,13 +111,13 @@ class NursingHome(Facility):
             tree = BayesTree(changeTree,
                              innerTree,
                              changeProb)
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 self.frailRehabTreeCache[key] = tree
             else:
                 self.frailTreeCache[key] = tree
             return tree
         else:
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
                 else:
@@ -144,7 +145,7 @@ class NursingHome(Facility):
                                      changeProb)
                     self.rehabTreeCache[key] = tree
                     return tree
-            elif treatment == TreatmentProtocol.NORMAL:
+            elif not treatment.rehab:
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
                                                  DiagClassA.VERYSICK]):
                     logger.warning('fac %s status: %s careTier %s startTime: %s: '
@@ -163,19 +164,19 @@ class NursingHome(Facility):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+                return (CareTier.HOME, TREATMENT_NORMAL)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+                return (CareTier.NURSING, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+            return (CareTier.NURSING, TREATMENT_REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+            return (CareTier.HOSP, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
+            return (CareTier.LTAC, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+            return (CareTier.ICU, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
+            return (None, TREATMENT_NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
@@ -205,7 +206,7 @@ def _populate(fac, descr, patch):
             a._status = a._status._replace(overall=PatientOverallHealth.FRAIL)
         else:  # They must be here for rehab
             a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
-            a._treatment = TreatmentProtocol.REHAB
+            a._treatment = a._treatment._replace(rehab=True)
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),

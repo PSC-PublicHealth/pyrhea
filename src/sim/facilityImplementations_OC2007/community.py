@@ -25,6 +25,7 @@ import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
+from facilitybase import TREATMENT_NORMAL, TREATMENT_REHAB
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
 import schemautils
@@ -67,8 +68,8 @@ class Community(Facility):
         careTier = ward.tier
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
-        assert treatment == TreatmentProtocol.NORMAL, \
-            "The community only offers treatment type 'NORMAL'; found %s" % careTier
+        assert not any(treatment), \
+            "The community offers no treatment; found %s" % treatment
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         if key in self.treeCache:
             return self.treeCache[key]
@@ -96,19 +97,19 @@ class Community(Facility):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+                return (CareTier.HOME, TREATMENT_NORMAL)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+                return (CareTier.NURSING, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+            return (CareTier.NURSING, TREATMENT_REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
+            return (CareTier.LTAC, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+            return (CareTier.HOSP, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+            return (CareTier.ICU, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
+            return (None, TREATMENT_NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 

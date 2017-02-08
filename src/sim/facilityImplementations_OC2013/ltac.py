@@ -31,6 +31,7 @@ import schemautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, LTACQueue, tierToQueueMap
+from facilitybase import TREATMENT_NORMAL, TREATMENT_REHAB
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
 from hospital import estimateWork as hospitalEstimateWork
@@ -93,8 +94,8 @@ class LTAC(Facility):
                               patch, CareTier.LTAC, bedsPerWard))
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
-        assert treatment == TreatmentProtocol.NORMAL, \
-            "LTACs only offer 'NORMAL' treatment; found %s" % treatment
+        assert not treatment.rehab, \
+            "LTACs do not offer rehab treatment; found %s" % treatment
         careTier = ward.tier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
@@ -130,19 +131,19 @@ class LTAC(Facility):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+                return (CareTier.HOME, TREATMENT_NORMAL)
             else:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+                return (CareTier.NURSING, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+            return (CareTier.NURSING, TREATMENT_REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
+            return (CareTier.LTAC, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+            return (CareTier.HOSP, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+            return (CareTier.ICU, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
+            return (None, TREATMENT_NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 

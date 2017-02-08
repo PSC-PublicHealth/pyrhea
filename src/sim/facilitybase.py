@@ -35,7 +35,14 @@ PatientOverallHealth = enum('HEALTHY', 'FRAIL')
 DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH',
                   'NEEDSVENT', 'NEEDSSKILNRS')
 
-TreatmentProtocol = enum('NORMAL', 'REHAB')  # for things like patient isolation
+TreatmentProtocol = namedtuple('TreatmentProtocol',
+                               ['rehab',
+                                'contactPrecautions'
+                                ],
+                               field_types=[bool, bool])
+
+TREATMENT_NORMAL = TreatmentProtocol(False, False)
+TREATMENT_REHAB = TreatmentProtocol(True, False)
 
 PatientStatus = namedtuple('PatientStatus',
                            ['overall',              # one of PatientOverallHealth
@@ -398,25 +405,25 @@ class Facility(pyrheabase.Facility):
             modifierList = []
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL, modifierList)
+                return (CareTier.HOME, TREATMENT_NORMAL, modifierList)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL, modifierList)
+                return (CareTier.NURSING, TREATMENT_NORMAL, modifierList)
             else:
                 raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
         if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB, modifierList)
+            return (CareTier.NURSING, TREATMENT_REHAB, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL, modifierList)
+            return (CareTier.HOSP, TREATMENT_NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL, modifierList)
+            return (CareTier.ICU, TREATMENT_NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL, modifierList)
+            return (CareTier.LTAC, TREATMENT_NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL, modifierList)
+            return (None, TREATMENT_NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
-            return (CareTier.VENT, TreatmentProtocol.NORMAL, modifierList)
+            return (CareTier.VENT, TREATMENT_NORMAL, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
-            return (CareTier.SKILNRS, TreatmentProtocol.NORMAL, modifierList)
+            return (CareTier.SKILNRS, TREATMENT_NORMAL, modifierList)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
@@ -501,7 +508,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      self._diagnosis.pthStatus, 0,
                                      False, True, None)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
-                                                           TreatmentProtocol.NORMAL)[0:2]
+                                                           TREATMENT_NORMAL)[0:2]
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
@@ -512,7 +519,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         print '%s as of %s' % (self.name, self.lastUpdateTime)
         print '  status: %s ' % str(self._status)
         print '  diagnosis: %s' % str(self._diagnosis)
-        print '  treatment: %s' % TreatmentProtocol.names[self._treatment]
+        print '  treatment: %s' % self._treatment
 
     def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
@@ -560,7 +567,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         if self.debug:
             self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
                               % (self.name, self._status, self._diagnosis,
-                                 TreatmentProtocol.names[self._treatment]))
+                                 self._treatment))
             self.logger.debug('%s: modifiers are %s',
                               self.name,
                               [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
