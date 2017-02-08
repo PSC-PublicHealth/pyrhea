@@ -32,6 +32,7 @@ import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
+from facilitybase import TREATMENT_NORMAL, TREATMENT_REHAB
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
@@ -163,16 +164,16 @@ class Freezer(object):
         if d['newLocAddr'] is None or d['newLocAddr'] == self.ward.getGblAddr():
             del d['newLocAddr']
         else:
-            raise CommunityWard.FreezerError('%s cannot freezedry %s because it is still in motion'
-                                             % (self.ward._name, d['name']))
+            raise FreezerError('%s cannot freezedry %s because it is still in motion'
+                               % (self.ward._name, d['name']))
         if self.frozenAgentLoggerName is None:
             self.frozenAgentLoggerName = d['loggerName']
             del d['loggerName']
         elif d['loggerName'] == self.frozenAgentLoggerName:
             del d['loggerName']
         else:
-            raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong logger'
-                                             % (self.ward._name, d['name']))
+            raise FreezerError('%s cannot freezedry %s because it has the wrong logger'
+                               % (self.ward._name, d['name']))
         if 0:
             typeTpl, linL, valL = lencode(d)  # @UnusedVariable
             #print 'dictionary: %s' % str(d)
@@ -185,8 +186,8 @@ class Freezer(object):
         if self.frozenAgentTypePattern is None:
             self.frozenAgentTypePattern = typeTpl
         elif typeTpl != self.frozenAgentTypePattern:
-            raise CommunityWard.FreezerError('%s cannot freezedry %s because it has the wrong type pattern'
-                                             % (self.ward._name, d['name']))
+            raise FreezerError('%s cannot freezedry %s because it has the wrong type pattern'
+                               % (self.ward._name, d['name']))
         if 0:
             self.frozenAgentList.append(tuple(valL))
         else:
@@ -337,7 +338,8 @@ class Community(Facility):
             needsLTACRate = _constants['communityNeedsLTACRate']['value']
             needsRehabRate = _constants['communityNeedsRehabRate']['value']
             needsSkilNrsRate = _constants['communityNeedsSkilNrsRate']['value']
-            needsVentRate = _constants['communityNeedsVentRate']['value']
+            needsVentRate = (_constants['communityNeedsVentRate']['value']
+                             if 'communityNeedsVentRate' in _constants else 0.0)
             sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate
                               + needsSkilNrsRate + needsVentRate)
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
@@ -364,23 +366,23 @@ class Community(Facility):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TreatmentProtocol.NORMAL)
+                return (CareTier.HOME, TREATMENT_NORMAL)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TreatmentProtocol.NORMAL)
+                return (CareTier.NURSING, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TreatmentProtocol.REHAB)
+            return (CareTier.NURSING, TREATMENT_REHAB)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TreatmentProtocol.NORMAL)
+            return (CareTier.LTAC, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TreatmentProtocol.NORMAL)
+            return (CareTier.HOSP, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TreatmentProtocol.NORMAL)
+            return (CareTier.ICU, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
-            return (CareTier.SKILNRS, TreatmentProtocol.NORMAL)
+            return (CareTier.SKILNRS, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TreatmentProtocol.NORMAL)
+            return (None, TREATMENT_NORMAL)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
-            return (CareTier.VENT, TreatmentProtocol.NORMAL)
+            return (CareTier.VENT, TREATMENT_NORMAL)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 

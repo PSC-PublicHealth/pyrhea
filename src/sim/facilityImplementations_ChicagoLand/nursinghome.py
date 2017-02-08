@@ -110,7 +110,7 @@ class NursingHome(Facility):
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if patientStatus.overall == PatientOverallHealth.FRAIL:
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 if key in self.frailRehabTreeCache:
                     return self.frailRehabTreeCache[key]
                 else:
@@ -143,13 +143,13 @@ class NursingHome(Facility):
 
             tree = BayesTree(changeTree, innerTree,
                              self.frailCachedCDF.intervalProb, tag='LOS')
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 self.frailRehabTreeCache[key] = tree
             else:
                 self.frailTreeCache[key] = tree
             return tree
         else:
-            if treatment == TreatmentProtocol.REHAB:
+            if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
                 else:
@@ -195,7 +195,7 @@ class NursingHome(Facility):
                                          self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
-            elif treatment == TreatmentProtocol.NORMAL:
+            elif not treatment.rehab:
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
                                                  DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
                                                  DiagClassA.NEEDSSKILNRS]):
@@ -235,7 +235,7 @@ def _populate(fac, descr, patch):
                          ._replace(homeAddr=ward.getGblAddr()))  # They live here
         else:  # They must be here for rehab
             a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
-            a._treatment = TreatmentProtocol.REHAB
+            a._treatment = a._treatment._replace(rehab=True)
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
