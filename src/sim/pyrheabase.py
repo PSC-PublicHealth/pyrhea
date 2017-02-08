@@ -205,7 +205,20 @@ class BedRequest(patches.Agent):
                     self.dest = None
                 else:
                     self.fsmstate = BedRequest.STATE_MOVING
-                    self.dest = self.facilityOptions.pop()
+                    if 0 and isinstance(self.facilityOptions[0], tuple):
+                        print self.facilityOptions
+                        # this can certainly be done in a more efficient manner but we'll jump off that bridge later
+                        sumWeights = sum(weight for addr,weight in self.facilityOptions)
+                        r = random.random() * sumWeights
+                        cur = 0
+                        for i,(addr,weight) in enumerate(self.facilityOptions):
+                            cur += weight
+                            if cur >= r:
+                                self.dest = addr
+                                self.facilityOptions = self.facilityOptions[:i] + self.facilityOptions[i+1:]
+                                break
+                    else:    
+                        self.dest = self.facilityOptions.pop()
             elif self.fsmstate == BedRequest.STATE_MOVING:
                     addr, final = self.patch.getPathTo(self.dest)
                     if final:
@@ -305,6 +318,8 @@ class PatientAgent(peopleplaces.Person):
         else:
             facAddrList = self.getCandidateFacilityList(timeNow, tier)
             homeAddr = self._status.homeAddr
+
+            # do we want to test for homeAddr in weighted lists?  how would we weight it?
             if homeAddr and (homeAddr in facAddrList):
                 # Prioritize going home if possible
                 facAddrList.remove(homeAddr)

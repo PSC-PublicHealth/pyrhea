@@ -409,7 +409,7 @@ def _populate(fac, descr, patch):
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 7
+    cacheVer = 10
 
     if communityClass is None:
         communityClass = Community
@@ -420,18 +420,18 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     wards = fac.getWards()
     ward = wards[0]
     if len(wards) != 1:
-        raise "caching wards assumes 1 ward per community"
+        raise RuntimeError("caching wards assumes 1 ward per community")
 
     try:
         with gzip.GzipFile(fname) as f:
             wardInfo = pickle.load(f)
 
         if wardInfo[0] != cacheVer:
-            raise
+            raise Exception()
 
-        ver, fDesc,freezerList,patientDataDict = wardInfo
+        ver, fDesc,freezerList,patientDataDict,patientStats = wardInfo
         if fDesc != facilityDescr:
-            raise
+            raise Exception()
 
         agentCount = 0
         for freezerData in freezerList:
@@ -443,12 +443,15 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
             agentCount += len(agentList)
 
         fac.patientDataDict = patientDataDict
+        fac.patientStats = patientStats
         logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
 
         return [fac], fac.getWards(), []
 
     except:
-        # fall out of the exception
+        # no cache file or whatever was there wasn't satisfactory for any reason.
+        # since if we found a valid cache file we'd have returned already, just
+        # fall out of the exception.
         pass
     
     pop = _populate(fac, facilityDescr, patch)
@@ -460,6 +463,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
                             freezer.frozenAgentTypePattern,
                             freezer.frozenAgentList))
     patientDataDict = fac.patientDataDict
+    patientStats = fac.patientStats
 
     # presumably we don't use up beds now that we have frozen agents.
 
@@ -468,7 +472,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         os.makedirs('cache')
 
     with gzip.GzipFile(fname, "w") as f:
-        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict), f, 2)
+        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats), f, 2)
 
     return [fac], fac.getWards(), pop
 
