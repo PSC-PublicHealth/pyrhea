@@ -201,7 +201,8 @@ class BedRequest(patches.Agent):
                     self.dest = None
                 else:
                     self.fsmstate = BedRequest.STATE_MOVING
-                    if isinstance(self.facilityOptions[0], tuple):
+                    if 0 and isinstance(self.facilityOptions[0], tuple):
+                        print self.facilityOptions
                         # this can certainly be done in a more efficient manner but we'll jump off that bridge later
                         sumWeights = sum(weight for addr,weight in self.facilityOptions)
                         r = random.random() * sumWeights

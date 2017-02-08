@@ -418,18 +418,18 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     wards = fac.getWards()
     ward = wards[0]
     if len(wards) != 1:
-        raise "caching wards assumes 1 ward per community"
+        raise RuntimeError("caching wards assumes 1 ward per community")
 
     try:
         with gzip.GzipFile(fname) as f:
             wardInfo = pickle.load(f)
 
         if wardInfo[0] != cacheVer:
-            raise
+            raise Exception()
 
         ver, fDesc,freezerList,patientDataDict = wardInfo
         if fDesc != facilityDescr:
-            raise
+            raise Exception()
 
         agentCount = 0
         for freezerData in freezerList:
@@ -446,7 +446,9 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         return [fac], fac.getWards(), []
 
     except:
-        # fall out of the exception
+        # no cache file or whatever was there wasn't satisfactory for any reason.
+        # since if we found a valid cache file we'd have returned already, just
+        # fall out of the exception.
         pass
     
     pop = _populate(fac, facilityDescr, patch)
