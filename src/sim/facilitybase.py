@@ -232,12 +232,12 @@ class TreatmentPolicy(object):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
         
-    def getEffectiveness(self, careTier, **kwargs):
+    def getTransmissionMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
         return the scale factor by which the transmission coefficient tau is multiplied.
         """
-        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)        
+        raise RuntimeError('Base TreatmentPolicy was called.')        
 
 
 class PatientRecord(object):

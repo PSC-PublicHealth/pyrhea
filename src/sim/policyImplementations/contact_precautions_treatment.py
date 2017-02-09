@@ -80,6 +80,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         tier = ward.tier
         try:
             frac = self.core.baseFracTbl[ward.fac.category][ward.tier][pthStatus]
+            patient.setTreatment(contactPrecautions=(random() <= frac))
         except KeyError:
             if tier in CareTier.names:
                 tier = CareTier.names[tier]
@@ -89,16 +90,12 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
                    % (cat, tier, pthStatus))
             logger.fatal(msg)
             raise RuntimeError(msg)
-        patient.setTreatment(contactPrecautions=(random() <= frac))
 
     def handlePatientArrival(self, ward, patient, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
         self.initializePatientTreatment(ward, patient)
-        if ward.tier == CareTier.ICU:
-            print patient.getTreatment()
-            raise RuntimeError('done')
 
     def handlePatientDeparture(self, ward, patient, timeNow):
         """
@@ -106,7 +103,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
         
-    def getEffectiveness(self, careTier, **kwargs):
+    def getTransmissionMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
         return the scale factor by which the transmission coefficient tau is multiplied.

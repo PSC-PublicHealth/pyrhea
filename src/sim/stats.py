@@ -190,9 +190,9 @@ class BayesTree(object):
         while True:
             if isinstance(tree, types.TupleType):
                 if isinstance(tree[0], (types.FunctionType, types.MethodType)):
-                    import pdb
-                    pdb.set_trace()
-                    #raise RuntimeError('Cannot traverse BayesTree; encountered unevaluated %s' % repr(tree[0]))
+#                     import pdb
+#                     pdb.set_trace()
+                    raise RuntimeError('Cannot traverse BayesTree; encountered unevaluated %s' % repr(tree[0]))
                 elif rng() <= tree[0]:
                     tree = tree[1]
                 else:

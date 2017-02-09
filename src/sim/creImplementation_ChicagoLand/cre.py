@@ -181,8 +181,6 @@ class CRE(Pathogen):
                         pI['-+'] += 1
                     else:
                         pI['--'] += 1
-            if 'ICU' in self.ward._name:
-                print 'got pI for %s at %s: %s' % (self.ward._name, timeNow, dict(pI))
             self.propogationInfoTime = timeNow
         return self.propogationInfo
 
@@ -201,7 +199,7 @@ class CRE(Pathogen):
                    treatment.contactPrecautions, nBareExposures, nCPExposures, nTot, dT)
             if key not in self.core.exposureTreeCache:
                 tP = self.ward.fac.treatmentPolicy
-                effectivenessCP = tP.getEffectiveness(careTier, contactPrecautions=True)
+                effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
                 if treatment.contactPrecautions:
                     # doubly protected
                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)

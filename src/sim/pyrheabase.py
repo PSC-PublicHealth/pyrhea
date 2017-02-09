@@ -16,7 +16,7 @@
 ###################################################################################
 
 import logging
-from random import shuffle
+from random import shuffle, random
 from phacsl.utils.collections.phacollections import enum
 import quilt.patches as patches
 import quilt.peopleplaces as peopleplaces
@@ -209,7 +209,7 @@ class BedRequest(patches.Agent):
                         print self.facilityOptions
                         # this can certainly be done in a more efficient manner but we'll jump off that bridge later
                         sumWeights = sum(weight for addr,weight in self.facilityOptions)
-                        r = random.random() * sumWeights
+                        r = random() * sumWeights
                         cur = 0
                         for i,(addr,weight) in enumerate(self.facilityOptions):
                             cur += weight

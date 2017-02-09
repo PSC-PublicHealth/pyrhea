@@ -62,6 +62,7 @@ class ICUWard(ForcedStateWard):
         to correspond to those of the ward.
         """
         self.forceState(patientAgent, CareTier.ICU, DiagClassA.VERYSICK)
+        super(ICUWard, self).handlePatientArrival(patientAgent, timeNow)
 
 
 class HospitalManager(FacilityManager):
