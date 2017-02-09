@@ -25,7 +25,6 @@ import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
-from facilitybase import TREATMENT_NORMAL, TREATMENT_REHAB
 from stats import CachedCDFGenerator, BayesTree
 from hospital import ClassASetter
 import schemautils
@@ -97,19 +96,19 @@ class Community(Facility):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TREATMENT_NORMAL)
+                return (CareTier.HOME, patientTreatment._replace(rehab=False))
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TREATMENT_NORMAL)
+                return (CareTier.NURSING, patientTreatment._replace(rehab=False))
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TREATMENT_REHAB)
+            return (CareTier.NURSING, patientTreatment._replace(rehab=True))
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TREATMENT_NORMAL)
+            return (CareTier.LTAC, patientTreatment._replace(rehab=False))
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TREATMENT_NORMAL)
+            return (CareTier.HOSP, patientTreatment._replace(rehab=False))
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TREATMENT_NORMAL)
+            return (CareTier.ICU, patientTreatment._replace(rehab=False))
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TREATMENT_NORMAL)
+            return (None, patientTreatment._replace(rehab=False))
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 

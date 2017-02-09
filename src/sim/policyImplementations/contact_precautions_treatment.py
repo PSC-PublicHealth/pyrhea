@@ -16,19 +16,44 @@
 ###################################################################################
 
 import logging
-import random
+from random import random
 
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
-from collections import deque
+from facilitybase import CareTier
 from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
+from pathogenbase import PthStatus
 
 _validator = None
-_constants_values = '$(POLICYDIR)/transferatrandom_constants.yaml'
-_constants_schema = 'transferatrandom_constants_schema.yaml'
+_constants_values = '$(MODELDIR)/constants/contact_precautions_constants.yaml'
+_constants_schema = 'contact_precautions_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
+
+def _parseFracByStatusByTierByCategory(fieldStr):
+    topD = {}
+    tierBackMap = {val: key for key, val in CareTier.names.items()}
+    statusBackMap = {val: key for key, val in PthStatus.names.items()}
+    for elt in _constants[fieldStr]:
+        cat = elt['category']
+        tiers = elt['tiers']
+        if cat not in topD:
+            topD[cat] = {}
+        for tierElt in tiers:
+            tier = tierBackMap[tierElt['tier']]
+            statuses = tierElt['pathogenStatuses']
+            if tier not in topD[cat]:
+                topD[cat][tier] = {}
+            for statusElt in statuses:
+                status = statusBackMap[statusElt['status']]
+                val = statusElt['frac']['value']
+                assert status not in topD[cat][tier], ('Redundant %s for %s %s %s' %
+                                                       (fieldStr, cat, CareTier.names[tier],
+                                                        PthStatus.names[status]))
+                topD[cat][tier][status] = val
+    return topD
+
 
 
 class CPTPCore(object):
@@ -36,32 +61,60 @@ class CPTPCore(object):
     __metaclass__ = SingletonMetaClass
     
     def __init__(self):
-        pass
+        self.baseFracTbl = _parseFracByStatusByTierByCategory('baseFractionUnderContactPrecautions')
+        self.effectiveness = _constants['transmissibilityMultiplier']['value']
 
 
 class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
     def __init__(self, patch, categoryNameMapper):
         super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
+        self.core = CPTPCore()
 
     def initializePatientTreatment(self, ward, patient):
         """
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
-        pass
-    
+        pthStatus = patient.getPthStatus()
+        cat = ward.fac.category
+        tier = ward.tier
+        try:
+            frac = self.core.baseFracTbl[ward.fac.category][ward.tier][pthStatus]
+        except KeyError:
+            if tier in CareTier.names:
+                tier = CareTier.names[tier]
+            if pthStatus in PthStatus.names:
+                pthStatus = PthStatus.names[pthStatus]
+            msg = ('No baseFractionUnderContactPrecautions entry for %s %s %s'
+                   % (cat, tier, pthStatus))
+            logger.fatal(msg)
+            raise RuntimeError(msg)
+        patient.setTreatment(contactPrecautions=(random() <= frac))
+
     def handlePatientArrival(self, ward, patient, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
-        print '%s arrives at %s at %s' % (patient.name, ward._name, timeNow)
+        self.initializePatientTreatment(ward, patient)
+        if ward.tier == CareTier.ICU:
+            print patient.getTreatment()
+            raise RuntimeError('done')
 
     def handlePatientDeparture(self, ward, patient, timeNow):
         """
         This is called on patients when they depart from a ward.
         """
-        print '%s departs %s at %s' % (patient.name, ward._name, timeNow)
+        patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
         
+    def getEffectiveness(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied.
+        """
+        if 'contactPrecautions' in kwargs and kwargs['contactPrecautions']:
+            return self.core.effectiveness
+        else:
+            return 1.0
 
 
 def getPolicyClasses():

@@ -41,8 +41,7 @@ TreatmentProtocol = namedtuple('TreatmentProtocol',
                                 ],
                                field_types=[bool, bool])
 
-TREATMENT_NORMAL = TreatmentProtocol(False, False)
-TREATMENT_REHAB = TreatmentProtocol(True, False)
+TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False)
 
 PatientStatus = namedtuple('PatientStatus',
                            ['overall',              # one of PatientOverallHealth
@@ -221,19 +220,24 @@ class TreatmentPolicy(object):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def handlePatientArrival(self, ward, patient):
+    def handlePatientArrival(self, ward, patient, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def handlePatientDeparture(self, ward, patient):
+    def handlePatientDeparture(self, ward, patient, timeNow):
         """
         This is called on patients when they depart from a ward.
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
         
-        
+    def getEffectiveness(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied.
+        """
+        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)        
 
 
 class PatientRecord(object):
@@ -448,25 +452,32 @@ class Facility(pyrheabase.Facility):
             modifierList = []
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, TREATMENT_NORMAL, modifierList)
+                return (CareTier.HOME, patientTreatment._replace(rehab=False), modifierList)
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, TREATMENT_NORMAL, modifierList)
+                return (CareTier.NURSING, patientTreatment._replace(rehab=False), modifierList)
             else:
                 raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
         if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            return (CareTier.NURSING, TREATMENT_REHAB, modifierList)
+            newTreatment = patientTreatment._replace(rehab=True)
+            return (CareTier.NURSING, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            return (CareTier.HOSP, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.HOSP, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            return (CareTier.ICU, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.ICU, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            return (CareTier.LTAC, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.LTAC, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            return (None, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (None, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
-            return (CareTier.VENT, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.VENT, newTreatment, modifierList)
         elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
-            return (CareTier.SKILNRS, TREATMENT_NORMAL, modifierList)
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.SKILNRS, newTreatment, modifierList)
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
@@ -551,7 +562,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      self._diagnosis.pthStatus, 0,
                                      False, True, None)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
-                                                           TREATMENT_NORMAL)[0:2]
+                                                           TREATMENT_DEFAULT)[0:2]
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
@@ -564,6 +575,28 @@ class PatientAgent(pyrheabase.PatientAgent):
         print '  diagnosis: %s' % str(self._diagnosis)
         print '  treatment: %s' % self._treatment
 
+    def getPthStatus(self):
+        """Accessor for private status"""
+        return self._status.pthStatus
+
+    def getPthDiagnosis(self):
+        """Accessor for private diagnosis"""
+        return self._diagnosis.pthStatus
+    
+    def setTreatment(self, **kwargs):
+        """
+        keyword arguments are elements of PatientTreatment, for example 'rehab'.
+        The associated values must be boolean.
+        """
+        self._treatment = self._treatment._replace(**kwargs)
+        
+    def getTreatment(self, key):
+        """
+        key is one of the elements of PatientTreatment, for example 'rehab'.
+        Returns a boolean for the state of that treatment element for this patient.
+        """
+        return self._treatment._asdict()[key]
+    
     def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
@@ -575,8 +608,6 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                    self.lastUpdateTime, timeNow)
                     treeL.append(tree)
             except Exception, e:
-                print ('Got exception %s on patient %s tree for %s' %
-                       (str(e), self.name, str(src)))
                 self.logger.critical('Got exception %s on patient %s (id %s) for tree %s'
                                      % (str(e), self.name, self.id, str(src)))
                 raise
@@ -584,8 +615,6 @@ class PatientAgent(pyrheabase.PatientAgent):
                 treeL = self.ward.iA.filterStatusChangeTrees(treeL, self._status, self.ward, self._treatment,
                                                              self.lastUpdateTime, timeNow)
             except Exception, e:
-                print ('Got exception %s on patient %s filtering trees' %
-                       (str(e), self.name))
                 self.logger.critical('Got exception %s on patient %s (id %s) filtering trees'
                                      % (str(e), self.name, self.id))
                 for tree in treeL:

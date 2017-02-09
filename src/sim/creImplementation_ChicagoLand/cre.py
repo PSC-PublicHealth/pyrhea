@@ -19,6 +19,7 @@ import logging
 import math
 import types
 from random import random
+from collections import defaultdict
 from scipy.stats import expon
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
@@ -47,12 +48,12 @@ def _parseFracByTierByFacilityByCategory(fieldStr):
             tiers = facElt['tiers']
             if abbrev not in topD[cat]:
                 topD[cat][abbrev] = {}
-                for tierElt in tiers:
-                    tier = tierElt['tier']
-                    val = tierElt['frac']['value']
-                    assert tier not in topD[cat][abbrev], ('Redundant %s for %s %s' %
-                                                          (fieldStr, abbrev, CareTier.names[tier]))
-                    topD[cat][abbrev][tier] = val
+            for tierElt in tiers:
+                tier = tierElt['tier']
+                val = tierElt['frac']['value']
+                assert tier not in topD[cat][abbrev], ('Redundant %s for %s %s' %
+                                                      (fieldStr, abbrev, CareTier.names[tier]))
+                topD[cat][abbrev][tier] = val
     return topD
 
 
@@ -111,6 +112,8 @@ class CRE(Pathogen):
         self.core = CRECore()
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
+        self.propogationInfo = {}
+        self.propogationInfoTime = None
 
         wardCat = ward.fac.category
         tierStr = CareTier.names[ward.tier]
@@ -163,20 +166,50 @@ class CRE(Pathogen):
             self.patientPth = d
             self.patientPthTime = timeNow
         return self.patientPth
+    
+    def getPropogationInfo(self, timeNow):
+        if self.propogationInfoTime != timeNow:
+            pI = self.propogationInfo = defaultdict(lambda: 0)
+            for p in self.ward.getPatientList():
+                if p.getPthStatus():
+                    if p.getTreatment('contactPrecautions'):
+                        pI['++'] += 1
+                    else:
+                        pI['+-'] += 1
+                else:
+                    if p.getTreatment('contactPrecautions'):
+                        pI['-+'] += 1
+                    else:
+                        pI['--'] += 1
+            if 'ICU' in self.ward._name:
+                print 'got pI for %s at %s: %s' % (self.ward._name, timeNow, dict(pI))
+            self.propogationInfoTime = timeNow
+        return self.propogationInfo
 
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         if patientStatus.pthStatus == PthStatus.CLEAR:
-            pP = self.getPatientPthCounts(timeNow)
-            nExposures = pP[PthStatus.COLONIZED]
-            nTot = sum(pP.values())
+            pI = self.getPropogationInfo(timeNow)
+            nBareExposures = pI['+-']
+            nCPExposures = pI['++']
+            nTot = nBareExposures * nCPExposures
             dT = timeNow - startTime
             #
             # Note that this caching scheme assumes all wards with the same category and tier
             # have the same infectivity constant(s)
             #
-            key = (self.ward.fac.category, self.ward.tier, nExposures, nTot, dT)
+            key = (self.ward.fac.category, self.ward.tier, 
+                   treatment.contactPrecautions, nBareExposures, nCPExposures, nTot, dT)
             if key not in self.core.exposureTreeCache:
-                pSafe = math.pow((1.0 - self.tau), nExposures * dT)
+                tP = self.ward.fac.treatmentPolicy
+                effectivenessCP = tP.getEffectiveness(careTier, contactPrecautions=True)
+                if treatment.contactPrecautions:
+                    # doubly protected
+                    pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
+                             * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
+                                        nCPExposures * dT))
+                else:
+                    pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
+                             * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)

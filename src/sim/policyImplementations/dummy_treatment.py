@@ -51,6 +51,12 @@ class DummyTreatmentPolicy(BaseTreatmentPolicy):
         """
         pass
 
+    def getEffectiveness(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied.
+        """
+        return 1.0
 
 def getPolicyClasses():
     return [DummyTreatmentPolicy]

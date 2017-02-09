@@ -1,0 +1,59 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/contact_precautions_constants_schema.yaml'
+'title': 'contact precautions constants schema'
+'description': 'contact precautions constants schema'
+
+'$ref': '#/definitions/contact_precautions_constants'
+
+'definitions':
+
+  'fracByStatus':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'status':
+          '$ref': 'pathogen_schema.yaml#/definitions/pathogenstatus'
+          'description': 'Pathogen status (CLEAR, COLONIZED, etc.)'
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'status'
+        - 'frac'
+        
+  'fracByStatusByTier':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tier': 
+          '$ref': 'facility_schema.yaml#/definitions/caretier'
+          'description': 'Tier of care (ICU, NURSING, etc)'
+        'pathogenStatuses': {'$ref': '#/definitions/fracByStatus'}
+      'required':
+        - 'tier'
+        - 'pathogenStatuses'
+
+  'fracByStatusByTierByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category':
+          '$ref': 'facilityfacts_schema.yaml#/definitions/category'
+          'description': 'Facility category (HOSPITAL, VSNF, etc.)'
+        'tiers': {'$ref': '#/definitions/fracByStatusByTier'}
+
+  'contact_precautions_constants':
+    'type': 'object'
+    'properties':
+      'baseFractionUnderContactPrecautions':
+        '$ref': '#/definitions/fracByStatusByTierByCategory'
+        'description': 'Fraction of patients under contact precautions for reasons other than pathogen status'
+      'transmissibilityMultiplier':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'          
+    'required':
+    - 'baseFractionUnderContactPrecautions'
+    - 'transmissibilityMultiplier'
+      
+     
