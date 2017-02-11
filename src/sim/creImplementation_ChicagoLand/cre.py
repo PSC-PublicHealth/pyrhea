@@ -72,6 +72,14 @@ def _parseFracByTierByCategory(fieldStr):
             topD[cat][tier] = val
     return topD
 
+def _parseTierTierScaleList(fieldStr):
+    result = {}
+    for elt in _constants[fieldStr]:
+        fmTier = CareTier.__dict__[elt['tierFrom']]
+        toTier = CareTier.__dict__[elt['tierTo']]
+        value = elt['scale']['value']
+        result[(fmTier, toTier)] = value
+    return result
 
 def _getFracByTierByCategory(tbl, tblNameForErr, ward, useWardCategory):
     wardCat = ward.fac.category
@@ -94,6 +102,7 @@ class CRECore(object):
         self.tauTbl = _parseFracByTierByCategory('tau')
         self.fracPermanentlyColonized = _constants['fracPermanentlyColonized']['value']
         self.spontaneousLossTimeConstant = _constants['spontaneousLossTimeConstant']['value']
+        self.transferProbScaleDict = _parseTierTierScaleList('colonizedTransferProbScale')
         self.exposureTreeCache = {}
         self.spontaneousLossTreeCache = {}
         self.spontaneousLossCachedCDF = CachedCDFGenerator(expon(scale=self.spontaneousLossTimeConstant))
@@ -115,21 +124,10 @@ class CRE(Pathogen):
         self.propogationInfo = {}
         self.propogationInfoTime = None
 
-        wardCat = ward.fac.category
-        tierStr = CareTier.names[ward.tier]
-        if (wardCat in self.core.initialFracColonizedTbl
-                and ward.fac.abbrev in self.core.initialFracColonizedTbl[wardCat]
-                and tierStr in self.core.initialFracColonizedTbl[wardCat][ward.fac.abbrev]):
-            self.initialFracColonized = (self.core.initialFracColonizedTbl[wardCat]
-                                         [ward.fac.abbrev][tierStr])
-        elif (wardCat in self.core.categoryInitialFracColonizedTbl
-              and tierStr in self.core.categoryInitialFracColonizedTbl[wardCat]):
-            self.initialFracColonized = (self.core.categoryInitialFracColonizedTbl[wardCat]
-                                         [tierStr])
-        else:
-            raise RuntimeError('No way to set initialFracColonized for %s tier %s' %
-                               (ward.fac.abbrev, CareTier.names[ward.tier]))
-
+        self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
+                                                                  ward.fac.category,
+                                                                  ward.tier)
+        
         self.tau = _getFracByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory)
         
         tierName = CareTier.names[self.ward.tier]
@@ -138,6 +136,64 @@ class CRE(Pathogen):
             if ent['tier'] == tierName:
                 self.colDischDelayTime = ent['value']
                 break
+
+    def _getInitialFracColonized(self, abbrev, category, tier):
+        tierStr = CareTier.names[tier]
+        if (category in self.core.initialFracColonizedTbl
+                and abbrev in self.core.initialFracColonizedTbl[category]
+                and tierStr in self.core.initialFracColonizedTbl[category][abbrev]):
+            initialFracColonized = (self.core.initialFracColonizedTbl[category]
+                                         [abbrev][tierStr])
+        elif (category in self.core.categoryInitialFracColonizedTbl
+              and tierStr in self.core.categoryInitialFracColonizedTbl[category]):
+            initialFracColonized = (self.core.categoryInitialFracColonizedTbl[category]
+                                         [tierStr])
+        else:
+            raise RuntimeError('No way to set initialFracColonized for %s tier %s' %
+                               (abbrev, CareTier.names[tier]))
+
+        return initialFracColonized
+
+    @classmethod
+    def getCore(cls):
+        if CRECore in SingletonMetaClass._instances:
+            return SingletonMetaClass._instances[CRECore]
+        else:
+            raise RuntimeError('Cannot get Core because no instances of %s have been created'
+                               % cls.__name__)
+
+    @classmethod
+    def getRelativeProb(cls, pthStatus, fromTier, toTier):
+        """
+        If the probability of transfer from fromTier to toTier of a patient at
+        PthStatus.CLEAR is P, and the probability for a patient at the given PthStatus
+        is kP, this routine returns the value of k.  Note that kP must still be less than 1.0,
+        so there is an implied upper bound of P of 1.0/k.
+        """
+        if pthStatus == PthStatus.COLONIZED:
+            key = (fromTier, toTier)
+            tD = cls.getCore().transferProbScaleDict
+            if key in tD:
+                return tD[key]
+            else:
+                return 1.0
+        else:
+            return 1.0
+
+    def getEstimatedPrevalence(self, pthStatus, abbrev, category, tier):
+        """
+        The return value provides an estimate prevalence (0.0 <= return val <= 1.0)
+        of the pathogen for the given pathogen status at the facility named by abbrev,
+        of the given category, at the given care tier.  One use of this value is to
+        help keep patient flows in the correct range while rescaling the flow of a
+        particular category of patient in response to colonization, etc.
+        """
+        if pthStatus == PthStatus.CLEAR:
+            return 1.0 - self._getInitialFracColonized(abbrev, category, tier)
+        elif pthStatus == PthStatus.COLONIZED:
+            return self._getInitialFracColonized(abbrev, category, tier)
+        else:
+            return 0.0
 
     def _emptyPatientPth(self):
         return {k:0 for k in PthStatus.names.keys()}

@@ -239,6 +239,29 @@ class TreatmentPolicy(object):
         """
         raise RuntimeError('Base TreatmentPolicy was called.')        
 
+    @classmethod
+    def getRelativeProb(cls, pthStatus, fromTier, toTier):
+        """
+        If the probability of transfer from fromTier to toTier of a patient at
+        PthStatus.CLEAR is P, and the probability for a patient at the given PthStatus
+        is kP, this routine returns the value of k.  Note that kP must still be less than 1.0,
+        so there is an implied upper bound of P of 1.0/k.
+        """
+        return 1.0
+
+    @classmethod
+    def getEstimatedPrevalence(cls, pthStatus, abbrev, category, tier):
+        """
+        The return value provides an estimate prevalence (0.0 <= return val <= 1.0)
+        of the pathogen for the given pathogen status at the facility named by abbrev,
+        of the given category, at the given care tier.  One use of this value is to
+        help keep patient flows in the correct range while rescaling the flow of a
+        particular category of patient in response to colonization, etc.
+        """
+        if pthStatus == PthStatus.CLEAR:
+            return 1.0
+        else:
+            return 0.0
 
 class PatientRecord(object):
     def __init__(self, patientID, arrivalDate, isFrail):
@@ -425,11 +448,12 @@ class Facility(pyrheabase.Facility):
         if bounceKey not in nh:
             nh.addNote({bounceKey: HistoVal([])})
         fromToKey = 'fromTo:%s:%s' % (senderAbbrev, tier)
-        self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
-                                      (CareTier.names[tier] + '_notfound'): nFail,
-                                      bounceKey: nBounces,
-                                      transferKey: nSuccess,
-                                      fromToKey: nSuccess})
+        if senderAbbrev != self.abbrev: # Let's try not noting internal transfers
+            self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
+                                          (CareTier.names[tier] + '_notfound'): nFail,
+                                          bounceKey: nBounces,
+                                          transferKey: nSuccess,
+                                          fromToKey: nSuccess})
 
     def diagnose(self, patientStatus, oldDiagnosis):
         """

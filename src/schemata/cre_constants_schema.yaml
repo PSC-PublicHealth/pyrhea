@@ -87,7 +87,22 @@
         'facilities': {'$ref': '#/definitions/fracByTierByFacility'}
       'required':
         - 'category'
-        - 'facilities'      
+        - 'facilities'
+
+  'scaleByTierPair':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tierFrom':
+          '$ref': 'facility_schema.yaml#/definitions/caretier'
+          'description': 'Tier of care originating the transfer (ICU, NURSING, etc)'    
+        'tierTo':
+          '$ref': 'facility_schema.yaml#/definitions/caretier'
+          'description': 'Tier of care receiving the transfer (ICU, NURSING, etc)'
+        'scale':
+          '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+          'description': 'Scale factor for transfers between these two tiers of care'
 
   'creconstants':
     'type': 'object'
@@ -110,6 +125,9 @@
       'colonizedDischargeDelayTime':
         '$ref': '#/definitions/nonnegfloatByTier'
         'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+      'colonizedTransferProbScale':
+        '$ref': '#/definitions/scaleByTierPair'
+        'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
                 
     'required':
       - 'initialFractionColonized'
@@ -118,6 +136,7 @@
       - 'fracPermanentlyColonized'
       - 'spontaneousLossTimeConstant'
       - 'colonizedDischargeDelayTime'
+      - 'colonizedTransferProbScale'
       
       
      

@@ -26,7 +26,7 @@ import pyrheautils
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, ClassASetter, HOSPQueue, ICUQueue, tierToQueueMap
-from facilitybase import FacilityManager
+from facilitybase import FacilityManager, PthStatus
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
@@ -128,6 +128,10 @@ class Hospital(Facility):
         # is actually just nursing.
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
+        
+        # pthRates is the equivalent of lclRates but for pathogen carriers.  It must
+        # be initialized lazily because the pathogen has not yet been defined.
+        self.pthRates = None
 
         self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
         if 'nBeds' in descr:
@@ -187,31 +191,81 @@ class Hospital(Facility):
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList
 
+    def _biasTransfers(self, lclRates):
+        """
+        Split the lclRates table into two copies, one for healthy and the other for carriers.
+        """
+        infectiousAgent = self.getWards(CareTier.HOSP)[0].iA
+        enhancementScale = infectiousAgent.getRelativeProb(PthStatus.COLONIZED,
+                                                           CareTier.HOSP, CareTier.LTAC)
+        estPthFrac = sum([infectiousAgent.getEstimatedPrevalence(pthStatus, self.abbrev,
+                                                                 self.category,
+                                                                 CareTier.HOSP)
+                          for pthStatus in PthStatus.names
+                          if pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED]])
+        beta = estPthFrac
+        alpha = lclRates['ltac']
+        k = enhancementScale * alpha
+        x = (alpha - k * beta)/(1.0 - beta)
+        assert x >= 0.0, 'Requested rescaling of rates for COLONIZED is too large'
+        
+        if alpha == 0.0 or alpha == 1.0:
+            newLclRates = lclRates.copy()
+            pthRates = lclRates.copy()
+        else:
+            newLclRates = {}
+            pthRates = {}
+            for key, val in lclRates.items():
+                if key == 'death':
+                    newLclRates[key] = pthRates[key] = val
+                elif key == 'ltac':
+                    newLclRates[key] = (x/alpha) * val
+                    pthRates[key] = (k/alpha) * val
+                elif key in ['hospital', 'icu', 'nursinghome', 'vent', 'skilnrs', 'home', 'vsnf']:
+                    pthRates[key] = ((1.0 - k)/(1.0-alpha)) * val
+                    newLclRates[key] = ((1.0 - x)/(1.0-alpha)) * val
+                else:
+                    raise RuntimeError('unexpected lclRates key %s' % key)
+        return newLclRates, pthRates
+
+    def _buildHospChangeTree(self, lclRates):
+        changeTree = BayesTree.fromLinearCDF([(lclRates['death'],
+                                               ClassASetter(DiagClassA.DEATH)),
+                                              (lclRates['hospital'],
+                                               ClassASetter(DiagClassA.SICK)),
+                                              (lclRates['icu'],
+                                               ClassASetter(DiagClassA.VERYSICK)),
+                                              (lclRates['ltac'],
+                                               ClassASetter(DiagClassA.NEEDSLTAC)),
+                                              (lclRates['nursinghome'],
+                                               ClassASetter(DiagClassA.NEEDSREHAB)),
+                                              (lclRates['vent'],
+                                               ClassASetter(DiagClassA.NEEDSVENT)),
+                                              (lclRates['skilnrs'],
+                                               ClassASetter(DiagClassA.NEEDSSKILNRS)),
+                                              (lclRates['home'],
+                                               ClassASetter(DiagClassA.HEALTHY)),
+                                              ], tag='FATE')
+        return changeTree
+        
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+        if not self.pthRates:
+            # Lazy initialization
+            self.lclRates, self.pthRates = self._biasTransfers(self.lclRates)
+            
         careTier = ward.tier
-        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if careTier == CareTier.HOSP:
+            biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
+            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
+                   biasFlag)
             if key in self.hospTreeCache:
                 return self.hospTreeCache[key]
             else:
-                changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
-                                                       ClassASetter(DiagClassA.DEATH)),
-                                                      (self.lclRates['hospital'],
-                                                       ClassASetter(DiagClassA.SICK)),
-                                                      (self.lclRates['icu'],
-                                                       ClassASetter(DiagClassA.VERYSICK)),
-                                                      (self.lclRates['ltac'],
-                                                       ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      (self.lclRates['nursinghome'],
-                                                       ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (self.lclRates['vent'],
-                                                       ClassASetter(DiagClassA.NEEDSVENT)),
-                                                      (self.lclRates['skilnrs'],
-                                                       ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                      (self.lclRates['home'],
-                                                       ClassASetter(DiagClassA.HEALTHY)),
-                                                      ], tag='FATE')
+                if biasFlag:
+                    changeTree = self._buildHospChangeTree(self.pthRates)
+                else:
+                    changeTree = self._buildHospChangeTree(self.lclRates)
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
@@ -219,6 +273,7 @@ class Hospital(Facility):
                 self.hospTreeCache[key] = tree
                 return tree
         elif careTier == CareTier.ICU:
+            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
             if key in self.icuTreeCache:
                 return self.icuTreeCache[key]
             else:
