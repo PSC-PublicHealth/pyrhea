@@ -168,7 +168,7 @@ class CRE(Pathogen):
         If the probability of transfer from fromTier to toTier of a patient at
         PthStatus.CLEAR is P, and the probability for a patient at the given PthStatus
         is kP, this routine returns the value of k.  Note that kP must still be less than 1.0,
-        so there is an implied upper bound of P of 1.0/k.
+        so there is an implied upper bound of k of 1.0/P.
         """
         if pthStatus == PthStatus.COLONIZED:
             key = (fromTier, toTier)

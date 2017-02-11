@@ -25,12 +25,13 @@ import pyrheabase
 import pyrheautils
 import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
-from facilitybase import DiagClassA, CareTier, DiagClassA
+from facilitybase import CareTier, DiagClassA, PthStatus
 from facilitybase import NURSINGQueue, VENTQueue, SKILNRSQueue
 from facilitybase import PatientOverallHealth, Facility, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, FacilityManager, tierToQueueMap
 from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
+from hospital import buildChangeTree, biasTransfers
 
 logger = logging.getLogger(__name__)
 
@@ -77,10 +78,10 @@ class VentSNF(Facility):
         fracNotTransferred = (float(totDsch) - float(totTO)) / float(totDsch)
         assert fracNotTransferred >= 0.0, '%s has more transfers than discharges' % self.name
 
-        self.lclRates = {}
-        self.lclRates['death'] = _c['deathRate']['value']
-        assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'
-        self.lclRates['home'] = fracNotTransferred - self.lclRates['death']
+        lclRates = {}
+        lclRates['death'] = _c['deathRate']['value']
+        assert fracNotTransferred >= lclRates['death'], '%s has more deaths than non-transfers'
+        lclRates['home'] = fracNotTransferred - lclRates['death']
 
         expectedKeys = ['HOSPITAL', 'LTAC', 'NURSINGHOME', 'VSNF']
         if totTO:
@@ -89,22 +90,29 @@ class VentSNF(Facility):
                     '%s records outgoing transfers to unexpected category %s' % (self.name, key)
             for key in expectedKeys:
                 nTransfers = ttoD[key] if key in ttoD else 0
-                self.lclRates[key.lower()] = float(nTransfers) / float(totDsch)
+                lclRates[key.lower()] = float(nTransfers) / float(totDsch)
         else:
             for key in expectedKeys:
-                self.lclRates[key.lower()] = 0.0
+                lclRates[key.lower()] = 0.0
             logger.warning('%s has no transfers out', self.name)
 
         for subCat, cat, key in [('icu', 'hospital', 'hospTransferToICURate'),
                                  ('vent', 'vsnf', 'vsnfTransferToVentRate'),
                                  ('skilnrs', 'vsnf', 'vsnfTransferToSkilNrsRate')]:
-            self.lclRates[subCat] = _c[key]['value'] * self.lclRates[cat]
-            self.lclRates[cat] -= self.lclRates[subCat]
+            lclRates[subCat] = _c[key]['value'] * lclRates[cat]
+            lclRates[cat] -= lclRates[subCat]
 
         # VSNF-specific care tiers have been separated out, so any remaining vsnf fraction
         # is actually just nursing.
-        self.lclRates['nursinghome'] += self.lclRates['vsnf']
-        self.lclRates['vsnf'] = 0.0
+        lclRates['nursinghome'] += lclRates['vsnf']
+        lclRates['vsnf'] = 0.0
+        
+        # The second element of the tuples built below is the pthRates for each tier.
+        # pthRates is the equivalent of lclRates but for pathogen carriers.  It must
+        # be initialized lazily because the pathogen has not yet been defined.
+        self.rateD = {}
+        for tier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]:
+            self.rateD[tier] = (lclRates.copy(), None)
 
         nBeds = int(descr['nBeds']['value'])
         nBedsVent = int(nBeds * descr['fracVentBeds']['value'])
@@ -137,8 +145,21 @@ class VentSNF(Facility):
         careTier = ward.tier
         assert careTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT],\
             "VSNFs do not provide this CareTier: found %s" % careTier
-        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
-        _c = _constants
+
+        lclRates, pthRates = self.rateD[careTier]
+        if not pthRates:
+            # Lazy initialization
+            infectiousAgent = self.getWards(careTier)[0].iA
+            lclRates, pthRates = biasTransfers(lclRates,
+                                               infectiousAgent,
+                                               CareTier.ICU,
+                                               self.abbrev, self.category,
+                                               careTier)
+            self.rateD[careTier] = (lclRates, pthRates)
+
+        biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
+        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
+               careTier, biasFlag)
         #
         # This implementation applies the same LOS distributions regardless of CareTier,
         # so we can ignore the tier in most of what follows
@@ -146,40 +167,14 @@ class VentSNF(Facility):
         if key in self.treeCache:
             return self.treeCache[key]
         else:
-            adverseProb = (self.lclRates['death']
-                           + self.lclRates['hospital']
-                           + self.lclRates['icu']
-                           + self.lclRates['ltac']
-                           + self.lclRates['nursinghome']
-                           + self.lclRates['vsnf']
-                           + self.lclRates['vent']
-                           + self.lclRates['skilnrs'])
-            if adverseProb > 0.0:
-                adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
-                                                        / adverseProb,
-                                                        ClassASetter(DiagClassA.DEATH)),
-                                                       (self.lclRates['nursinghome'] / adverseProb,
-                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                       (self.lclRates['skilnrs'] / adverseProb,
-                                                        ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                       (self.lclRates['vent'] / adverseProb,
-                                                        ClassASetter(DiagClassA.NEEDSVENT)),
-                                                       (self.lclRates['ltac'] / adverseProb,
-                                                        ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                       (self.lclRates['hospital'] / adverseProb,
-                                                        ClassASetter(DiagClassA.SICK)),
-                                                       (self.lclRates['icu'] / adverseProb,
-                                                        ClassASetter(DiagClassA.VERYSICK))],
-                                                      tag='FATE')
-                tree = BayesTree(BayesTree(adverseTree,
-                                           ClassASetter(DiagClassA.HEALTHY),
-                                           adverseProb),
-                                 PatientStatusSetter(),
-                                 self.cachedCDF.intervalProb, tag='LOS')
+            if biasFlag:
+                changeTree = buildChangeTree(pthRates)
             else:
-                tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
-                                 PatientStatusSetter(),
-                                 self.cachedCDF.intervalProb, tag='LOS')
+                changeTree = buildChangeTree(lclRates)
+            tree = BayesTree(changeTree,
+                             PatientStatusSetter(),
+                             self.cachedCDF.intervalProb, tag='LOS')
+            
             self.treeCache[key] = tree
             return tree
 

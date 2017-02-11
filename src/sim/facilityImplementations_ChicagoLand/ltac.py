@@ -28,12 +28,12 @@ from random import shuffle
 import pyrheabase
 import pyrheautils
 import schemautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol
+from facilitybase import CareTier, PthStatus
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
-from facilitybase import PatientStatusSetter, LTACQueue, tierToQueueMap
+from facilitybase import PatientStatusSetter, LTACQueue
 from stats import CachedCDFGenerator, BayesTree
-from hospital import ClassASetter
 from hospital import estimateWork as hospitalEstimateWork
+from hospital import buildChangeTree, biasTransfers
 
 category = 'LTAC'
 _schema = 'hospitalfacts_schema.yaml'
@@ -91,6 +91,10 @@ class LTAC(Facility):
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
 
+        # pthRates is the equivalent of lclRates but for pathogen carriers.  It must
+        # be initialized lazily because the pathogen has not yet been defined.
+        self.pthRates = None
+
         if 'nBeds' in descr:
             nBeds = descr['nBeds']['value']
             nWards = int(float(nBeds)/bedsPerWard) + 1
@@ -113,30 +117,27 @@ class LTAC(Facility):
                               patch, CareTier.LTAC, bedsPerWard))
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
-        careTier = ward.tier
-        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
-        _c = _constants
-        if careTier == CareTier.LTAC:
+        if not self.pthRates:
+            # Lazy initialization
+            infectiousAgent = self.getWards(CareTier.LTAC)[0].iA
+            self.lclRates, self.pthRates = biasTransfers(self.lclRates,
+                                                         infectiousAgent,
+                                                         CareTier.ICU,
+                                                         self.abbrev, self.category,
+                                                         CareTier.LTAC)
+
+        
+        if ward.tier == CareTier.LTAC:
+            biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
+            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
+                   biasFlag)
             if key in self.treeCache:
                 return self.treeCache[key]
             else:
-                changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
-                                                       ClassASetter(DiagClassA.DEATH)),
-                                                      (self.lclRates['icu'],
-                                                       ClassASetter(DiagClassA.VERYSICK)),
-                                                      (self.lclRates['hospital'],
-                                                       ClassASetter(DiagClassA.SICK)),
-                                                      (self.lclRates['ltac'],
-                                                       ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      (self.lclRates['nursinghome'],
-                                                       ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (self.lclRates['vent'],
-                                                       ClassASetter(DiagClassA.NEEDSVENT)),
-                                                      (self.lclRates['skilnrs'],
-                                                       ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                      (self.lclRates['home'],
-                                                       ClassASetter(DiagClassA.HEALTHY))
-                                                      ], tag='FATE')
+                if biasFlag:
+                    changeTree = buildChangeTree(self.pthRates)
+                else:
+                    changeTree = buildChangeTree(self.lclRates)
 
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
@@ -144,7 +145,7 @@ class LTAC(Facility):
                 self.treeCache[key] = tree
                 return tree
         else:
-            raise RuntimeError('LTACs do not provide care tier %s' % careTier)
+            raise RuntimeError('LTACs do not provide care tier %s' % ward.tier)
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
