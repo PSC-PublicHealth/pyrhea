@@ -35,12 +35,16 @@
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
+  - 'category': 'scenario'
+    'policyClass': 'FirstExperimentalScenario'
 
 #'runDurationDays': 1095
 'runDurationDays': 365
 
 #'burnInDays': 365
 burnInDays: 100
+
+scenarioWaitDays: 10
 
 'trackedFacilities':
   - 'ADVO_2320_H'

@@ -45,6 +45,8 @@ _TRACKED_FACILITIES_SET = None
 
 logger = None
 
+from pyrheabase import ScenarioPolicy
+
 def buildFacOccupancyDict(patch, timeNow):
     facTypeDict = {'day': timeNow}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
@@ -288,7 +290,7 @@ class TweakedOptParser(optparse.OptionParser):
             sys.exit(code)
 
 
-def checkInputFileSchema(fname, schemaFname, comm):
+def checkInputFileSchema(fname, schemaFname, comm=None):
     if logger is None:
         myLogger = logging.getLogger(__name__)
     else:
@@ -303,12 +305,18 @@ def checkInputFileSchema(fname, schemaFname, comm):
             for e in validator.iter_errors(inputJSON):
                 myLogger.error('Schema violation: %s: %s' %
                                (' '.join([str(word) for word in e.path]), e.message))
-            comm.Abort(2)
+            if comm:
+                comm.Abort(2)
+            else:
+                raise RuntimeError('Input file violates schema')
         else:
             return inputJSON
     except Exception, e:
         myLogger.error('Error checking input against its schema: %s' % e)
-        comm.Abort(2)
+        if comm:
+            comm.Abort(2)
+        else:
+            raise RuntimeError('Error checking input against its schema')
 
 
 
@@ -407,6 +415,20 @@ class BurnInAgent(patches.Agent):
         # and now the agent exits
 
 
+class ScenarioStartAgent(patches.Agent):
+    def __init__(self, name, patch, totalWaitDays, scenarioPolicyList):
+        patches.Agent.__init__(self, name, patch)
+        self.totalWaitDays = totalWaitDays
+        self.scenarioPolicyList = scenarioPolicyList
+
+    def run(self, startTime):
+        timeNow = self.sleep(self.totalWaitDays)  # @UnusedVariable
+        logger.info('Scenario is beginning')
+        for sP in self.scenarioPolicyList:
+            sP.begin()
+        # and now the agent exits
+
+
 def findPolicies(policyClassList,
                  policyRules,
                  category):
@@ -440,12 +462,12 @@ def createFacImplMap(facImplDict, facImplRules):
         else:
             raise RuntimeError('cannot find a facility implementation for %s' % category)
     return myMap
-            
+
 
 def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                          policyClassList, policyRules,
                          PthClass, noteHolderGroup, comm, totalRunDays):
-    # Share the facilities out over the patches
+    """Distribute facilities across patches and initialize them"""
     offset = 0
     tupleList = [(p, [], [], []) for p in patchList]
     for facDescription in myFacList:
@@ -601,7 +623,10 @@ def main():
 
         if 'trackedFacilities' in inputDict:
             global _TRACKED_FACILITIES
-            _TRACKED_FACILITIES.extend(inputDict['trackedFacilities'])
+            if _TRACKED_FACILITIES:
+                _TRACKED_FACILITIES.extend(inputDict['trackedFacilities'])
+            else:
+                _TRACKED_FACILITIES = inputDict['trackedFacilities'][:]
 
         schemautils.setSchemaBasePath(SCHEMA_DIR)
         pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
@@ -635,6 +660,20 @@ def main():
         # Add some things for which we need only one instance
         patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
                                             inputDict['burnInDays'], noteHolderGroup)])
+        if 'scenarioWaitDays' in inputDict:
+            scenarioPolicyClasses = []
+            policyClasses = (findPolicies(policyClassList, policyRules, 'scenario')
+                             or [])
+            scenarioPolicyClasses = [pC for pC in policyClasses
+                                     if issubclass(pC, ScenarioPolicy)]
+            if not scenarioPolicyClasses:
+                scenarioPolicyClasses = [ScenarioPolicy]
+            scenarioPolicies = [sPC('scenario_%d' % ind, patchList[0])
+                                for ind, sPC in enumerate(scenarioPolicyClasses)]
+            ssA = ScenarioStartAgent('scenarioStartAgent', patchList[0],
+                                     inputDict['burnInDays'] + inputDict['scenarioWaitDays'],
+                                     scenarioPolicies)
+            patchList[0].addAgents([ssA])
     
         initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                              policyClassList, policyRules,

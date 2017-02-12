@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 
 TierUpdateModFlag = enum('FORCE_MOVE')
 
+
+# This plugin base class has to be imported into the main program or
+# subclass identification fails.  Python has some hidden quirks.
+class ScenarioPolicy(object):
+    def __init__(self, name, patch):
+        self.name = name
+        self.patch = patch
+
+    def begin(self):
+        logger.info('The scenario %s is beginning', self.name)
+
+
 class Ward(peopleplaces.Location):
     def __init__(self, name, patch, tier, nBeds):
         super(Ward, self).__init__(name, patch, nBeds)

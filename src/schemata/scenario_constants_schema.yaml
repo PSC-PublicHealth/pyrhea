@@ -1,0 +1,19 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/scenerio_constants_schema.yaml'
+'title': 'scenerio constants schema'
+'description': 'scenerio constants schema'
+
+'$ref': '#/definitions/scenario_constants'
+
+'definitions':
+
+  'scenario_constants':
+    'type': 'object'
+    'properties':
+      'stringToLogWhenStarting':
+        'type': 'string'
+        'description': 'A real scenario would need more info, of course.'
+    'required':
+    - 'stringToLogWhenStarting'
+      
+     
