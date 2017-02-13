@@ -49,6 +49,14 @@ def splitEnumNameStr(enumName):
     ind = int(enumName[offset+1:])
     return patchName, ind
 
+def buildEnumEnumNameStr(name, ind1, ind2):
+    return '%s_%d_%d' % (name, ind1, ind2)
+
+def splitEnumEnumNameStr(enumName):
+    frontStr, ind2 = splitEnumNameStr(enumName)
+    patchName, ind1 = splitEnumNameStr(frontStr)
+    return patchName, ind1, ind2
+
 
 def occupancyTimeFig(specialDict, meanPopByCat=None):
     patchList = []
@@ -226,9 +234,22 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
         typically in uppercase, but that is not enforced.
     specialDict is of the form output by mergeNotesFiles().
     specialDictKey is one of the second-level keys of specialDict, for example 'localpathogen'.
-    Returns a list of tuples, of two possible forms.
+    Returns a list of tuples, of three possible forms.
     
     The first form appears if the time series contains
+    entries for multiple different status levels for multiple tiers, for example
+    populations sorted by CareTier at different PthLevel values.
+    That form is:
+    
+          [(dayArray, valArrayD), (dayArray, valArrayD), ...]
+          
+    where dayArray is a numpy array of dates and valArrayD has the form:
+    
+          {(intLvl, intLvl): fracArray, (intLvl, intLvl): fracArray, ...}
+          
+    and the ints in the tuple represent the two indices, for example (tier, pthStatus).
+          
+    The second form appears if the time series contains
     entries for multiple different status levels, for example populations at different PthLevel values.
     That form is:
     
@@ -274,24 +295,32 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
             dayV = np.array(fields['day'])
             del fields['day']
             
-            intKeyL = []
-            for keyKeyPair in fields.keys():
+            subKeyL = []
+            for keyStr in fields.keys():
                 try:
-                    base, ind = splitEnumNameStr(keyKeyPair)
-                    intKeyL.append(ind)
+                    base, ind1, ind2 = splitEnumEnumNameStr(keyStr)
+                    subKeyL.append((ind1, ind2))
                 except ValueError:
-                    pass  # This field apparently lacks integer keys
-            
-            if intKeyL:
+                    try:
+                        base, ind = splitEnumNameStr(keyStr)
+                        subKeyL.append(ind)
+                    except ValueError:
+                        pass  # This field apparently lacks integer keys
+  
+            if subKeyL:
                 curves = {}
-                for intKey in intKeyL:
-                    key = buildEnumNameStr(locKey, intKey)
+                for subKey in subKeyL:
+                    if isinstance(subKey, types.TupleType):
+                        ind1, ind2 = subKey
+                        key = buildEnumEnumNameStr(locKey, ind1, ind2)
+                    else:
+                        key = buildEnumNameStr(locKey, subKey)
                     if key in fields:
                         l = fields[key]
                         assert len(l) == len(dayV), (('field %s is the wrong length in special'
                                                          ' data %s (%d vs. %d)')
                                                         % (key, patchName, len(l), len(dayV)))
-                        curves[intKey] = np.array(l)
+                        curves[subKey] = np.array(l)
                 rsltL.append((dayV, curves))
             else:
                 rsltL.append((dayV, fields[locKey]))

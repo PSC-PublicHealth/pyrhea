@@ -106,6 +106,23 @@ class CRECore(object):
         self.exposureTreeCache = {}
         self.spontaneousLossTreeCache = {}
         self.spontaneousLossCachedCDF = CachedCDFGenerator(expon(scale=self.spontaneousLossTimeConstant))
+        
+    def _getInitialFracColonized(self, abbrev, category, tier):
+        tierStr = CareTier.names[tier]
+        if (category in self.initialFracColonizedTbl
+                and abbrev in self.initialFracColonizedTbl[category]
+                and tierStr in self.initialFracColonizedTbl[category][abbrev]):
+            initialFracColonized = (self.initialFracColonizedTbl[category]
+                                         [abbrev][tierStr])
+        elif (category in self.categoryInitialFracColonizedTbl
+              and tierStr in self.categoryInitialFracColonizedTbl[category]):
+            initialFracColonized = (self.categoryInitialFracColonizedTbl[category][tierStr])
+        else:
+            raise RuntimeError('No way to set initialFracColonized for %s tier %s' %
+                               (abbrev, CareTier.names[tier]))
+
+        return initialFracColonized
+
 
 class CRE(Pathogen):
     def __init__(self, ward, useWardCategory):
@@ -138,29 +155,15 @@ class CRE(Pathogen):
                 break
 
     def _getInitialFracColonized(self, abbrev, category, tier):
-        tierStr = CareTier.names[tier]
-        if (category in self.core.initialFracColonizedTbl
-                and abbrev in self.core.initialFracColonizedTbl[category]
-                and tierStr in self.core.initialFracColonizedTbl[category][abbrev]):
-            initialFracColonized = (self.core.initialFracColonizedTbl[category]
-                                         [abbrev][tierStr])
-        elif (category in self.core.categoryInitialFracColonizedTbl
-              and tierStr in self.core.categoryInitialFracColonizedTbl[category]):
-            initialFracColonized = (self.core.categoryInitialFracColonizedTbl[category]
-                                         [tierStr])
-        else:
-            raise RuntimeError('No way to set initialFracColonized for %s tier %s' %
-                               (abbrev, CareTier.names[tier]))
-
-        return initialFracColonized
+        return self.core._getInitialFracColonized(abbrev, category, tier)
 
     @classmethod
     def getCore(cls):
         if CRECore in SingletonMetaClass._instances:
             return SingletonMetaClass._instances[CRECore]
         else:
-            raise RuntimeError('Cannot get Core because no instances of %s have been created'
-                               % cls.__name__)
+            dummyCore = CRECore()  # Which will persist because it is a singleton
+            return dummyCore
 
     @classmethod
     def getRelativeProb(cls, pthStatus, fromTier, toTier):
@@ -180,7 +183,8 @@ class CRE(Pathogen):
         else:
             return 1.0
 
-    def getEstimatedPrevalence(self, pthStatus, abbrev, category, tier):
+    @classmethod
+    def getEstimatedPrevalence(cls, pthStatus, abbrev, category, tier):
         """
         The return value provides an estimate prevalence (0.0 <= return val <= 1.0)
         of the pathogen for the given pathogen status at the facility named by abbrev,
@@ -189,9 +193,9 @@ class CRE(Pathogen):
         particular category of patient in response to colonization, etc.
         """
         if pthStatus == PthStatus.CLEAR:
-            return 1.0 - self._getInitialFracColonized(abbrev, category, tier)
+            return 1.0 - cls.getCore()._getInitialFracColonized(abbrev, category, tier)
         elif pthStatus == PthStatus.COLONIZED:
-            return self._getInitialFracColonized(abbrev, category, tier)
+            return cls.getCore()._getInitialFracColonized(abbrev, category, tier)
         else:
             return 0.0
 

@@ -1,0 +1,9 @@
+'modelDir': '../../../pyrhea/models/ChicagoLand'
+pathogenImplementationDir: '../sim/creImplementation_ChicagoLand'
+testTime: 465
+'facilityDirs':
+  - '$(MODELDIR)/facilityfacts'
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+  

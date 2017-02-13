@@ -144,10 +144,31 @@ def buildLocalPthDict(patch, timeNow):
     return facPthDict
 
 
+def buildLocalTierPthDict(patch, timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            pPC = ward.iA.getPatientPthCounts(timeNow)
+            for k, v in pPC.items():
+                key = '%s_%s' % (ward.tier, k)
+                facPPC[key] += v
+        for key, v in facPPC.items():
+            facPthDict['%s_%s' % (fac.abbrev, key)] = v  # so key is now abbrev_tier_pthStatus
+    return facPthDict
+
+
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
-                          'localpathogen': buildLocalPthDict}
+                          'localpathogen': buildLocalPthDict,
+                          'localtierpathogen': buildLocalTierPthDict}
 
 
 def loadPolicyImplementations(implementationDir):

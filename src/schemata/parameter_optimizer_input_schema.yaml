@@ -1,0 +1,24 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/parameter_optimizer_input_schema.yaml'
+'title': 'parameter optimizer input schema'
+'description': 'parameter optimizer input schema'
+
+'$ref': '#/definitions/parameter_optimizer_inputs'
+
+'definitions':
+
+  'parameter_optimizer_inputs':
+    'type': 'object'
+    'properties':
+      'pathogenImplementationDir':
+        'description': 'Directory containing implementations of infectious agents'
+        'type': 'string'
+      'testTime':
+        'description': 'Time (simulation date) for which the calculation inputs are valid'
+        'type': 'integer'
+        'minimum': 0
+      'facilityDirs':
+        'type': 'array'
+        'items':
+          'type': 'string'
+     

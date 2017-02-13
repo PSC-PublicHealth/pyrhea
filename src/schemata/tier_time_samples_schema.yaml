@@ -1,9 +1,9 @@
 '$schema': 'http://json-schema.org/schema#'
-'$id': 'http://rhea.psc.edu/time_samples_schema.yaml'
-'title': 'time_samples schema'
-'description': 'schema for samples from a collection of time series'
+'$id': 'http://rhea.psc.edu/tier_time_samples_schema.yaml'
+'title': 'tier time_samples schema'
+'description': 'schema for samples from a collection of time series, by tier of care'
 
-'$ref': '#/definitions/timesamplelist'
+'$ref': '#/definitions/tiertimesamplelist'
 
 'definitions':
   'fracarray':
@@ -12,11 +12,13 @@
   'nonnegarray':
     'type': 'array'
     'items': {'type': 'number', 'minimum': 0.0}
-  'onetimesamplelist':
+
+  'onetiersamplelist':
     'type': 'object'
     'properties':
-      'abbrev': {'type': 'string', 'description': 'facility abbrev at which the samples were taken'}
-      'time': {'type':'number', 'description': 'time at which the samples were taken'}
+      'tier': 
+        '$ref': 'facility_schema.yaml#/definitions/caretier'
+        'description': 'Tier of care (ICU, NURSING, etc)'
       'samples':
         'type': 'object'
         'properties':
@@ -33,8 +35,17 @@
           'occupancy': {'$ref': '#/definitions/nonnegarray', 
                         'description': 'total facility occupancy'}
         'additionalProperties': false
+
+  'onetimetiersamplelist':
+    'type': 'object'
+    'properties':
+      'abbrev': {'type': 'string', 'description': 'facility abbrev at which the samples were taken'}
+      'time': {'type':'number', 'description': 'time at which the samples were taken'}
+      'tiers':
+        'type': 'array'
+        'items': {'$ref': '#definitions/onetiersamplelist'}
     
-  'timesamplelist':
+  'tiertimesamplelist':
     'type': 'array'
-    'items': { '$ref': '#definitions/onetimesamplelist' }
+    'items': { '$ref': '#definitions/onetimetiersamplelist' }
     
