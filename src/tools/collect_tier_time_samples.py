@@ -110,14 +110,7 @@ def main():
         sampTimes = list(sampTimeSet)
         sampTimes.sort()
     else:
-        sampTimes = [15, 30,
-                     100,  # 2010 end of burn-in
-                     815,  # 2012 begins
-                     994,  # 2012 second half
-                     1168, # 2013 begins
-                     1350, # 2013 second half
-                     1524, # 2014 begins
-                     1880  # 2015 begins
+        sampTimes = [465
                      ] 
 
     inputDict = checkInputFileSchema(args[0],
