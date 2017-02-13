@@ -1,3 +1,4 @@
+'sampleFile': 'tier_time_samples_wide_pass9.yaml'
 'modelDir': '../../../pyrhea/models/ChicagoLand'
 pathogenImplementationDir: '../sim/creImplementation_ChicagoLand'
 testTime: 465
