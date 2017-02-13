@@ -26,6 +26,7 @@ import os.path
 import signal
 import optparse
 import yaml
+from collections import defaultdict
 import numpy as np
 import logging
 import logging.config
@@ -41,7 +42,7 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 
 SCHEMA_DIR = '../schemata'
 INPUT_SCHEMA = 'parameter_optimizer_input_schema.yaml'
-SAMPLE_SCHEMA = 'time_samples_schema.yaml'
+SAMPLE_SCHEMA = 'tier_time_samples_schema.yaml'
 
 logger = None
 
@@ -63,34 +64,34 @@ def loadPthInfo(pthImplDir):
         assert len(modList) == 1, 'Found more than one pathogen implementation in %s' % pthImplDir
         PATHOGEN_CLASS = modList[0].getPathogenClass()
         logger.info('Finished loading pathogen')
-    p = PATHOGEN_CLASS.getEstimatedPrevalence(PthStatus.COLONIZED, 'MANO_900_S', 'SNF', CareTier.NURSING)
         
 
-def getTargetVal(abbrev, tier, facDict):
-    return PATHOGEN_CLASS.getEstimatedPrevalence(PthStatus.COLONIZED, abbrev, facDict['abbrev']['category'],
-                                                 CareTier.HOSP)
+def getTargetVal(abbrev, category, tier):
+    return PATHOGEN_CLASS.getEstimatedPrevalence(PthStatus.COLONIZED,
+                                                 abbrev, category, tier)
 
 def identifierToPath(sampleIdentifier):
-    return '/home/welling/git/pyrhea/src/sim/time_samples_wide_pass9.yaml'
+    return '/home/welling/git/pyrhea/src/sim/tier_time_samples.yaml'
 
 def getSampleValues(sampleIdentifier, time):
     """
-    Return an N by M array of floats, where N is the number of values in a sample and
-    M is the number of sample instances.
+    Returns a dict structured as dct[abbrev][tierName] = array-of-samples
     """
     sampleTbl = checkInputFileSchema(identifierToPath(sampleIdentifier),
                                      os.path.join(SCHEMA_DIR, SAMPLE_SCHEMA))
-    vecD = {}
+    vecDD = defaultdict(dict)
     for elt in sampleTbl:
         if elt['time'] == time:
             abbrev = elt['abbrev']
-            assert abbrev not in vecD, 'Redundant record for %s at time %s' % (abbrev, time)
-            vecD[abbrev] = np.asarray(elt['samples']['COLONIZED'])
-    if not vecD:
+            for subElt in elt['tiers']:
+                vecDD[abbrev][subElt['tier']] = np.asarray(subElt['samples']['COLONIZED'])
+    if not vecDD:
         raise RuntimeError('No samples in data file identified by %s for time %s'
                            % (sampleIdentifier, time))
-    
-    return vecD
+    return vecDD
+
+def calcLogLikelihoodTerm(sampV, tVal):
+    return 0.0
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -123,13 +124,17 @@ def main():
         for elt in inputDict['pathTranslations']:
             pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
 
-    loadPthInfo(inputDict['pathogenImplementationDir'], 'CRECore')
+    loadPthInfo(inputDict['pathogenImplementationDir'])
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
-    sampD = getSampleValues('someIdentifier', 465)
-    for abbrev, valV in sampD.items():
-        tier = 0
-        tV = getTargetVal(abbrev, facDict[abbrev]['category'], tier)
+    sampDD = getSampleValues('someIdentifier', inputDict['testTime'])
+    logLik = 0.0
+    for abbrev, subD in sampDD.items():
+        for tierStr, sampV in subD.items():
+            tier = getattr(CareTier, tierStr)
+            tVal = getTargetVal(abbrev, facDict[abbrev]['category'], tier)
+            logLik += calcLogLikelihoodTerm(sampV, tVal)
+    print logLik
 
 if __name__ == "__main__":
     main()
