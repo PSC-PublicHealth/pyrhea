@@ -28,6 +28,7 @@ import optparse
 import yaml
 from collections import defaultdict
 import numpy as np
+from scipy.stats import norm
 import logging
 import logging.config
 
@@ -43,6 +44,8 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 SCHEMA_DIR = '../schemata'
 INPUT_SCHEMA = 'parameter_optimizer_input_schema.yaml'
 SAMPLE_SCHEMA = 'tier_time_samples_schema.yaml'
+
+EPSILON = 1.0e-6
 
 logger = None
 
@@ -70,14 +73,11 @@ def getTargetVal(abbrev, category, tier):
     return PATHOGEN_CLASS.getEstimatedPrevalence(PthStatus.COLONIZED,
                                                  abbrev, category, tier)
 
-def identifierToPath(sampleIdentifier):
-    return '/home/welling/git/pyrhea/src/sim/tier_time_samples.yaml'
-
-def getSampleValues(sampleIdentifier, time):
+def getSampleValues(samplePath, time):
     """
     Returns a dict structured as dct[abbrev][tierName] = array-of-samples
     """
-    sampleTbl = checkInputFileSchema(identifierToPath(sampleIdentifier),
+    sampleTbl = checkInputFileSchema(pyrheautils.pathTranslate(samplePath),
                                      os.path.join(SCHEMA_DIR, SAMPLE_SCHEMA))
     vecDD = defaultdict(dict)
     for elt in sampleTbl:
@@ -87,11 +87,20 @@ def getSampleValues(sampleIdentifier, time):
                 vecDD[abbrev][subElt['tier']] = np.asarray(subElt['samples']['COLONIZED'])
     if not vecDD:
         raise RuntimeError('No samples in data file identified by %s for time %s'
-                           % (sampleIdentifier, time))
+                           % (samplePath, time))
     return vecDD
 
-def calcLogLikelihoodTerm(sampV, tVal):
-    return 0.0
+def logitLink(vec):
+    """Given a numpy vector of floats, convert to logit"""
+    return np.log(vec/(1.0-vec))
+
+def invLogitLink(vec):
+    """Given a numpy vector of floats, invert the logit transformation"""
+    expTerm = np.exp(vec)
+    return expTerm/(expTerm + 1.0)
+
+def printBadStuff(vec, label):
+    print '%s: %s %s' % (label, vec[np.isnan(vec)], vec[np.isinf(vec)])
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -102,7 +111,8 @@ def main():
     signal.signal(signal.SIGUSR1, handle_pdb)
 
     global logger
-    logging.config.dictConfig(getLoggerConfig())
+    #logging.config.dictConfig(getLoggerConfig())
+    logging.config.dictConfig({'version': 1})
     logger = logging.getLogger(__name__)
 
     parser = optparse.OptionParser(usage="""
@@ -127,13 +137,36 @@ def main():
     loadPthInfo(inputDict['pathogenImplementationDir'])
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
-    sampDD = getSampleValues('someIdentifier', inputDict['testTime'])
+    sampDD = getSampleValues(inputDict['sampleFile'], inputDict['testTime'])
     logLik = 0.0
+    testTuples = []
+    nSamp = None
     for abbrev, subD in sampDD.items():
         for tierStr, sampV in subD.items():
+            if nSamp:
+                if sampV.shape[0] != nSamp:
+                    raise RuntimeError('Discordant num samples (%s vs %s) for %s %s'
+                                       % (sampV.shape[0], nSamp, abbrev, tierStr))
+            else:
+                nSamp = sampV.shape[0]
             tier = getattr(CareTier, tierStr)
-            tVal = getTargetVal(abbrev, facDict[abbrev]['category'], tier)
-            logLik += calcLogLikelihoodTerm(sampV, tVal)
+            tVec = np.asarray(getTargetVal(abbrev, facDict[abbrev]['category'], tier))
+            testTuples.append((sampV, tVec))
+    sampMat = np.asarray([sampV for sampV, tVec in testTuples], dtype=np.double)
+    fullTVec = np.asarray([tVec for sampV, tVec in testTuples], dtype=np.double)
+    etaMat = logitLink(np.minimum(sampMat + EPSILON, 1.0 - EPSILON))
+    etaTVec = logitLink(np.minimum(fullTVec + EPSILON, 1.0 - EPSILON))
+    #printBadStuff(etaTVec, 'etaTVec')
+    etaMeans = np.mean(etaMat, 1)
+    #printBadStuff(etaMeans, 'etaMeans')
+    etaStdv = np.std(etaMat, 1, ddof=1)
+    #printBadStuff(etaMeans, 'etaStdvs')
+    logLikV = norm.logpdf(etaTVec, loc=etaMeans, scale=etaStdv)
+    # The following replaces any left-over nans with 0.0
+    #printBadStuff(logLikV)
+    logLikV[logLikV == np.inf] = 0.0
+    logLikV = np.nan_to_num(logLikV)
+    logLik = np.sum(logLikV)
     print logLik
 
 if __name__ == "__main__":

@@ -21,4 +21,6 @@
         'type': 'array'
         'items':
           'type': 'string'
-     
+      'sampleFile':
+        'type': 'string'
+        'description': 'The path to the file of time samples'     

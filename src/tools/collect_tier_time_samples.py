@@ -58,11 +58,6 @@ def extractSamples(abbrev, time, specialDict):
                 sampV = scaleV[dayVec == time]
                 if len(sampV):
                     sampListDictDict[CareTier.names[tier]][pth.PthStatus.names[pthLvl]].append(float(sampV[0]))
-    print '-------- %s -------' % abbrev
-    for k1, v1 in sampListDictDict.items():
-        for k2, v2 in v1.items():
-            print '%s, %s: %s' % (k1, k2, v2)
-    print '--------'
     return sampListDictDict
 
 
