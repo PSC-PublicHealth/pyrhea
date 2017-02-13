@@ -110,7 +110,10 @@ def getSampleValues(samplePath, time, facDict):
 
 def logitLink(vec):
     """Given a numpy vector of floats, convert to logit"""
-    return np.log(vec/(1.0-vec))
+    oldSettings = np.seterr(divide='ignore')
+    rslt = np.log(vec/(1.0-vec))
+    np.seterr(**oldSettings)
+    return rslt
 
 def invLogitLink(vec):
     """Given a numpy vector of floats, invert the logit transformation"""
@@ -119,6 +122,49 @@ def invLogitLink(vec):
 
 def printBadStuff(vec, label):
     print '%s: %s %s' % (label, vec[np.isnan(vec)], vec[np.isinf(vec)])
+
+def calcLogLik(etaMat, etaTVec):
+    oldSettings = np.seterr(invalid='ignore')
+    etaMeans = np.nanmean(etaMat, 1)
+    #printBadStuff(etaMeans, 'etaMeans')
+    etaStdv = np.nanstd(etaMat, 1, ddof=1)
+    #printBadStuff(etaMeans, 'etaStdvs')
+    logLikV = norm.logpdf(etaTVec, loc=etaMeans, scale=etaStdv)
+    # The following replaces any left-over nans with 0.0
+    #printBadStuff(logLikV)
+    logLikV[logLikV == np.inf] = 0.0
+    logLikV = np.nan_to_num(logLikV)
+    logLik = np.sum(logLikV)
+    np.seterr(**oldSettings)
+    return logLik
+
+def patternDrop1(indL):
+    rsltL = []
+    for i in xrange(len(indL)):
+        rsltL.append(indL[:i] + indL[i+1:])
+    rsltL = [tuple(ent) for ent in rsltL]
+    return rsltL
+
+def dropN(etaMat, etaTVec, nDrop):
+    print etaMat.shape
+    indL = range(etaMat.shape[1])
+    patternSet = set([tuple(indL)])
+    assert nDrop < etaMat.shape[1], ('cannot drop %d elements from %d elements'
+                                     % (nDrop, etaMat.shape[1]))
+    for _ in xrange(nDrop):
+        newSet = set()
+        for pattern in patternSet:
+            newSet.update(patternDrop1(pattern))
+        patternSet = newSet
+    rsltL = []
+    for pattern in patternSet:
+        pattern = list(pattern)
+        mask = np.zeros(etaMat.shape[1], dtype=bool)
+        mask[pattern] = True
+        maskMat = etaMat[:, mask]
+        rsltL.append(calcLogLik(maskMat, etaTVec))
+
+    return rsltL
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -135,6 +181,8 @@ def main():
     parser = optparse.OptionParser(usage="""
     %prog run_descr.yaml
     """)
+    parser.add_option("--drops", action="store", type="int",
+                      help="Run multiple times dropping this many samples each time", default=0)
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -155,7 +203,6 @@ def main():
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
     sampDD = getSampleValues(inputDict['sampleFile'], inputDict['testTime'], facDict)
-    logLik = 0.0
     testTuples = []
     nSamp = None
     for abbrev, subD in sampDD.items():
@@ -171,20 +218,16 @@ def main():
             testTuples.append((sampV, tVec))
     sampMat = np.asarray([sampV for sampV, tVec in testTuples], dtype=np.double)
     fullTVec = np.asarray([tVec for sampV, tVec in testTuples], dtype=np.double)
-    etaMat = logitLink(np.minimum(sampMat + EPSILON, 1.0 - EPSILON))
-    etaTVec = logitLink(np.minimum(fullTVec + EPSILON, 1.0 - EPSILON))
+    etaMat = logitLink(sampMat)
+    etaTVec = logitLink(fullTVec)
     #printBadStuff(etaTVec, 'etaTVec')
-    etaMeans = np.mean(etaMat, 1)
-    #printBadStuff(etaMeans, 'etaMeans')
-    etaStdv = np.std(etaMat, 1, ddof=1)
-    #printBadStuff(etaMeans, 'etaStdvs')
-    logLikV = norm.logpdf(etaTVec, loc=etaMeans, scale=etaStdv)
-    # The following replaces any left-over nans with 0.0
-    #printBadStuff(logLikV)
-    logLikV[logLikV == np.inf] = 0.0
-    logLikV = np.nan_to_num(logLikV)
-    logLik = np.sum(logLikV)
-    print logLik
+    if opts.drops:
+        logLikL = dropN(etaMat[:,:8], etaTVec, opts.drops)
+        logLikL.sort()
+        print logLikL
+    else:
+        print clacLogLik(etaMat, etaTVec)
+        logLikL = [calcLogLik(etaMat, etaTVec)]
 
 if __name__ == "__main__":
     main()
