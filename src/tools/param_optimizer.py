@@ -44,6 +44,7 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 SCHEMA_DIR = '../schemata'
 INPUT_SCHEMA = 'parameter_optimizer_input_schema.yaml'
 SAMPLE_SCHEMA = 'tier_time_samples_schema.yaml'
+ALT_SAMPLE_SCHEMA = 'time_samples_schema.yaml'
 
 EPSILON = 1.0e-6
 
@@ -73,18 +74,35 @@ def getTargetVal(abbrev, category, tier):
     return PATHOGEN_CLASS.getEstimatedPrevalence(PthStatus.COLONIZED,
                                                  abbrev, category, tier)
 
-def getSampleValues(samplePath, time):
+CAT_TIER_TBL = {'HOSPITAL': 'HOSP',
+                'SNF': 'NURSING',
+                'VSNF': 'SKILNRS',
+                'LTACH': 'LTAC'}
+
+def getSampleValues(samplePath, time, facDict):
     """
     Returns a dict structured as dct[abbrev][tierName] = array-of-samples
     """
-    sampleTbl = checkInputFileSchema(pyrheautils.pathTranslate(samplePath),
-                                     os.path.join(SCHEMA_DIR, SAMPLE_SCHEMA))
+    tierMode = True
+    try:
+        sampleTbl = checkInputFileSchema(pyrheautils.pathTranslate(samplePath),
+                                         os.path.join(SCHEMA_DIR, SAMPLE_SCHEMA))
+    except Exception, e:
+        tierMode = False
+        sampleTbl = checkInputFileSchema(pyrheautils.pathTranslate(samplePath),
+                                         os.path.join(SCHEMA_DIR, ALT_SAMPLE_SCHEMA))
+
     vecDD = defaultdict(dict)
     for elt in sampleTbl:
         if elt['time'] == time:
             abbrev = elt['abbrev']
-            for subElt in elt['tiers']:
-                vecDD[abbrev][subElt['tier']] = np.asarray(subElt['samples']['COLONIZED'])
+            if tierMode:
+                for subElt in elt['tiers']:
+                    vecDD[abbrev][subElt['tier']] = np.asarray(subElt['samples']['COLONIZED'])
+            else:
+                tier = CAT_TIER_TBL[facDict[abbrev]['category']]
+                vecDD[abbrev][tier] = np.asarray(elt['samples']['COLONIZED'])
+            
     if not vecDD:
         raise RuntimeError('No samples in data file identified by %s for time %s'
                            % (samplePath, time))
@@ -112,7 +130,6 @@ def main():
 
     global logger
     #logging.config.dictConfig(getLoggerConfig())
-    logging.config.dictConfig({'version': 1})
     logger = logging.getLogger(__name__)
 
     parser = optparse.OptionParser(usage="""
@@ -137,7 +154,7 @@ def main():
     loadPthInfo(inputDict['pathogenImplementationDir'])
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
-    sampDD = getSampleValues(inputDict['sampleFile'], inputDict['testTime'])
+    sampDD = getSampleValues(inputDict['sampleFile'], inputDict['testTime'], facDict)
     logLik = 0.0
     testTuples = []
     nSamp = None
