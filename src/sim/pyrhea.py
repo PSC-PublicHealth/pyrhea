@@ -452,12 +452,21 @@ class ScenarioStartAgent(patches.Agent):
 
 def findPolicies(policyClassList,
                  policyRules,
-                 category):
+                 category,
+                 abbrev):
     l = []
+    abbrevFlag = False
     for pCl in policyClassList:
         for categoryRegex, classRegex in policyRules:
-            if categoryRegex.match(category) and classRegex.match(pCl.__name__):
+
+            if categoryRegex.match(abbrev) and classRegex.match(pCl.__name__):
                 l.append(pCl)
+                abbrevFlag = True
+            else:
+                if not abbrevFlag:
+                    if categoryRegex.match(category) and classRegex.match(pCl.__name__):
+                        l.append(pCl)
+         
     return l
 
 
@@ -492,6 +501,7 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
     offset = 0
     tupleList = [(p, [], [], []) for p in patchList]
     for facDescription in myFacList:
+        
         patch, allIter, allAgents, allFacilities = tupleList[offset]
         facImplCategory = findFacImplCategory(facImplDict, facImplRules,
                                               facDescription['category'])
@@ -502,8 +512,10 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                 facImpl.generateFull(facDescription, patch,
                                      policyClasses=findPolicies(policyClassList,
                                                                 policyRules,
-                                                                facImpl.category),
+                                                                facImpl.category,
+                                                                facDescription['abbrev']),
                                      categoryNameMapper=facImplMapFun)
+            
             for w in wards:
                 w.setInfectiousAgent(PthClass(w, useWardCategory=facImplCategory))
                 w.initializePatientPthState()
@@ -657,15 +669,17 @@ def main():
         facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
         if 'facilitySelectors' in inputDict:
             facImplRules = [(re.compile(rule['category']), rule['implementation'])
-                           for rule in inputDict['facilitySelectors']]
+                            for rule in inputDict['facilitySelectors']]
         else:
             facImplRules = [(re.compile(category), category)
                             for category in facImplDict.keys()]  # an identity map
     
         policyClassList = loadPolicyImplementations(inputDict['policyImplementationDir'])
         policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
-                       for rule in inputDict['policySelectors']]
-    
+                       for rule in inputDict['policySelectors'] if 'category' in rule.keys() ]
+        policyRules += [(re.compile(rule['locationAbbrev']),re.compile(rule['policyClass']))
+                           for rule in inputDict['policySelectors'] if 'locationAbbrev' in rule.keys() ]
+        
         myFacList = distributeFacilities(comm, inputDict['facilityDirs'],
                                          facImplDict, facImplRules,
                                          clData['partitionFile'])
