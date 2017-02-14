@@ -453,13 +453,12 @@ class ScenarioStartAgent(patches.Agent):
 def findPolicies(policyClassList,
                  policyRules,
                  category,
-                 abbrev):
+                 abbrev = None):
     l = []
     abbrevFlag = False
     for pCl in policyClassList:
         for categoryRegex, classRegex in policyRules:
-
-            if categoryRegex.match(abbrev) and classRegex.match(pCl.__name__):
+            if abbrev is not None and categoryRegex.match(abbrev) and classRegex.match(pCl.__name__):
                 l.append(pCl)
                 abbrevFlag = True
             else:
