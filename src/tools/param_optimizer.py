@@ -41,7 +41,7 @@ from map_transfer_matrix import parseFacilityData
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
 
-SCHEMA_DIR = '../schemata'
+SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'parameter_optimizer_input_schema.yaml'
 SAMPLE_SCHEMA = 'tier_time_samples_schema.yaml'
 ALT_SAMPLE_SCHEMA = 'time_samples_schema.yaml'
