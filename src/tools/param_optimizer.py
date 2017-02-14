@@ -146,7 +146,6 @@ def patternDrop1(indL):
     return rsltL
 
 def dropN(etaMat, etaTVec, nDrop):
-    print etaMat.shape
     indL = range(etaMat.shape[1])
     patternSet = set([tuple(indL)])
     assert nDrop < etaMat.shape[1], ('cannot drop %d elements from %d elements'
