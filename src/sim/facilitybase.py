@@ -121,7 +121,6 @@ class Ward(pyrheabase.Ward):
             self.iA.initializePatientState(p)
             
     def initializePatientTreatment(self):
-        print self.fac.treatmentPolicy
         for p in self.getPatientList():
             self.fac.treatmentPolicy.initializePatientTreatment(self, p)
 
@@ -321,14 +320,12 @@ class Facility(pyrheabase.Facility):
         self.patientStats = PatientStats()
         transferDestinationPolicyClass = TransferDestinationPolicy
         treatmentPolicyClass = TreatmentPolicy
-        print "PolicyClasses for {0} is {1}".format(name,policyClasses)
         if policyClasses is not None:
             for pC in policyClasses:
                 if issubclass(pC, TransferDestinationPolicy):
                     transferDestinationPolicyClass = pC
                 if issubclass(pC, TreatmentPolicy):
                     treatmentPolicyClass = pC
-                    print "PC = {0}".format(pC)
         self.transferDestinationPolicy = transferDestinationPolicyClass(patch, self.categoryNameMapper)
         self.treatmentPolicy = treatmentPolicyClass(patch, self.categoryNameMapper)
         
