@@ -151,6 +151,7 @@ def dropN(etaMat, etaTVec, nDrop):
     patternSet = set([tuple(indL)])
     assert nDrop < etaMat.shape[1], ('cannot drop %d elements from %d elements'
                                      % (nDrop, etaMat.shape[1]))
+    assert nDrop > 0, ('dropping zero samples makes no sense')
     for _ in xrange(nDrop):
         newSet = set()
         for pattern in patternSet:
@@ -181,12 +182,18 @@ def main():
     parser = optparse.OptionParser(usage="""
     %prog run_descr.yaml
     """)
-    parser.add_option("--drops", action="store", type="int",
+    parser.add_option("--drop", action="store", type="int",
                       help="Run multiple times dropping this many samples each time", default=0)
+
+    parser.add_option("--iqr", action="store_true",
+                      help="Provide quartiles as well as estimated value (requires --drop)")
 
     opts, args = parser.parse_args()
     if len(args) != 1:
-        parser.error('A YAML run description is required')
+        parser.error('An input yaml file matching %s is required' % INPUT_SCHEMA)
+
+    if opts.iqr and not opts.drop:
+        parser.error('To use the --iqr option you must also specify --drop=N')
 
     parser.destroy()
 
@@ -221,13 +228,19 @@ def main():
     etaMat = logitLink(sampMat)
     etaTVec = logitLink(fullTVec)
     #printBadStuff(etaTVec, 'etaTVec')
-    if opts.drops:
-        logLikL = dropN(etaMat[:,:8], etaTVec, opts.drops)
+    if opts.drop:
+        logLikL = dropN(etaMat, etaTVec, opts.drop)
         logLikL.sort()
-        print logLikL
+        if opts.iqr:
+            q1 = logLikL[len(logLikL)/4]
+            q2 = logLikL[len(logLikL)/2]
+            q3 = logLikL[(3*len(logLikL))/4]
+            est = calcLogLik(etaMat[:,:-2], etaTVec)
+            print "{'full': %s, 'q1': %s, 'median': %s, 'q3': %s}" % (est, q1, q2, q3)
+        else:
+            print logLikL
     else:
-        print clacLogLik(etaMat, etaTVec)
-        logLikL = [calcLogLik(etaMat, etaTVec)]
+        print calcLogLik(etaMat, etaTVec)
 
 if __name__ == "__main__":
     main()
