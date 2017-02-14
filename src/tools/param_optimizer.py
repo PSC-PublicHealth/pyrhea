@@ -46,7 +46,8 @@ INPUT_SCHEMA = 'parameter_optimizer_input_schema.yaml'
 SAMPLE_SCHEMA = 'tier_time_samples_schema.yaml'
 ALT_SAMPLE_SCHEMA = 'time_samples_schema.yaml'
 
-EPSILON = 1.0e-6
+SHRINK = 0.99999
+MIN_STDV = 1.0
 
 logger = None
 
@@ -110,9 +111,9 @@ def getSampleValues(samplePath, time, facDict):
 
 def logitLink(vec):
     """Given a numpy vector of floats, convert to logit"""
-    oldSettings = np.seterr(divide='ignore')
+    #oldSettings = np.seterr(divide='ignore')
     rslt = np.log(vec/(1.0-vec))
-    np.seterr(**oldSettings)
+    #np.seterr(**oldSettings)
     return rslt
 
 def invLogitLink(vec):
@@ -120,22 +121,26 @@ def invLogitLink(vec):
     expTerm = np.exp(vec)
     return expTerm/(expTerm + 1.0)
 
+def shrink(vec):
+    """Scale the vector of P values away from the scary singularities at 0 and 1"""
+    return ((vec - 0.5) * SHRINK) + 0.5
+
 def printBadStuff(vec, label):
     print '%s: %s %s' % (label, vec[np.isnan(vec)], vec[np.isinf(vec)])
 
 def calcLogLik(etaMat, etaTVec):
-    oldSettings = np.seterr(invalid='ignore')
+    #oldSettings = np.seterr(invalid='ignore')
     etaMeans = np.nanmean(etaMat, 1)
-    #printBadStuff(etaMeans, 'etaMeans')
-    etaStdv = np.nanstd(etaMat, 1, ddof=1)
-    #printBadStuff(etaMeans, 'etaStdvs')
+    # printBadStuff(etaMeans, 'etaMeans')
+    etaStdv = np.nanstd(etaMat, 1, ddof=1) + MIN_STDV
+    # printBadStuff(etaMeans, 'etaStdvs')
     logLikV = norm.logpdf(etaTVec, loc=etaMeans, scale=etaStdv)
+    # printBadStuff(logLikV, 'logLikV')
     # The following replaces any left-over nans with 0.0
-    #printBadStuff(logLikV)
     logLikV[logLikV == np.inf] = 0.0
     logLikV = np.nan_to_num(logLikV)
     logLik = np.sum(logLikV)
-    np.seterr(**oldSettings)
+    #np.seterr(**oldSettings)
     return logLik
 
 def patternDrop1(indL):
@@ -224,9 +229,10 @@ def main():
             testTuples.append((sampV, tVec))
     sampMat = np.asarray([sampV for sampV, tVec in testTuples], dtype=np.double)
     fullTVec = np.asarray([tVec for sampV, tVec in testTuples], dtype=np.double)
-    etaMat = logitLink(sampMat)
-    etaTVec = logitLink(fullTVec)
-    #printBadStuff(etaTVec, 'etaTVec')
+    etaMat = logitLink(shrink(sampMat))
+    # printBadStuff(etaMat, 'etaMat')
+    etaTVec = logitLink(shrink(fullTVec))
+    # printBadStuff(etaTVec, 'etaTVec')
     if opts.drop:
         logLikL = dropN(etaMat, etaTVec, opts.drop)
         logLikL.sort()
@@ -234,7 +240,7 @@ def main():
             q1 = logLikL[len(logLikL)/4]
             q2 = logLikL[len(logLikL)/2]
             q3 = logLikL[(3*len(logLikL))/4]
-            est = calcLogLik(etaMat[:,:-2], etaTVec)
+            est = calcLogLik(etaMat, etaTVec)
             print "{'full': %s, 'q1': %s, 'median': %s, 'q3': %s}" % (est, q1, q2, q3)
         else:
             print logLikL
