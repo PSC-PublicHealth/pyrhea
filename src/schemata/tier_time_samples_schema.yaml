@@ -44,6 +44,8 @@
       'tiers':
         'type': 'array'
         'items': {'$ref': '#definitions/onetiersamplelist'}
+    'required':
+      - 'tiers'
     
   'tiertimesamplelist':
     'type': 'array'
