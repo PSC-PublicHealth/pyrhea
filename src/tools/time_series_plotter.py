@@ -33,6 +33,7 @@ sys.path.append(os.path.join(cwd, "../sim"))
 import pyrheautils
 import schemautils
 import pathogenbase as pth
+from facilitybase import CareTier
 from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
@@ -334,40 +335,83 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
     if abbrev == 'CMIS':
         return
     
-    fig, axes = plt.subplots(2,1)
-    axes[0].set_xlabel('Days')
-    axes[0].set_ylabel('Pathogen Prevalence')
-    axes[0].set_title("%s History of Infection Status" % abbrev)
-    axes[1].set_xlabel('Days')
-    axes[1].set_ylabel('Occupancy')
-    axes[1].set_title("%s History of Occupancy" % abbrev)
+    tierMode = True
+    tplList = getTimeSeriesList(abbrev, specialDict, 'localtierpathogen')
+    if not tplList:
+        tierMode = False
+        tplList = getTimeSeriesList(abbrev, specialDict, 'localpathogen')
+        
+    if tierMode:
+        tierAxisD = {}
+        tAOffset = 0
+        for dayVec, curves in tplList:
+            for tier, pthStatus in curves:
+                if tier not in tierAxisD:
+                    tierAxisD[tier] = tAOffset
+                    tAOffset += 1
+    else:
+        tierAxisD = {None: 0}
 
-    tplList = getTimeSeriesList(abbrev, specialDict, 'localpathogen')
+    fig, axes = plt.subplots(len(tierAxisD) + 1,1)
+    popAxis = axes[-1]
+    popAxis.set_xlabel('Days')
+    popAxis.set_ylabel('Occupancy')
+    popAxis.set_title("%s all tiers History of Occupancy" % abbrev)
+    for tier, aOffset in tierAxisD.items():
+        axes[aOffset].set_xlabel('Days')
+        axes[aOffset].set_ylabel('Pathogen Prevalence')
+        if tier is None:
+            axes[aOffset].set_title("%s all tiers History of Infection Status" % abbrev)
+        else:
+            axes[aOffset].set_title("%s %s History of Infection Status" % (abbrev, CareTier.names[tier]))
+        axes[aOffset].set_xlabel('Days')
+        axes[aOffset].set_ylabel('Pathogen Prevalence')
+        
     clrDict = defaultdict(lambda: None)
+    if len(tplList) > 3:
+        alpha = 0.2
+    else:
+        alpha = 1.0
     for idx, (dayVec, curves) in enumerate(tplList):
-        totVec = sum(curves.values())
         scaledCurves = {}
-        for pthLvl, lVec in curves.items():
+        tmpVecD = defaultdict(list)
+        totVecD = {}
+        for tpl, lVec in curves.items():
+            tier, pthStatus = (tpl if tierMode else (None, tpl))
+            tmpVecD[tier].append(lVec)
+        for tier, lVecList in tmpVecD.items():
+            totVecD[tier] = sum(lVecList)
+        for tpl, lVec in curves.items():
+            tier, pthStatus = (tpl if tierMode else (None, tpl))
             with np.errstate(divide='ignore', invalid='ignore'):
-                scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVec))
+                scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVecD[tier]))
                 scaleV[scaleV == np.inf] = 0.0
                 scaleV = np.nan_to_num(scaleV)
-            scaledCurves[pthLvl] = scaleV
-        for pthLvl, lVec in scaledCurves.items():
-            lbl = (None if idx else ('%s' % pth.PthStatus.names[pthLvl]))
+#             scaledCurves[(tier, pthStatus)] = scaleV
+#         for (tier, pthStatus), lVec in scaledCurves.items():
+            if tier is None:
+                lblStr = '%s' % pth.PthStatus.names[pthStatus]
+            else:
+                lblStr = '%s %s' % (CareTier.names[tier], pth.PthStatus.names[pthStatus])
+            lbl = (None if idx else lblStr)
             if np.count_nonzero(lVec):
-                thisP, = axes[0].plot(dayVec, lVec, label=lbl, c=clrDict[pthLvl],
-                                      alpha=0.2)
-                clrDict[pthLvl] = thisP.get_color()
-    axes[0].legend()
+                thisP, = axes[tierAxisD[tier]].plot(dayVec, scaleV, label=lbl, c=clrDict[tpl],
+                                       alpha=alpha)
+                clrDict[tpl] = thisP.get_color()
+    for tAOffset in tierAxisD.values():
+        axes[tAOffset].legend()
 
     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
     popClr = None
+    if len(popTplList) > 3:
+        alpha = 0.2
+    else:
+        alpha = 1.0
     for dayVec, popVec in popTplList:
-        baseLine, = axes[1].plot(dayVec, popVec, c=popClr, alpha=0.2)
+        baseLine, = popAxis.plot(dayVec, popVec, c=popClr, alpha=alpha)
         popClr = baseLine.get_color()
     if meanPop is not None:
-        axes[1].plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
+        popAxis.plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
 
     fig.tight_layout()
     fig.canvas.set_window_title(abbrev)
