@@ -44,22 +44,23 @@ def pathTranslate(rawPath, lookupDict=None):
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)
-    validator = schemautils.getValidator(pathTranslate(schemaPath, pathLookupDict))
-    try:
-        nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
-        if nErrors:
-            for e in validator.iter_errors(cJSON):
-                logger.error('Schema violation: %s: %s' %
-                             (' '.join([str(word) for word in e.path]), e.message))
-            raise RuntimeError('%s does not satisfy the schema %s' %
-                               (valuePath, schemaPath))
-    except AttributeError:
-        logger.error('An error occurred validating %s against schema %s',
-                     pathTranslate(valuePath, pathLookupDict),
-                     pathTranslate(schemaPath, pathLookupDict))
-        raise RuntimeError(('An error occurred validating %s against schema %s'
-                            % (pathTranslate(valuePath, pathLookupDict),
-                               pathTranslate(schemaPath, pathLookupDict))))
+        if os.name != 'nt':
+            validator = schemautils.getValidator(pathTranslate(schemaPath, pathLookupDict))
+            try:
+                nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
+                if nErrors:
+                    for e in validator.iter_errors(cJSON):
+                        logger.error('Schema violation: %s: %s' %
+                                     (' '.join([str(word) for word in e.path]), e.message))
+                    raise RuntimeError('%s does not satisfy the schema %s' %
+                                       (valuePath, schemaPath))
+            except AttributeError:
+                logger.error('An error occurred validating %s against schema %s',
+                             pathTranslate(valuePath, pathLookupDict),
+                             pathTranslate(schemaPath, pathLookupDict))
+                raise RuntimeError(('An error occurred validating %s against schema %s'
+                                    % (pathTranslate(valuePath, pathLookupDict),
+                                       pathTranslate(schemaPath, pathLookupDict))))
     return cJSON
 
 

@@ -238,9 +238,12 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
         facImplCategory = findFacImplCategory(facImplDict, facImplRules, rec['category'])
         if facImplCategory:
             facImpl = facImplDict[facImplCategory]
-            nErrors = facImpl.checkSchema(rec)
-            if nErrors:
-                logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+            if os.name != 'nt':
+                nErrors = facImpl.checkSchema(rec)
+                if nErrors:
+                    logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+                else:
+                    facRecs.append(rec)
             else:
                 facRecs.append(rec)
         else:
@@ -319,19 +322,22 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
-        validator = schemautils.getValidator(schemaFname)
-        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
-        if nErrors:
-            myLogger.error('Input file violates schema:')
-            for e in validator.iter_errors(inputJSON):
-                myLogger.error('Schema violation: %s: %s' %
-                               (' '.join([str(word) for word in e.path]), e.message))
-            if comm:
-                comm.Abort(2)
+            if os.name != 'nt':
+                validator = schemautils.getValidator(schemaFname)
+                nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+                if nErrors:
+                    myLogger.error('Input file violates schema:')
+                    for e in validator.iter_errors(inputJSON):
+                        myLogger.error('Schema violation: %s: %s' %
+                                       (' '.join([str(word) for word in e.path]), e.message))
+                    if comm:
+                        comm.Abort(2)
+                    else:
+                        raise RuntimeError('Input file violates schema')
+                else:
+                    return inputJSON
             else:
-                raise RuntimeError('Input file violates schema')
-        else:
-            return inputJSON
+                return inputJSON
     except Exception, e:
         myLogger.error('Error checking input against its schema: %s' % e)
         if comm:
@@ -557,7 +563,8 @@ def main():
     def handle_pdb(sig, frame):
         import pdb
         pdb.Pdb().set_trace(frame)
-    signal.signal(signal.SIGUSR1, handle_pdb)
+    if os.name != "nt":
+        signal.signal(signal.SIGUSR1, handle_pdb)
 
     comm = patches.getCommWorld()
     logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank)
