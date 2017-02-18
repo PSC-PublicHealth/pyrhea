@@ -175,10 +175,10 @@ def buildLocalTierNColDict(patch,timeNow):
         facPPC = defaultdict(lambda: 0)
         for ward in fac.getWards():
             pPC = ward.newColonizationsSinceLastChecked
-            key = "{0}_NEW_COLONIZED".format(ward.tier)
+            key = "{0}".format(ward.tier)
             facPPC[key] += pPC
         for key, v in facPPC.items():
-            facPthDict['{0}_{1}'.format(fac.abbrev,key)] = ValueError
+            facPthDict['{0}_{1}'.format(fac.abbrev,key)] = v
     return facPthDict
         
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
