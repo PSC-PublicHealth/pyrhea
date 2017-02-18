@@ -373,7 +373,6 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
     else:
         alpha = 1.0
     for idx, (dayVec, curves) in enumerate(tplList):
-        scaledCurves = {}
         tmpVecD = defaultdict(list)
         totVecD = {}
         for tpl, lVec in curves.items():
@@ -387,8 +386,6 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
                 scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVecD[tier]))
                 scaleV[scaleV == np.inf] = 0.0
                 scaleV = np.nan_to_num(scaleV)
-#             scaledCurves[(tier, pthStatus)] = scaleV
-#         for (tier, pthStatus), lVec in scaledCurves.items():
             if tier is None:
                 lblStr = '%s' % pth.PthStatus.names[pthStatus]
             else:
