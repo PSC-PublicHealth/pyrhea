@@ -59,8 +59,12 @@ def extractSamples(abbrev, time, specialDict):
                 if len(sampV):
                     sampListDictDict[CareTier.names[tier]][pth.PthStatus.names[pthLvl]].append(float(sampV[0]))
     pthNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolinized')
-    
-    print pthNcList
+    for dayVec, curves in pthNcList:
+        for tpl, curve in curves.items():
+            sampT = curve[dayVec == time]
+            if len(sampT):
+                sampListDictDict[CareTier.names[tier]]['NEW COLONIZED'].append(float(sampT[0]))
+    #print pthNcList
     #for dayVec, curves in pthNcList:
         
     return sampListDictDict
@@ -110,7 +114,7 @@ def main():
         sampTimes = list(sampTimeSet)
         sampTimes.sort()
     else:
-        sampTimes = [x for x in range(100,200)
+        sampTimes = [x for x in range(10,30)
                      ] 
 
     inputDict = checkInputFileSchema(args[0],
@@ -132,8 +136,8 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
-                if abbrev.find('RUSH') == -1:
-                    continue
+                #if abbrev.find('RUSH') == -1:
+                #    continue
                 for time in sampTimes:
                     sampListDictDict = extractSamples(abbrev, time, specialDict)
                     tierList = []

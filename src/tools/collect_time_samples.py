@@ -40,6 +40,7 @@ def extractSamples(abbrev, time, specialDict):
     pthTplList = getTimeSeriesList(abbrev, specialDict, 'localpathogen')
     sampListDict = {pthLvl: [] for pthLvl in pth.PthStatus.names.values()}
     sampListDict['occupancy'] = []
+    sampListDict['NEW COLONIZED'] = []
     for dayVec, curves in pthTplList:
         totVec = sum(curves.values())
         for pthLvl, lVec in curves.items():
@@ -55,7 +56,14 @@ def extractSamples(abbrev, time, specialDict):
         popV = np.asfarray(popVec)[dayVec == time]
         if len(popV): 
             sampListDict['occupancy'].append(float(popV[0]))
-    popNcList = getTimeSeriesList(abbrev, specialDict, 'NEW_COLONIZED')
+    popNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolinized')
+    for dayVec, curves in popNcList:
+        sumValue = 0.0
+        for tpl,curve in curves.items():
+            popV = curve[dayVec == time]
+            if len(popV):
+                sumValue += float(popV[0])
+        sampListDict['NEW COLONIZED'].append(sumValue)
     return sampListDict
 
 
@@ -105,7 +113,7 @@ def main():
         sampTimes = list(sampTimeSet)
         sampTimes.sort()
     else:
-        sampTimes = [x for x in range(100,200)]
+        sampTimes = [x for x in range(0,30)]
         #sampTimes = [100,  # 2010 end of burn-in
         #             815,  # 2012 begins
         #             994,  # 2012 second half
@@ -135,7 +143,7 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
-                if abbrev.find("RUSH") > -1:
+                if abbrev.find("LUTH_800_S") > -1:
                     for time in sampTimes:
                         print "abbrev: {0} time: {1}".format(abbrev,time)
                         sampleL.append({'abbrev': abbrev, 'time': time,

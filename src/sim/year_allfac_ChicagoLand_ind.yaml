@@ -46,10 +46,10 @@
   
     
 #'runDurationDays': 1095
-'runDurationDays': 100
+'runDurationDays': 30
 
 #'burnInDays': 365
-burnInDays: 100
+burnInDays: 00
 
 'trackedFacilities':
   - ABBI_31_S

@@ -163,6 +163,22 @@ def buildLocalTierPthDict(patch, timeNow):
             facPthDict['%s_%s' % (fac.abbrev, key)] = v  # so key is now abbrev_tier_pthStatus
     return facPthDict
 
+# def buildLocalNColDict(patch,timeNow):
+#     global _TRACKED_FACILITIES_SET
+#     if not _TRACKED_FACILITIES_SET:
+#         _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+#     facPthDict = {'day': timeNow}
+#     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+#     for fac in patch.allFacilities:
+#         if fac.abbrev not in _TRACKED_FACILITIES_SET:
+#             continue
+#         facPPC = defaultdict(lambda: 0)
+#         for ward in fac.getWards():
+#             key = "{0}".format(fac.abbrev)
+#             facPPC[key] += ward.newColonizationsSinceLastChecked
+#     ### Need to figure out better way than to make sure that zeroing happens
+#     return facPPC
+
 def buildLocalTierNColDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
     if not _TRACKED_FACILITIES_SET:
@@ -173,12 +189,19 @@ def buildLocalTierNColDict(patch,timeNow):
         if fac.abbrev not in _TRACKED_FACILITIES_SET:
             continue
         facPPC = defaultdict(lambda: 0)
+        facSum= 0.0
         for ward in fac.getWards():
             pPC = ward.newColonizationsSinceLastChecked
             key = "{0}".format(ward.tier)
             facPPC[key] += pPC
+            facSum += pPC
         for key, v in facPPC.items():
             facPthDict['{0}_{1}'.format(fac.abbrev,key)] = v
+        #facPthDict['{0}'.format(fac.abbrev)] = facSum
+    
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ward.newColonizationsSinceLastChecked = 0.0
     return facPthDict
         
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
