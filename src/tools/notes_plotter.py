@@ -69,14 +69,17 @@ def checkInputFileSchema(fname, schemaFname):
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
-        validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
-        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
-        if nErrors:
-            print 'Input file violates schema:'
-            for e in validator.iter_errors(inputJSON):
-                print ('Schema violation: %s: %s' %
-                       (' '.join([str(word) for word in e.path]), e.message))
-            sys.exit('Input file violates schema')
+        if os.name != "nt":
+            validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
+            nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+            if nErrors:
+                print 'Input file violates schema:'
+                for e in validator.iter_errors(inputJSON):
+                    print ('Schema violation: %s: %s' %
+                           (' '.join([str(word) for word in e.path]), e.message))
+                sys.exit('Input file violates schema')
+            else:
+                return inputJSON
         else:
             return inputJSON
     except Exception, e:

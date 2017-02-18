@@ -109,6 +109,7 @@ class Ward(pyrheabase.Ward):
         pyrheabase.Ward.__init__(self, name, patch, tier, nBeds)
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
+        self.newColonizationsSinceLastChecked = 0.0
 
     def getPatientList(self):
         return self._lockingAgentList[1:self._nLocks]
@@ -624,6 +625,7 @@ class PatientAgent(pyrheabase.PatientAgent):
     def updateDiseaseState(self, treatment, facility, timeNow):
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
+        previousStatus = self._status
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
             treeL = []
             try:
@@ -648,7 +650,10 @@ class PatientAgent(pyrheabase.PatientAgent):
             for tree in treeL:
                 setter = tree.traverse()
                 self._status = setter.set(self._status, timeNow)
-
+            #print "Patient status at {0} is {1}".format(facility.abbrev, self._status.pthStatus == PthStatus.CLEAR)
+            if previousStatus.pthStatus != PthStatus.COLONIZED and self._status.pthStatus == PthStatus.COLONIZED:
+                self.ward.newColonizationsSinceLastChecked += 1
+                
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
         if self._status.diagClassA == DiagClassA.DEATH:

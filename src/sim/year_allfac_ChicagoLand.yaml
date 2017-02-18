@@ -3,10 +3,13 @@
 'notesFileName': 'year_allfac_notes.pkl'
 
 'modelDir': '../../../pyrhea/models/ChicagoLand'
+'schemaDir': '../../../pyrhea/src/schemata'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
     'value': '$(MODELDIR)/constants'
+  - 'key': 'SCHEMAS'
+    'value': '$(SCHEMADIR)'
 
 'facilityDirs':
   - '$(MODELDIR)/facilityfacts'
@@ -30,7 +33,7 @@
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy''  
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'

@@ -55,6 +55,7 @@ def extractSamples(abbrev, time, specialDict):
         popV = np.asfarray(popVec)[dayVec == time]
         if len(popV): 
             sampListDict['occupancy'].append(float(popV[0]))
+    popNcList = getTimeSeriesList(abbrev, specialDict, 'NEW_COLONIZED')
     return sampListDict
 
 
@@ -104,15 +105,17 @@ def main():
         sampTimes = list(sampTimeSet)
         sampTimes.sort()
     else:
-        sampTimes = [100,  # 2010 end of burn-in
-                     815,  # 2012 begins
-                     994,  # 2012 second half
-                     1168, # 2013 begins
-                     1350, # 2013 second half
-                     1524, # 2014 begins
-                     1880  # 2015 begins
-                     ] 
-
+        sampTimes = [x for x in range(100,200)]
+        #sampTimes = [100,  # 2010 end of burn-in
+        #             815,  # 2012 begins
+        #             994,  # 2012 second half
+        #             1168, # 2013 begins
+        #             1350, # 2013 second half
+        #             1524, # 2014 begins
+        #             1880  # 2015 begins
+        #             ] 
+    
+    print sampTimes
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
     if 'trackedFacilities' not in inputDict or not len(inputDict['trackedFacilities']):
@@ -132,9 +135,11 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
-                for time in sampTimes:
-                    sampleL.append({'abbrev': abbrev, 'time': time,
-                                    'samples': extractSamples(abbrev, time, specialDict)})
+                if abbrev.find("RUSH") > -1:
+                    for time in sampTimes:
+                        print "abbrev: {0} time: {1}".format(abbrev,time)
+                        sampleL.append({'abbrev': abbrev, 'time': time,
+                                        'samples': extractSamples(abbrev, time, specialDict)})
 
     with open(outFileName, 'w') as f:
         yaml.safe_dump(sampleL, f, indent=4,

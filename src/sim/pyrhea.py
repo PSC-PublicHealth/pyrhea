@@ -163,12 +163,32 @@ def buildLocalTierPthDict(patch, timeNow):
             facPthDict['%s_%s' % (fac.abbrev, key)] = v  # so key is now abbrev_tier_pthStatus
     return facPthDict
 
-
+def buildLocalTierNColDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            pPC = ward.newColonizationsSinceLastChecked
+            key = "{0}_NEW_COLONIZED".format(ward.tier)
+            facPPC[key] += pPC
+        for key, v in facPPC.items():
+            facPthDict['{0}_{1}'.format(fac.abbrev,key)] = ValueError
+    return facPthDict
+        
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
                           'localpathogen': buildLocalPthDict,
-                          'localtierpathogen': buildLocalTierPthDict}
+                          'localtierpathogen': buildLocalTierPthDict,
+                          #'localnewcolonized': buildLocalNColDict,
+                          'localtiernewcolinized':buildLocalTierNColDict
+                          }
 
 
 def loadPolicyImplementations(implementationDir):
@@ -320,6 +340,7 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
     else:
         myLogger = logger
     try:
+        print "HERE"
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
             if os.name != 'nt':
