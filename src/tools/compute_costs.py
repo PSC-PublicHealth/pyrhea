@@ -162,7 +162,7 @@ def computeCostOfXDROReg(numPatients_,targetYear_, params_):
 
 def getNContactsPerDayByType(locationType_, params_):
     contactRates = params_['contacts']
-    if locationType_ == 'LTACH':
+    if locationType_ in ['LTACH','HOSPITAL']:
         locationType_ = 'GeneralWards'
     ### Update these with RHEA monikers, may need a translate
     return Distribution(contactRates['perDayIn{0}'.format(locationType_)]['distribution']['type'],
@@ -171,27 +171,10 @@ def getNContactsPerDayByType(locationType_, params_):
 def computeCostsOfContactPrecautions(contactPrecautionDays_, locationType_, rNurseWage_, cGloves_, cGowns_, targetYear_, params_):
     
     contactRate = getNContactsPerDayByType(locationType_,params_)
-    
-    
-    
     tContactPrecautionDict = params_['interventionParameters']['timeDonDoffMinutes']
     tCPMinutes = Distribution(tContactPrecautionDict['distribution']['type'],
                               tContactPrecautionDict['distribution']['args']).draw()
-    #print "tCPMinutes = {0}".format(tCPMinutes)
     
-#     cGlovesDict = params_['interventionParameters']['glovesPair']['cost']
-#     cGloves = Cost(Distribution(cGlovesDict['distribution']['type'],
-#                                 cGlovesDict['distribution']['args']).draw(),
-#                    cGlovesDict['year'])
-#     #print 'cGloves = {0}'.format(cGloves)
-#     
-#     cGownsDict = params_['interventionParameters']['gowns']['cost']
-#     cGowns = Cost(Distribution(cGownsDict['distribution']['type'],
-#                                cGownsDict['distribution']['args']).draw(),
-#                    cGownsDict['year'])
-    
-    
-    #print (contactPrecautionDays_ * contactRate)
     value = (contactPrecautionDays_ \
           * contactRate) \
           * ((rNurseWage_.discountedValue(targetYear_).value/60.0) \
@@ -743,6 +726,14 @@ def extractNewColonized(abbrev,specialDict):
     
     return sums
 
+def extractContactPrecautionDays(abbrev,specialDict):
+    cpList = getTimeSeriesList(abbrev,specialDict,'localtierCP')
+    sums = {}
+    for dayVec,curves in cpList:
+        for tpl,curve in curves.items():
+            sums[CareTier.names[tpl]] = sum(curve)
+    return sums
+
 def main():
     
     parser = OptionParser(usage="""
@@ -776,6 +767,8 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    #for k,v in facDict.items():
+     #   print "k = {0}: {1}".format(k,v)
     specialDict = mergeNotesFiles(opts.notes, False)
     
     newColL = {}
@@ -786,6 +779,25 @@ def main():
                 newColL[abbrev] = extractNewColonized(abbrev,specialDict)
                 for k,v in newColL[abbrev].items():
                     newColAll += v
+    
+    cpDaysL = {}
+    cpDaysByType = {}
+    cpDaysAll = 0.0
+    ### get contact precautions days
+    if 'trackedFacilities' in inputDict:
+        for abbrev in inputDict['trackedFacilities']:
+            if abbrev in facDict:
+                cpForThisPlace = extractNewColonized(abbrev,specialDict)
+                cpDaysL[abbrev] = cpForThisPlace
+                facCat = facDict[abbrev]['category']
+                if facCat not in cpDaysByType.keys():
+                    cpDaysByType[facCat] = 0.0
+                for k,v in cpForThisPlace.items():
+                    cpDaysByType[facCat] += v #extractNewColonized(abbrev,spe)
+                for k,v in cpDaysL[abbrev].items():
+                    cpDaysAll += v
+    
+    print 'Contact Pre Days = {0}'.format(cpDaysByType)
     
     with open("costModel_ChicagoLand.yaml","rb") as f:
         params = yaml.load(f)
@@ -824,8 +836,11 @@ def main():
                                        rNurseWageDict['distribution']['args']).draw(),
                           rNurseWageDict['year'])
         
-        costsOfRealization[i]['xdroCosts'] = computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
-        costsOfRealization[i]['contPrecCosts'] = computeCostsOfContactPrecautions(0,'LTACH',cGloves,cGowns,rNurseWage, opts.targetyear, params) # Replace with place specific members
+        costsOfRealization[i]['xdroCosts'] = Cost(0.0,opts.targetyear) #computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
+        costsOfRealization[i]['contPrecCosts'] = Cost(0.0,opts.targetyear)
+        for fType,cpDays in cpDaysByType.items():
+            cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
+            costsOfRealization[i]['contPrecCosts'] += cpst 
         costsOfRealization[i]['bundleCosts'] = computeCostsOfBundles(0, 0, opts.targetyear, params) # replace with RHEA
         outcomesDict = determineOutcomes(newColAll,0,infectionGivenCol,fractionAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
         costsOfRealization[i]['outcomesDict'] = outcomesDict
@@ -855,10 +870,11 @@ def main():
         costsOfRealization[i]['Societal Costs'] = Cost(totalSoc,opts.targetyear)
         costsOfRealization[i]['nCases'] = totalCases
         costsOfRealization[i]['nDead'] = totalDead
+        costsOfRealization[i]['cpDays'] = sum([x for k,x in cpDaysByType.items()])
         
         
     
-    costs = {'Societal Costs': {}, 'Intervention Costs': {},'thirdParty Costs':{},'Hospitalization Costs':{}, 'Colonizations':{}, 'Deaths': {}, 'QALYs Lost': {}}
+    costs = {'Societal Costs': {}, 'Intervention Costs': {},'thirdParty Costs':{},'Hospitalization Costs':{}, 'Colonizations':{}, 'Deaths': {}, 'CPDays': {}, 'QALYs Lost': {}}
     
     a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
     costs['Societal Costs']['mean'] = float(np.mean(a))
@@ -901,6 +917,8 @@ def main():
     #costs['Infections']['stdev'] = np.std(a,ddof=1)
     #costs['Infections']['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
     #costs['Infections']['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+    a = np.array([costsOfRealization[i]['cpDays'] for i in range(0,nReals)])
+    costs['CPDays']['value'] =  float(np.mean(a))
     
     a = np.array([costsOfRealization[i]['nDead'] for i in range(0,nReals)])
     costs['Deaths']['value'] =  float(np.mean(a))
@@ -910,7 +928,7 @@ def main():
 #     costs['Deaths']['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
 #     
     for k,d in costs.items():
-        if k in ['Colonizations','Deaths']:
+        if k in ['Colonizations','Deaths','CPDays']:
             print '{0},{1}'.format(k,d['value'])
         else:
             print "{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'])
