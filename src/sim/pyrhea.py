@@ -203,6 +203,30 @@ def buildLocalTierNColDict(patch,timeNow):
         for ward in fac.getWards():
             ward.newColonizationsSinceLastChecked = 0.0
     return facPthDict
+
+def buildLocalTierCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            pCP = ward.patientsOnCP
+            key = "{0}".format(ward.tier)
+            facPPC[key] += pCP
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ward.patientsOnCP = 0.0
+    
+    return facTrtDict
+        
         
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
@@ -210,7 +234,8 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localpathogen': buildLocalPthDict,
                           'localtierpathogen': buildLocalTierPthDict,
                           #'localnewcolonized': buildLocalNColDict,
-                          'localtiernewcolinized':buildLocalTierNColDict
+                          'localtiernewcolinized':buildLocalTierNColDict,
+                          'localtierCP': buildLocalTierCPDict
                           }
 
 

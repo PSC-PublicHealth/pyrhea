@@ -110,6 +110,7 @@ class Ward(pyrheabase.Ward):
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.newColonizationsSinceLastChecked = 0.0
+        self.patientsOnCP = 0.0
 
     def getPatientList(self):
         return self._lockingAgentList[1:self._nLocks]
@@ -650,6 +651,8 @@ class PatientAgent(pyrheabase.PatientAgent):
             for tree in treeL:
                 setter = tree.traverse()
                 self._status = setter.set(self._status, timeNow)
+            if self.getTreatment('contactPrecautions'):
+                self.ward.patientsOnCP += 1
             #print "Patient status at {0} is {1}".format(facility.abbrev, self._status.pthStatus == PthStatus.CLEAR)
             if previousStatus.pthStatus != PthStatus.COLONIZED and self._status.pthStatus == PthStatus.COLONIZED:
                 print "New Infection at {0}".format(self.ward.fac.abbrev)
