@@ -655,7 +655,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                 self.ward.patientsOnCP += 1
             #print "Patient status at {0} is {1}".format(facility.abbrev, self._status.pthStatus == PthStatus.CLEAR)
             if previousStatus.pthStatus != PthStatus.COLONIZED and self._status.pthStatus == PthStatus.COLONIZED:
-                print "New Infection at {0}".format(self.ward.fac.abbrev)
+                #print "New Infection at {0}".format(self.ward.fac.abbrev)
                 self.ward.newColonizationsSinceLastChecked += 1
                 
     def updateEverything(self, timeNow):
