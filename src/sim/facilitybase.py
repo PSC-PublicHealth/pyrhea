@@ -37,11 +37,12 @@ DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEA
 
 TreatmentProtocol = namedtuple('TreatmentProtocol',
                                ['rehab',
-                                'contactPrecautions'
+                                'contactPrecautions',
+                                'creBundle'
                                 ],
                                field_types=[bool, bool])
 
-TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False)
+TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False, creBundle=False)
 
 PatientStatus = namedtuple('PatientStatus',
                            ['overall',              # one of PatientOverallHealth
