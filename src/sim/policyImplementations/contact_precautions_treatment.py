@@ -66,6 +66,14 @@ class CPTPCore(object):
 
 
 class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
+    """This policy implements contact precautions"""
+    
+    """
+    If the presence of this treatment corresponds to a flag in TreatmentProtocol,
+    the name of that flag is the treatmentKey.
+    """
+    treatmentKey = 'contactPrecautions'
+
     def __init__(self, patch, categoryNameMapper):
         super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
         self.core = CPTPCore()
@@ -103,15 +111,41 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
         
-    def getTransmissionMultiplier(self, careTier, **kwargs):
+    def getTransmissionFromMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
-        return the scale factor by which the transmission coefficient tau is multiplied.
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the source of the transmission.
         """
         if 'contactPrecautions' in kwargs and kwargs['contactPrecautions']:
             return self.core.effectiveness
         else:
             return 1.0
+
+    def getTransmissionToMultiplier(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the recipient of the transmission.
+        """
+        if 'contactPrecautions' in kwargs and kwargs['contactPrecautions']:
+            return self.core.effectiveness
+        else:
+            return 1.0
+
+    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
+        """
+        This returns a tuple of form (careTier, patientTreatment).
+        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
+        and is not generally relevant to the decisions made by this method.
+        """
+        newTier, newTreatment = \
+            super(ContactPrecautionsTreatmentPolicy, self).prescribe(patientDiagnosis,
+                                                                     patientTreatment,
+                                                                     modifierList)
+        if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
+            newTreatment = newTreatment._replace(contactPrecautions=True)
+        return newTier, newTreatment
 
 
 def getPolicyClasses():

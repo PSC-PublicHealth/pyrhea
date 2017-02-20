@@ -25,6 +25,7 @@ from stats import BayesTree
 from pathogenbase import PthStatus, defaultPthStatus, Pathogen
 from collections import defaultdict
 import cPickle as pickle
+from random import random
 
 logger = logging.getLogger(__name__)
 
@@ -123,15 +124,18 @@ class Ward(pyrheabase.Ward):
             
     def initializePatientTreatment(self):
         for p in self.getPatientList():
-            self.fac.treatmentPolicy.initializePatientTreatment(self, p)
+            for tP in self.fac.treatmentPolicies:
+                tP.initializePatientTreatment(self, p)
 
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
-        self.fac.treatmentPolicy.handlePatientArrival(self, patientAgent, timeNow)
+        for tP in self.fac.treatmentPolicies:
+            tP.handlePatientArrival(self, patientAgent, timeNow)
 
     def handlePatientDeparture(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the departure processing of patients"""
-        self.fac.treatmentPolicy.handlePatientDeparture(self, patientAgent, timeNow)
+        for tP in self.fac.treatmentPolicies:
+            tP.handlePatientDeparture(self, patientAgent, timeNow)
 
 
 class ForcedStateWard(Ward):
@@ -206,6 +210,48 @@ class Policy(object):
         self.categoryNameMapper = categoryNameMapper
 
 
+class DiagnosticPolicy(Policy):
+    def diagnose(self, patientStatus, oldDiagnosis):
+        """
+        This provides a way to introduce false positive or false negative diagnoses.  The
+        only way in which patient status affects treatment policy or ward is via diagnosis.
+        """
+        if patientStatus.pthStatus == PthStatus.COLONIZED and (random() <= 0.12):
+            diagnosedPthStatus = PthStatus.COLONIZED
+        else:
+            diagnosedPthStatus = PthStatus.CLEAR
+            
+        return PatientDiagnosis(patientStatus.overall,
+                                patientStatus.diagClassA,
+                                diagnosedPthStatus,
+                                patientStatus.relocateFlag)
+    
+    def initializePatientDiagnosis(self, careTier):
+        if careTier == CareTier.HOME:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.HEALTHY, defaultPthStatus, False)
+        elif careTier == CareTier.NURSING:
+            return PatientDiagnosis(PatientOverallHealth.FRAIL,
+                                    DiagClassA.HEALTHY, defaultPthStatus, False)
+        elif careTier == CareTier.LTAC:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSLTAC, defaultPthStatus, False)
+        elif careTier == CareTier.HOSP:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.SICK, defaultPthStatus, False)
+        elif careTier == CareTier.ICU:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.VERYSICK, defaultPthStatus, False)
+        elif careTier == CareTier.VENT:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSVENT, defaultPthStatus, False)
+        elif careTier == CareTier.SKILNRS:
+            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+                                    DiagClassA.NEEDSSKILNRS, defaultPthStatus, False)
+        else:
+            raise RuntimeError('Unknown care tier %s' % careTier)
+
+
 class TransferDestinationPolicy(Policy):
     def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
@@ -230,11 +276,57 @@ class TreatmentPolicy(Policy):
         This is called on patients when they depart from a ward.
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
-        
-    def getTransmissionMultiplier(self, careTier, **kwargs):
+
+    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
+        """
+        This returns a tuple of form (careTier, patientTreatment).
+        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
+        and is not generally relevant to the decisions made by this method.
+        """
+        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
+            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
+                return (CareTier.HOME, patientTreatment._replace(rehab=False))
+            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
+                return (CareTier.NURSING, patientTreatment._replace(rehab=False))
+            else:
+                raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
+        if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
+            newTreatment = patientTreatment._replace(rehab=True)
+            return (CareTier.NURSING, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.HOSP, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.ICU, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.LTAC, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (None, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.VENT, newTreatment)
+        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
+            newTreatment = patientTreatment._replace(rehab=False)
+            return (CareTier.SKILNRS, newTreatment)
+        else:
+            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
+
+    def getTransmissionFromMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
-        return the scale factor by which the transmission coefficient tau is multiplied.
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the source of the transmission.
+        """
+        raise RuntimeError('Base TreatmentPolicy was called.')        
+
+    def getTransmissionToMultiplier(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the recipient of the transmission.
         """
         raise RuntimeError('Base TreatmentPolicy was called.')        
 
@@ -261,6 +353,7 @@ class TreatmentPolicy(Policy):
             return 1.0
         else:
             return 0.0
+
 
 class PatientRecord(object):
     def __init__(self, patientID, arrivalDate, isFrail):
@@ -318,16 +411,24 @@ class Facility(pyrheabase.Facility):
         self.patientDataDict = {}
         self.patientStats = PatientStats()
         transferDestinationPolicyClass = TransferDestinationPolicy
-        treatmentPolicyClass = TreatmentPolicy
-        print "PolicyClasses for {0} is {1}".format(name, policyClasses)
+        treatmentPolicyClasses = []
+        diagnosticPolicyClass = DiagnosticPolicy
+        #print "PolicyClasses for {0} is {1}".format(name, policyClasses)
         if policyClasses is not None:
             for pC in policyClasses:
                 if issubclass(pC, TransferDestinationPolicy):
                     transferDestinationPolicyClass = pC
                 if issubclass(pC, TreatmentPolicy):
+                    treatmentPolicyClasses.append(pC)
                     treatmentPolicyClass = pC
+                if issubclass(pC, DiagnosticPolicy):
+                    diagnosticPolicyClass = pC
+        if not treatmentPolicyClasses:
+            treatmentPolicyClasses = [TreatmentPolicy]
         self.transferDestinationPolicy = transferDestinationPolicyClass(patch, self.categoryNameMapper)
-        self.treatmentPolicy = treatmentPolicyClass(patch, self.categoryNameMapper)
+        self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
+                                  for treatmentPolicyClass in treatmentPolicyClasses]
+        self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
         
     def __str__(self):
         return '<%s>' % self.name
@@ -460,10 +561,7 @@ class Facility(pyrheabase.Facility):
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        return PatientDiagnosis(patientStatus.overall,
-                                patientStatus.diagClassA,
-                                patientStatus.pthStatus,
-                                patientStatus.relocateFlag)
+        return self.diagnosticPolicy.diagnose(patientStatus, oldDiagnosis)
 
     def prescribe(self, patientDiagnosis, patientTreatment):
         """
@@ -474,65 +572,23 @@ class Facility(pyrheabase.Facility):
             modifierList = [pyrheabase.TierUpdateModFlag.FORCE_MOVE]
         else:
             modifierList = []
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, patientTreatment._replace(rehab=False), modifierList)
-            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, patientTreatment._replace(rehab=False), modifierList)
-            else:
-                raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
-        if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            newTreatment = patientTreatment._replace(rehab=True)
-            return (CareTier.NURSING, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.HOSP, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.ICU, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.LTAC, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (None, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.VENT, newTreatment, modifierList)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.SKILNRS, newTreatment, modifierList)
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
+        careTier = None
+        for tP in self.treatmentPolicies:
+            newTier, patientTreatment = tP.prescribe(patientDiagnosis, patientTreatment,
+                                                     modifierList)
+            if careTier and (newTier != careTier):
+                raise RuntimeError(('Treatment policies at %s prescribe different careTiers'
+                                    % self.abbrev)
+                                   (' for %s %s' % (patientDiagnosis, patientTreatment)))
+            careTier = newTier
+        return (careTier, patientTreatment, modifierList)
 
     def diagnosisFromCareTier(self, careTier):
         """
         If I look at a patient under a given care tier, what would I expect their diagnostic class
         to be?  This is used for patient initialization purposes.
         """
-        if careTier == CareTier.HOME:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, defaultPthStatus, False)
-        elif careTier == CareTier.NURSING:
-            return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, defaultPthStatus, False)
-        elif careTier == CareTier.LTAC:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSLTAC, defaultPthStatus, False)
-        elif careTier == CareTier.HOSP:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.SICK, defaultPthStatus, False)
-        elif careTier == CareTier.ICU:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.VERYSICK, defaultPthStatus, False)
-        elif careTier == CareTier.VENT:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSVENT, defaultPthStatus, False)
-        elif careTier == CareTier.SKILNRS:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSSKILNRS, defaultPthStatus, False)
-        else:
-            raise RuntimeError('Unknown care tier %s' % careTier)
+        return self.diagnosticPolicy.initializePatientDiagnosis(careTier)
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         """

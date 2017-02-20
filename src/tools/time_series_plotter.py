@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 
+import os
 import os.path
 import sys
 import logging
@@ -23,6 +24,12 @@ from optparse import OptionParser
 import types
 import glob
 from collections import defaultdict
+if 'line_profiler' not in dir():
+    def profile(func):
+        """
+        Dummy substitute for __builtin__.profile line profiler
+        """
+        return func
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,7 +66,7 @@ def splitEnumEnumNameStr(enumName):
     return patchName, ind1, ind2
 
 
-def occupancyTimeFig(specialDict, meanPopByCat=None):
+def occupancyTimeFig(specialDict, opts, meanPopByCat=None):
     patchList = []
     indList = []
     for enumPatchName in specialDict:
@@ -114,15 +121,17 @@ def occupancyTimeFig(specialDict, meanPopByCat=None):
                                     
                     axes5[offset].set_xlabel('Days')
                     axes5[offset].set_ylabel('Occupancy')
-                    axes5[offset].legend()
+                    #axes5[offset].legend()
                 except Exception, e:
                     print e
         axes5[offset].set_title(patchName)
     figs5.tight_layout()
     figs5.canvas.set_window_title("Time History of Occupancy")
+    if opts.png:
+        plt.savefig(os.path.join(opts.odir, 'zzzall_occupancy.png'))
 
 
-def pathogenTimeFig(specialDict):
+def pathogenTimeFig(specialDict, opts):
     catList = []
     patchList = []
     indList = []
@@ -200,14 +209,17 @@ def pathogenTimeFig(specialDict):
                     if ind == indList[0]:
                         axes6[rowOff, colOff].set_xlabel('Days')
                         axes6[rowOff, colOff].set_ylabel('Pathogen Prevalence')
-                        axes6[rowOff, colOff].legend()
+                        #axes6[rowOff, colOff].legend()
                         axes6[rowOff, colOff].set_title(cat)
             except Exception, e:
                 print 'Exception %s' % e
-    figs6.tight_layout()
+    #figs6.tight_layout()
     figs6.canvas.set_window_title("Time History of Infection Status")
+    if opts.png:
+        plt.savefig(os.path.join(opts.odir, 'zzzall_pathogen.png'))
 
 
+@profile
 def mergeNotesFiles(notesPathList, globFlag=False):
     """
     Given a list of path strings pointing to notes files, produce a dict containing all the
@@ -229,6 +241,7 @@ def mergeNotesFiles(notesPathList, globFlag=False):
     return specialDict
 
 
+@profile
 def getTimeSeriesList(locKey, specialDict, specialDictKey):
     """
     key specifies the target entity, for example a loc abbrev or a facility category. These are
@@ -328,7 +341,7 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
 
     return rsltL
 
-def oneFacTimeFig(abbrev, specialDict, meanPop=None):
+def oneFacTimeFig(abbrev, specialDict, opts, meanPop=None):
     print abbrev
     if abbrev == 'CHOC':
         return
@@ -396,7 +409,8 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
                                        alpha=alpha)
                 clrDict[tpl] = thisP.get_color()
     for tAOffset in tierAxisD.values():
-        axes[tAOffset].legend()
+        #axes[tAOffset].legend()
+        pass
 
     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
     popClr = None
@@ -412,6 +426,8 @@ def oneFacTimeFig(abbrev, specialDict, meanPop=None):
 
     fig.tight_layout()
     fig.canvas.set_window_title(abbrev)
+    if opts.png:
+        plt.savefig(os.path.join(opts.odir, '%s.png' % abbrev))
 
 
 def main():
@@ -429,6 +445,11 @@ def main():
                       help="Notes filename - may be repeated")
     parser.add_option('--glob', action='store_true',
                       help="Apply filename globbing to the given notes files")
+    parser.add_option('--png', action='store_true',
+                      help="Save plots to current directory rather than viewing interactively")
+    parser.add_option('--odir', action='store', default=os.getcwd(),
+                      help="Save any output to the specified directory rather than the current directory")
+    
     opts, args = parser.parse_args()
     if len(args) != 1:
         parser.error('A YAML run description is required')
@@ -458,20 +479,21 @@ def main():
     specialDict = mergeNotesFiles(opts.notes, opts.glob)
 
     if "ChicagoLand" in runDesc:
-        occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
+        occupancyTimeFig(specialDict, opts, meanPopByCat=meanPopByCategory)
     else:
-        occupancyTimeFig(specialDict) #, meanPopByCat=meanPopByCategory)
-    pathogenTimeFig(specialDict)
+        occupancyTimeFig(specialDict, opts) #, meanPopByCat=meanPopByCategory)
+    pathogenTimeFig(specialDict, opts)
 
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
                 if 'meanPop' in facDict[abbrev]:
-                    oneFacTimeFig(abbrev, specialDict, meanPop=facDict[abbrev]['meanPop']['value'])
+                    oneFacTimeFig(abbrev, specialDict, opts, meanPop=facDict[abbrev]['meanPop']['value'])
                 else:
-                    oneFacTimeFig(abbrev, specialDict)
+                    oneFacTimeFig(abbrev, specialDict, opts)
 
-    plt.show()
+    if not opts.png:
+        plt.show()
 
 if __name__ == "__main__":
     main()
