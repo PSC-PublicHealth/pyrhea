@@ -1,6 +1,6 @@
 'randomSeed': 1234
 
-'notesFileName': 'year_allfac_notes.pkl'
+'notesFileName': 'year_allfac_ChicagoLand_notes.pkl'
 
 'modelDir': '../../../pyrhea/models/ChicagoLand'
 'schemaDir': '../../../pyrhea/src/schemata'
@@ -8,8 +8,8 @@
 'pathTranslations':
   - 'key': 'CONSTANTS'
     'value': '$(MODELDIR)/constants'
-  - 'key': 'SCHEMAS'
-    'value': '$(SCHEMADIR)'
+#  - 'key': 'SCHEMAS'
+#    'value': '$(SCHEMADIR)'
 
 'facilityDirs':
   - '$(MODELDIR)/facilityfacts'
@@ -33,17 +33,25 @@
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy''  
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+  - 'category': 'scenario'
+    'policyClass': 'FirstExperimentalScenario'
 
 #'runDurationDays': 1095
 'runDurationDays': 365
 
 #'burnInDays': 365
 burnInDays: 100
+
+scenarioWaitDays: 10
 
 'trackedFacilities':
   - ABBI_31_S
