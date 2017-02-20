@@ -439,6 +439,15 @@ class Facility(pyrheabase.Facility):
 
     def getNoteHolder(self):
         return self.noteHolder
+    
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        pass
 
     def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
         return self.transferDestinationPolicy.getOrderedCandidateFacList(self,

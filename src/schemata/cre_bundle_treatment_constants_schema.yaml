@@ -1,0 +1,19 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/cre_bundle_treatment_constants_schema.yaml'
+'title': 'cre bundle treatment constants schema'
+'description': 'cre bundle treatmentconstants schema'
+
+'$ref': '#/definitions/cre_bundle_treatment_constants'
+
+'definitions':
+
+  'cre_bundle_treatment_constants':
+    'type': 'object'
+    'properties':
+      'transmissibilityMultiplier':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'          
+    'required':
+    - 'transmissibilityMultiplier'
+      
+     

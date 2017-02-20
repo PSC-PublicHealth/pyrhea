@@ -36,6 +36,12 @@ class ScenarioPolicy(object):
 
     def begin(self):
         logger.info('The scenario %s is beginning', self.name)
+        assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
+                                                      % self.patch.name)
+        for fac in self.patch.allFacilities:
+            fac.flushCaches()
+            for ward in fac.getWards():
+                ward.iA.flushCaches()
 
 
 class Ward(peopleplaces.Location):

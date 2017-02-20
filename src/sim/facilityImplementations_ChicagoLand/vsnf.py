@@ -129,6 +129,18 @@ class VentSNF(Facility):
         self.cachedCDF = CachedCDFGenerator(lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda))
         self.treeCache = {}
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        self.treeCache = {}
+        for tier, tpl in self.rateD.items():
+            lclRates, pthRates = tpl
+            self.rateD[tier] = (lclRates, None)  # force recalculation of biases
+
     def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
         """Specialized to prioritize transfers to our own wards if possible"""
         facAddrList = super(VentSNF, self).getOrderedCandidateFacList(oldTier, newTier,

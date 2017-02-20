@@ -318,6 +318,15 @@ class Community(Facility):
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        self.treeCache = {}        
+
     def setCDFs(self, losModel):
         baseRate = losModel['parms'][0]
         self.cachedCDFs = {"base": CachedCDFGenerator(expon(scale=1.0/baseRate))}

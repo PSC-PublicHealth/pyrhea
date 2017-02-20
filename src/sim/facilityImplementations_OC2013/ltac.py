@@ -92,6 +92,15 @@ class LTAC(Facility):
                                (category, patch.name, descr['abbrev'], 'LTAC', i)),
                               patch, CareTier.LTAC, bedsPerWard))
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        self.treeCache = {}        
+
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         assert not treatment.rehab, \
             "LTACs do not offer rehab treatment; found %s" % treatment

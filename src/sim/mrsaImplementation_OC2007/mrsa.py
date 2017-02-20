@@ -81,6 +81,15 @@ class MRSA(Pathogen):
                                                                 (fracClear,
                                                                  PatientStatusSetter())])
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        raise RuntimeError('cache flushing has not yet been implemented for %s' % type(self).__name__)
+
     def _emptyPatientPth(self):
         return {k:0 for k in PthStatus.names.keys()}
 

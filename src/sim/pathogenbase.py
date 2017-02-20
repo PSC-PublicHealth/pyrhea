@@ -34,6 +34,15 @@ class Pathogen(object):
         """
         self.ward = ward
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        pass
+
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         raise RuntimeError('Pathogen base class getStatusChangeTree was called.')
 

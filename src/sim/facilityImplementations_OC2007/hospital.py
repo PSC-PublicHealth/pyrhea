@@ -125,6 +125,16 @@ class Hospital(Facility):
                                (category, patch.name, descr['abbrev'], 'HOSP', i)),
                               patch, CareTier.HOSP, bedsPerWard))
 
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        self.hospTreeCache = {}
+        self.icuTreeCache = {}
+
     def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
         """Specialized to restrict transfers to being between our own HOSP and ICU"""
         queueClass = tierToQueueMap[newTier]
