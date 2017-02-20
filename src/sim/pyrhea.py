@@ -191,7 +191,8 @@ def buildLocalTierNColDict(patch,timeNow):
         facPPC = defaultdict(lambda: 0)
         facSum= 0.0
         for ward in fac.getWards():
-            pPC = ward.newColonizationsSinceLastChecked
+            pPC = ward.miscCounters['newColonizationsSinceLastChecked']
+            ward.newColonizationsSinceLastChecked = 0.0
             key = "{0}".format(ward.tier)
             facPPC[key] += pPC
             facSum += pPC
@@ -199,9 +200,6 @@ def buildLocalTierNColDict(patch,timeNow):
             facPthDict['{0}_{1}'.format(fac.abbrev,key)] = v
         #facPthDict['{0}'.format(fac.abbrev)] = facSum
     
-    for fac in patch.allFacilities:
-        for ward in fac.getWards():
-            ward.newColonizationsSinceLastChecked = 0.0
     return facPthDict
 
 def buildLocalTierCPDict(patch,timeNow):
@@ -215,16 +213,12 @@ def buildLocalTierCPDict(patch,timeNow):
             continue
         facPPC = defaultdict(lambda: 0)
         for ward in fac.getWards():
-            pCP = ward.patientsOnCP
             key = "{0}".format(ward.tier)
-            facPPC[key] += pCP
+            facPPC[key] += ward.miscCounters['patientsOnCP']
+            ward.miscCounters['patientsOnCP'] = 0.0
         for key,v in facPPC.items():
             facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
             
-    for fac in patch.allFacilities:
-        for ward in fac.getWards():
-            ward.patientsOnCP = 0.0
-    
     return facTrtDict
         
         
