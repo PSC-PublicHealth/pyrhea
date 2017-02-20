@@ -25,7 +25,7 @@ from facilitybase import CareTier
 from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
 
 _validator = None
-_constants_values = '$(POLICYDIR)/constants/cre_bundle_treatment_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/cre_bundle_treatment_constants.yaml'
 _constants_schema = 'cre_treatment_constants_schema.yaml'
 _constants = None
 

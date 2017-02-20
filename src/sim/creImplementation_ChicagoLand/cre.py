@@ -232,14 +232,26 @@ class CRE(Pathogen):
             for p in self.ward.getPatientList():
                 if p.getPthStatus():
                     if p.getTreatment('contactPrecautions'):
-                        pI['++'] += 1
+                        if p.getTreatment('creBundle'):
+                            pI['+++'] += 1
+                        else:
+                            pI['++-'] += 1
                     else:
-                        pI['+-'] += 1
+                        if p.getTreatment('creBundle'):
+                            pI['+-+'] += 1
+                        else:
+                            pI['+--'] += 1
                 else:
                     if p.getTreatment('contactPrecautions'):
-                        pI['-+'] += 1
+                        if p.getTreatment('creBundle'):
+                            pI['-++'] += 1
+                        else:
+                            pI['-+-'] += 1
                     else:
-                        pI['--'] += 1
+                        if p.getTreatment('creBundle'):
+                            pI['--+'] += 1
+                        else:
+                            pI['---'] += 1
             self.propogationInfoTime = timeNow
         return self.propogationInfo
 
@@ -259,6 +271,7 @@ class CRE(Pathogen):
             if key not in self.core.exposureTreeCache:
                 tP = self.ward.fac.treatmentPolicy
                 effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
+                effectivenessCREBundle = tp.getTransmissionMultiplier(careTier, creBundle=True)careTier
                 if treatment.contactPrecautions:
                     # doubly protected
                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)

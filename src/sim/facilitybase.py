@@ -40,7 +40,7 @@ TreatmentProtocol = namedtuple('TreatmentProtocol',
                                 'contactPrecautions',
                                 'creBundle'
                                 ],
-                               field_types=[bool, bool])
+                               field_types=[bool, bool, bool])
 
 TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False, creBundle=False)
 
