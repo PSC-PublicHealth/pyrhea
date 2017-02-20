@@ -200,20 +200,18 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.SKILNRS: SKILNRSQueue}
 
 
-class TransferDestinationPolicy(object):
+class Policy(object):
     def __init__(self, patch, categoryNameMapper):
         self.patch = patch
         self.categoryNameMapper = categoryNameMapper
 
+
+class TransferDestinationPolicy(Policy):
     def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 
-class TreatmentPolicy(object):
-    def __init__(self, patch, categoryNameMapper):
-        self.patch = patch
-        self.categoryNameMapper = categoryNameMapper
-        
+class TreatmentPolicy(Policy):
     def initializePatientTreatment(self, ward, patient):
         """
         This is called on patients at time zero, when they are first assigned to the
