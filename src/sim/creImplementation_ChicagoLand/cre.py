@@ -35,7 +35,6 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-
 def _parseFracByTierByFacilityByCategory(fieldStr):
     topD = {}
     for elt in _constants[fieldStr]:
@@ -325,5 +324,6 @@ def getPathogenClass():
 ###########
 # Initialize the module
 ###########
+print "ConstS = {0}".format(_constants_schema)
 _constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

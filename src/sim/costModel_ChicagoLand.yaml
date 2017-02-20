@@ -1,0 +1,909 @@
+---
+costs:
+  generalWardBedDay:
+    distribution:
+      type: gamma
+      args: 
+        mean: 2963
+        stdev: 26.19
+    year: 2013
+  icuBedDay:
+    distribution: 
+      type: gamma
+      args: 
+        mean: 5040
+        stdev: 32.61
+    year: 2015
+  hourlyWage:
+    distribution: 
+      type: gamma
+      args: 
+        mean: 24.68
+        stdev: 18.08
+    year: 2014
+  regNurseHourlyWage:
+    distribution: 
+      type: gamma
+      args: 
+        mean: 36.97
+        stdev: 11.20
+    year: 2014
+  annualWage:
+    distribution:
+      type: gamma
+      args: 
+        mean: 49094.32
+        stdev: 18.08
+    year: 2014
+probabilities:
+  patientInICU: 
+    distribution: 
+      type: beta
+      args: 
+        mean: 0.442
+        stdev: 0.0453    
+contacts:
+  perDayInGeneralWards:
+    distribution: 
+      type: uniform
+      args: 
+        low: 41
+        high: 96
+  perDayInICU:
+    distribution: 
+      type: uniform
+      args: 
+        low: 96
+        high: 136
+  perDayInSNF:
+    distribution: 
+      type: value
+      args: 
+        value: 30.0
+  perDayInVSNF:
+    distribution: 
+      type: value
+      args: 
+        value: 36.84
+outcomes:
+  UTI:
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.4809
+    attributableLOS:
+      distribution: 
+        type: uniform
+        args: 
+          low: 4
+          high: 8
+    utilityWeight:
+      distribution: 
+        type: beta
+        args: 
+          mean: 0.807
+          stdev: 0.086
+    probabilityOfMortality:
+      monotherapy:
+        distribution:
+          type: value
+          args: 
+            value: 0.389
+      combination:
+        distribution: 
+          type: value
+          args: 
+            value: 0.208
+      carbapenemSparing:
+        distribution: 
+          type: value
+          args: 
+            value: 0.286
+      carbapenemContaining:
+        distribution: 
+          type: value
+          args: 
+            value: 0.100
+    hospitalizationOutcomes: 
+      cost:
+        distribution: 
+          type: gamma
+          args: 
+            mean: 8000
+            stdev: 130
+        year: 2012
+    treatmentDuration:
+      distribution: 
+        type: uniform
+        args: 
+          low: 14
+          high: 21
+  bacteremia:
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.2028
+    attributableLOS:
+      distribution: 
+        type: uniform
+        args: 
+          low: 9
+          high: 10
+    utilityWeight:
+      distribution: 
+        type: beta
+        args: 
+          mean: 0.985
+          stdev: 0.015
+    probabilityOfMortality:
+      monotherapy:
+        distribution: 
+          type: value
+          args: 
+            value: 0.464
+      combination:
+        distribution:
+          type: value
+          args: 
+            value: 0.346
+      carbapenemSparing:
+        distribution:
+          type: value
+          args: 
+            value: 0.407
+      carbapenemContaining:
+        distribution: 
+          type: value
+          args: 
+            value: 0.182
+    hospitalizationOutcomes: 
+      cost:
+        distribution: 
+          type: gamma
+          args: 
+            mean: 13628
+            stdev: 408
+        year: 2012
+    treatmentDuration:
+      distribution:
+        type: value
+        args: 
+          value: 14
+  pneumoniaAll:
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.257
+    attributableLOS:
+      distribution:
+        type: value
+        args: 
+          value: 0
+    utilityWeight:
+      distribution:
+        type: beta
+        args: 
+          mean: 0.969
+          stdev: 0.046
+    probabilityOfMortality:
+      monotherapy:
+        distribution: 
+          type: value
+          args: 
+            value: 0.467
+      combination:
+        distribution: 
+          type: value
+          args: 
+            value: 0.291
+      carbapenemSparing:
+        distribution:
+          type: value
+          args: 
+            value: 0.304
+      carbapenemContaining:
+        distribution: 
+          type: value
+          args: 
+            value: 0.278
+    hospitalizationOutcomes: 
+      cost:
+        distribution:
+          type: gamma
+          args: 
+            mean: 21597
+            stdev: 1899
+        year: 2012
+    treatmentDuration:
+      distribution:
+        type: value
+        args: 
+          value: 14
+  intraAbdominalInfection:
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.0592
+    attributableLOS:
+      distribution:
+        type: uniform
+        args: 
+          low: 14
+          high: 21
+    utilityWeight:
+      distribution:
+        type: beta
+        args:
+          mean: 0.518
+          stdev: 0.179
+    probabilityOfMortality:
+      monotherapy:
+        distribution:
+          type: value
+          args: 
+            value: 0.333
+      combination:
+        distribution:
+          type: value
+          args: 
+            value: 0.306
+      carbapenemSparing:
+        distribution:
+          type: value
+          args: 
+            value: 0.314
+      carbapenemContaining:
+        distribution:
+          type: value
+          args: 
+            value: 0.0
+    hospitalizationOutcomes: 
+      cost:
+        distribution:
+          type: gamma
+          args: 
+            mean: 15009
+            stdev: 286
+        year: 2012
+    treatmentDuration:
+      distribution:
+        type: uniform
+        args: 
+          low: 10
+          high: 14
+  ventilatorAssociatedPneumonia:
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.01480834
+    attributableLOS:
+      distribution:
+        type: uniform
+        args: 
+          low: 10
+          high: 14
+    utilityWeight:
+      distribution: 
+        type: beta
+        args: 
+          mean: 0.87
+          stdev: 0.064
+    probabilityOfMortality:
+      monotherapy:
+        distribution:
+          type: value
+          args: 
+            value: 0.467
+      combination:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      carbapenemSparing:
+        distribution:
+          type: value
+          args: 
+            value: 0.304
+      carbapenemContaining:
+        distribution:
+          type: value
+          args: 
+            value: 0.278
+    hospitalizationOutcomes: 
+      cost:
+        distribution: 
+          type: gamma
+          args: 
+            mean: 28820
+            stdev: 2422
+        year: 2012
+    treatmentDuration:
+      distribution:
+        type: value
+        args: 
+          value: 14
+  nonVentilatorAssociatedPneumonia: 
+    probability:
+      distribution: 
+        type: value
+        args: 
+          value: 0.24219166
+    attributableLOS:
+      distribution:
+        type: uniform
+        args: 
+          low: 4
+          high: 10
+    utilityWeight:
+      distribution: 
+        type: beta
+        args: 
+          mean: 0.969
+          stdev: 0.046
+    probabilityOfMortality:
+      monotherapy:
+        distribution:
+          type: value
+          args: 
+            value: 0.467
+      combination:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      carbapenemSparing:
+        distribution:
+          type: value
+          args: 
+            value: 0.304
+      carbapenemContaining:
+        distribution:
+          type: value
+          args: 
+            value: 0.278
+    hospitalizationOutcomes: 
+      cost:
+        distribution: 
+          type: gamma
+          args: 
+            mean: 21597
+            stdev: 1899
+        year: 2012
+    treatmentDuration:
+      distribution:
+        type: value
+        args: 
+          value: 12
+#   nonVentilatorAssociatedPneumonia:
+#    probability:
+#      distribution: 
+#        type: value
+#        args: 
+#          value: 0.94238
+
+drugs:
+  tigercyclineCAP50mg12hrs:
+    cost:
+       #Per Day
+       distribution: 
+        type: value
+        args: 
+         value: 286.006
+       year: 2015
+  meropenemAID1g8hrs:
+    cost:
+       #Per Day
+       distribution: 
+        type: value
+        args: 
+          value: 129.054
+       year: 2015
+  amikacinSerBac15mgday:
+    cost:
+       #Per Day 
+       distribution:
+        type: value
+        args: 
+          value: 57.7086875
+       year: 2015
+  gentamicinAny2g8hrs:
+    cost:
+       #Per Day
+       distribution: 
+        type: value
+        args: 
+          value: 43.378185
+       year: 2015
+  colistinSodium:
+    cost:
+       distribution: 
+        type: value
+        args: 
+          value: 84.9648944
+       year: 2015
+
+therapy:
+  monotherapy:
+    prob:
+      distribution: 
+        type: value
+        args: 
+          value: 0.4703
+    drugs:
+      tigercyclineCAP50mg12hrs: 0.25
+      meropenemAID1g8hrs: 0.25
+      gentamicinAny2g8hrs: 0.25
+      colistinSodium: .25
+  carbapenemSparing: 
+    prob:
+      distribution:
+        type: value
+        args: 
+          value: 0.3886
+    drugs:
+      tigercyclineCAP50mg12hrs_and_amikacinSerBac15mgday: 0.2
+      tigercyclineCAP50mg12hrs_and_gentamicinAny2g8hrs: 0.2
+      tigercyclineCAP50mg12hrs_and_colistinSodium: 0.2
+      amikacinSerBac15mgday_and_colistinSodium: 0.2
+      gentamicinAny2g8hrs_and_colistinSodium: 0.2
+  carbapenemContaining: 
+    prob:
+      distribution: 
+        type: value
+        args: 
+          value: 0.1411
+    drugs: 
+      tigercyclineCAP50mg12hrs: 0.25
+      meropenemAID1g8hrs: 0.25
+      gentamicinAny2g8hrs: 0.25
+      colistinSodium: 0.25
+  combination: 
+    prob:
+      distribution: 
+        type: value
+        args: 
+          value: 0.5297
+        
+interventionParameters:
+  swab:
+    cost:
+      distribution: 
+        type: value
+        args: 
+          value: 1.0
+      year: 2017
+  chromogenicAgarMaterials:
+    cost:
+      distribution: 
+        type: value
+        args: 
+          value: 3.5
+      year: 2007
+  technicianHourlyWage:
+    cost:
+      distribution: 
+        type: gamma
+        args: 
+          mean: 20.96
+          stdev: 6.97
+      year: 2015
+  technitionTimeMinutes: 3.5
+  screeningTotal:
+    cost:
+      distribution: 
+        type: value
+        args: 
+          value:  6.941929852 
+      year: 2017
+  timeDonDoffMinutes: 
+    distribution: 
+      type: value
+      args: 
+        value: 1.0
+  chgWipesPerBath:
+      cost:
+         distribution: 
+          type: value
+          args: 
+            value: 7.62
+         year: 2017
+  personnelTimeXDROLoginMinutes: 2.0
+  personnelTimeXDROSearchMinutesPerPatient: 1.0
+  personnelXDROWage:
+      cost:
+         distribution:
+          type: gamma
+          args: 
+           mean: 44.09
+           stdev: 6.21
+         year: 2014
+  glovesPair:
+    cost:
+      distribution:
+        type: gamma
+        args: 
+          mean: 0.11
+          stdev: 0.01
+      year: 2015
+  gowns:
+    cost:
+      distribution: 
+        type: value
+        args:
+          value: 0.75
+      year: 2004
+
+# one entry for each test
+tests:
+  PICCLine:
+    cost:
+      distribution: 
+        type: value
+        args: 
+         value: 95.58
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution: 
+          type: value
+          args: 
+            value: 1
+      bacteremia:
+        distribution: 
+          type: value
+          args: 
+            value: 1
+      pneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 1
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 1
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 1
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 1
+  UA:
+    cost:
+      distribution: 
+        type: gamma
+        args: 
+          mean: 3.1
+          stdev: 0.14
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution: 
+          type: uniform
+          args: 
+            low: 1
+            high: 3
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 0
+  urineCulture:
+    cost:
+      distribution:
+        type: gamma
+        args: 
+          mean: 11.02
+          stdev: 1.11
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution:
+          type: value
+          args: 
+            value: 1.67
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+  CTAbdominalScan:
+    cost:
+      distribution:
+        type: gamma
+        args: 
+          mean: 268.5
+          stdev: 79.1
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      nonventilationAssociatedPneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+  woundCulture:
+    cost:
+      distribution:
+        type: gamma
+        args: 
+          mean: 12.26
+          stdev: 0.96
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      intraAbdominalInfection:
+        distribution: 
+          type: value
+          args: 
+            value: 2.0
+  chestXRay:
+    cost:
+      distribution: 
+        type: value
+        args: 
+          value: 27.95
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 12.0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 0
+  bronchoscopy:
+    cost:
+      distribution:
+        type: gamma
+        args: 
+          mean: 142.46
+          stdev: 25.93
+      year: 2016
+    numberOfTests:
+      UTI:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 1.0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 0
+  sputumCultures:
+    cost:
+      distribution: 
+        type: gamma
+        args: 
+          mean: 18.3
+          stdev: 2.16
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      pneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 1.0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 0
+  bloodCulture:
+    cost:
+      distribution: 
+        type: gamma
+        args: 
+          mean: 14.42
+          stdev: 1.64
+      year: 2015
+    numberOfTests:
+      UTI:
+        distribution:
+          type: value
+          args: 
+            value: 0
+      bacteremia:
+        distribution:
+          type: value
+          args: 
+            value: 8.8
+      pneumonia:
+        distribution: 
+          type: value
+          args: 
+            value: 0
+      ventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+      nonventilationAssociatedPneumonia:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+      intraAbdominalInfection:
+        distribution:
+          type: value
+          args: 
+            value: 2.0
+lifetimeProdLossParams:
+  lifeExpectancyStartAge: 15.0
+  expectancyAtAge: [78.75,78.25,74.3,69.35,64.4,59.55,54.8,50.05,45.3,40.55,35.95,
+                    31.45,27.15,23,19.1,15.4,12.05,8.95,6.45,4.45,3.2,2.3,56.56,55.62,
+                    54.67,53.72,52.77,51.82,50.87,49.92,48.97,48.02,47.07,46.12,45.17,
+                    44.23,43.29,42.35,41.42,40.49,39.56,38.64,37.73,36.82,35.91,35.01,
+                    34.11,33.23,32.34,31.46,30.59,29.73,28.87,28.01,27.16,26.32,25.49,
+                    24.66,23.84,23.03,22.24,21.45,20.67,19.91,19.16,18.42,17.69,16.97,
+                    16.27,15.57,14.89,14.22,13.57,12.93,12.31,11.69,11.1,10.52,9.96,9.41,
+                    8.88,8.37,7.88,7.42,6.97,6.54,6.13,5.73,5.36,5,4.65,4.33,4.03,3.76,
+                    3.52,3.31,3.09,2.9,2.72,2.55,2.4,1.7,1.7,1.7,1.7,1.7,1.7,1.7]
+
+  npvQALYWeight:
+    startAges: [0,18,65]
+    weights: [1.0,0.92,0.84]
+
+...

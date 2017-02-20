@@ -36,18 +36,20 @@
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'DummyTreatmentPolicy'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
   
     
 #'runDurationDays': 1095
-'runDurationDays': 365
+'runDurationDays': 30
 
 #'burnInDays': 365
-burnInDays: 100
+burnInDays: 00
 
 'trackedFacilities':
   - ABBI_31_S

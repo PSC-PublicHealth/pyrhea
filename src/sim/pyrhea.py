@@ -163,12 +163,80 @@ def buildLocalTierPthDict(patch, timeNow):
             facPthDict['%s_%s' % (fac.abbrev, key)] = v  # so key is now abbrev_tier_pthStatus
     return facPthDict
 
+# def buildLocalNColDict(patch,timeNow):
+#     global _TRACKED_FACILITIES_SET
+#     if not _TRACKED_FACILITIES_SET:
+#         _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+#     facPthDict = {'day': timeNow}
+#     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+#     for fac in patch.allFacilities:
+#         if fac.abbrev not in _TRACKED_FACILITIES_SET:
+#             continue
+#         facPPC = defaultdict(lambda: 0)
+#         for ward in fac.getWards():
+#             key = "{0}".format(fac.abbrev)
+#             facPPC[key] += ward.newColonizationsSinceLastChecked
+#     ### Need to figure out better way than to make sure that zeroing happens
+#     return facPPC
 
+def buildLocalTierNColDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        facSum= 0.0
+        for ward in fac.getWards():
+            pPC = ward.newColonizationsSinceLastChecked
+            key = "{0}".format(ward.tier)
+            facPPC[key] += pPC
+            facSum += pPC
+        for key, v in facPPC.items():
+            facPthDict['{0}_{1}'.format(fac.abbrev,key)] = v
+        #facPthDict['{0}'.format(fac.abbrev)] = facSum
+    
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ward.newColonizationsSinceLastChecked = 0.0
+    return facPthDict
+
+def buildLocalTierCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            pCP = ward.patientsOnCP
+            key = "{0}".format(ward.tier)
+            facPPC[key] += pCP
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ward.patientsOnCP = 0.0
+    
+    return facTrtDict
+        
+        
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
                           'localpathogen': buildLocalPthDict,
-                          'localtierpathogen': buildLocalTierPthDict}
+                          'localtierpathogen': buildLocalTierPthDict,
+                          #'localnewcolonized': buildLocalNColDict,
+                          'localtiernewcolinized':buildLocalTierNColDict,
+                          'localtierCP': buildLocalTierCPDict
+                          }
 
 
 def loadPolicyImplementations(implementationDir):
@@ -238,9 +306,12 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
         facImplCategory = findFacImplCategory(facImplDict, facImplRules, rec['category'])
         if facImplCategory:
             facImpl = facImplDict[facImplCategory]
-            nErrors = facImpl.checkSchema(rec)
-            if nErrors:
-                logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+            if os.name != 'nt':
+                nErrors = facImpl.checkSchema(rec)
+                if nErrors:
+                    logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+                else:
+                    facRecs.append(rec)
             else:
                 facRecs.append(rec)
         else:
@@ -317,21 +388,25 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
     else:
         myLogger = logger
     try:
+        print "HERE"
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
-        validator = schemautils.getValidator(schemaFname)
-        nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
-        if nErrors:
-            myLogger.error('Input file violates schema:')
-            for e in validator.iter_errors(inputJSON):
-                myLogger.error('Schema violation: %s: %s' %
-                               (' '.join([str(word) for word in e.path]), e.message))
-            if comm:
-                comm.Abort(2)
+            if os.name != 'nt':
+                validator = schemautils.getValidator(schemaFname)
+                nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
+                if nErrors:
+                    myLogger.error('Input file violates schema:')
+                    for e in validator.iter_errors(inputJSON):
+                        myLogger.error('Schema violation: %s: %s' %
+                                       (' '.join([str(word) for word in e.path]), e.message))
+                    if comm:
+                        comm.Abort(2)
+                    else:
+                        raise RuntimeError('Input file violates schema')
+                else:
+                    return inputJSON
             else:
-                raise RuntimeError('Input file violates schema')
-        else:
-            return inputJSON
+                return inputJSON
     except Exception, e:
         myLogger.error('Error checking input against its schema: %s' % e)
         if comm:
@@ -557,7 +632,8 @@ def main():
     def handle_pdb(sig, frame):
         import pdb
         pdb.Pdb().set_trace(frame)
-    signal.signal(signal.SIGUSR1, handle_pdb)
+    if os.name != "nt":
+        signal.signal(signal.SIGUSR1, handle_pdb)
 
     comm = patches.getCommWorld()
     logging.basicConfig(format="[%d]%%(levelname)s:%%(name)s:%%(message)s" % comm.rank)
