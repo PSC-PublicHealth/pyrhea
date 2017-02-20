@@ -321,7 +321,7 @@ class Facility(pyrheabase.Facility):
         self.patientStats = PatientStats()
         transferDestinationPolicyClass = TransferDestinationPolicy
         treatmentPolicyClass = TreatmentPolicy
-        print "PolicyClasses for {0} is {1}".format(name,policyClasses)
+        print "PolicyClasses for {0} is {1}".format(name, policyClasses)
         if policyClasses is not None:
             for pC in policyClasses:
                 if issubclass(pC, TransferDestinationPolicy):
