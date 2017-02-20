@@ -258,20 +258,21 @@ class CRE(Pathogen):
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         if patientStatus.pthStatus == PthStatus.CLEAR:
             pI = self.getPropogationInfo(timeNow)
-            nBareExposures = pI['+-']
-            nCPExposures = pI['++']
-            nTot = nBareExposures * nCPExposures
+            nBareExposures = pI['+--']
+            nBareCBExposures = pl['+-+']
+            nCPExposures = pI['++-']
+            nCPCBExposures = pl['+++']
+            nTot = nBareExposures * nCPExposures*nBareCBExposures*nCPCBExposures
             dT = timeNow - startTime
             #
             # Note that this caching scheme assumes all wards with the same category and tier
             # have the same infectivity constant(s)
             #
             key = (self.ward.fac.category, self.ward.tier, 
-                   treatment.contactPrecautions, nBareExposures, nCPExposures, nTot, dT)
+                   treatment.contactPrecautions, nBareExposures, nCPExposures, nBareCBExposures, nCPCBExposures, nTot, dT)
             if key not in self.core.exposureTreeCache:
                 tP = self.ward.fac.treatmentPolicy
                 effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
-                effectivenessCREBundle = tp.getTransmissionMultiplier(careTier, creBundle=True)careTier
                 if treatment.contactPrecautions:
                     # doubly protected
                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
