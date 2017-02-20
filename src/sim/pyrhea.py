@@ -192,7 +192,7 @@ def buildLocalTierNColDict(patch,timeNow):
         facSum= 0.0
         for ward in fac.getWards():
             pPC = ward.miscCounters['newColonizationsSinceLastChecked']
-            ward.newColonizationsSinceLastChecked = 0.0
+            ward.miscCounters['newColonizationsSinceLastChecked'] = 0.0
             key = "{0}".format(ward.tier)
             facPPC[key] += pPC
             facSum += pPC
