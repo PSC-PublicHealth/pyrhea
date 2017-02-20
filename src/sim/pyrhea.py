@@ -228,7 +228,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localpathogen': buildLocalPthDict,
                           'localtierpathogen': buildLocalTierPthDict,
                           #'localnewcolonized': buildLocalNColDict,
-                          'localtiernewcolinized':buildLocalTierNColDict,
+                          'localtiernewcolonized':buildLocalTierNColDict,
                           'localtierCP': buildLocalTierCPDict
                           }
 

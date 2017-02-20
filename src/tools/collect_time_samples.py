@@ -56,7 +56,7 @@ def extractSamples(abbrev, time, specialDict):
         popV = np.asfarray(popVec)[dayVec == time]
         if len(popV): 
             sampListDict['occupancy'].append(float(popV[0]))
-    popNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolinized')
+    popNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolonized')
     for dayVec, curves in popNcList:
         sumValue = 0.0
         for tpl,curve in curves.items():

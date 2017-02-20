@@ -58,7 +58,7 @@ def extractSamples(abbrev, time, specialDict):
                 sampV = scaleV[dayVec == time]
                 if len(sampV):
                     sampListDictDict[CareTier.names[tier]][pth.PthStatus.names[pthLvl]].append(float(sampV[0]))
-    pthNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolinized')
+    pthNcList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolonized')
     for dayVec, curves in pthNcList:
         for tpl, curve in curves.items():
             sampT = curve[dayVec == time]
