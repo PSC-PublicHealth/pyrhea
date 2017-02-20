@@ -258,7 +258,9 @@ class CRE(Pathogen):
                    treatment.contactPrecautions, nBareExposures, nCPExposures, nTot, dT)
             if key not in self.core.exposureTreeCache:
                 tP = self.ward.fac.treatmentPolicy
-                effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
+                effectivenessCP = tP.getTransmissionToMultiplier(careTier, contactPrecautions=True)
+                if effectivenessCP != tP.getTransmissionFromMultiplier(careTier, contactPrecautions=True):
+                    raise RuntimeError('This hacked version of cre only supports symmetrical treatments')
                 if treatment.contactPrecautions:
                     # doubly protected
                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
