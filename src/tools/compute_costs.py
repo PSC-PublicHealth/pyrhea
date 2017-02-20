@@ -718,7 +718,7 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
 #     
 #     print nOutsDict
 def extractNewColonized(abbrev,specialDict):
-    ncList = getTimeSeriesList(abbrev,specialDict,'localtiernewcolinized')
+    ncList = getTimeSeriesList(abbrev,specialDict,'localtiernewcolonized')
     sums = {}
     for dayVec,curves in ncList:
         for tpl, curve in curves.items():
