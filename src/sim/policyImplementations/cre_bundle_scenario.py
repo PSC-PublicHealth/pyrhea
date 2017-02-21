@@ -17,7 +17,6 @@
 
 import logging
 
-from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 from cre_bundle_treatment import CREBundleTreatmentPolicy

@@ -1,0 +1,34 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/xdro_registry_scenerio_constants_schema.yaml'
+'title': 'XDRO registry scenerio constants schema'
+'description': 'XDRO registry scenerio constants schema'
+
+'$ref': '#/definitions/xdro_registry_scenario_constants'
+
+'definitions':
+
+  'xdro_registry_scenario_constants':
+    'type': 'object'
+    'properties':
+      'stringToLogWhenStarting':
+        'type': 'string'
+        'description': 'A real scenario would need more info, of course.'
+      'locationsImplementingScenario':
+        'type': 'object'
+        'properties':
+          'prov':
+            'type': 'string'
+            'description': 'provenance of the list'
+          'locAbbrevList':
+            'type': 'array'
+            'items':
+              'type': 'string'
+              'description': 'The identifying abbreviation of a facility'
+      'enhancedDetectionFraction':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'Effective rate of pathogen detection due to the policy'  
+    'required':
+    - 'stringToLogWhenStarting'
+    - 'locationsImplementingScenario'
+      
+     
