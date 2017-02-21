@@ -515,7 +515,7 @@ class ScenarioStartAgent(patches.Agent):
         timeNow = self.sleep(self.totalWaitDays)  # @UnusedVariable
         logger.info('Scenario is beginning')
         for sP in self.scenarioPolicyList:
-            sP.begin()
+            sP.begin(self, timeNow)
         # and now the agent exits
 
 

@@ -20,6 +20,7 @@ import logging
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from cre_bundle_treatment import CREBundleTreatmentPolicy
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/cre_bundle_scenario_constants.yaml'
@@ -33,10 +34,13 @@ logger = logging.getLogger(__name__)
 # after burn-in.  For consistency with the calibration, we assume 11/28/2011 
 # corresponds to post-burnin day number 150, and that date is the trigger date for
 # this intervention.
-testLocations = [('THC_4058_L', 250, 830),
-                 ('THC_365_L', 320, 830),
-                 ('THC_6130_L', 383, 830),
-                 ('THC_2544_L', 452, 830)
+# testLocations = [('THC_4058_L', 250, 830),
+#                  ('THC_365_L', 320, 830),
+#                  ('THC_6130_L', 383, 830),
+#                  ('THC_2544_L', 452, 830)
+#                  ]
+testLocations = [('THC_4058_L', 4, 8),
+                 ('THC_365_L', 6, 8),
                  ]
 
 class CREBundleScenario(BaseScenarioPolicy):
@@ -46,6 +50,46 @@ class CREBundleScenario(BaseScenarioPolicy):
         
     def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
+        assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
+                                                      % self.patch.name)
+        for abbrev, startDate, endDate in testLocations:
+            if timeNow != startDate:
+                assert(timeNow < startDate), 'It is too late to start intervention at %s' % abbrev
+                timeNow = callingAgent.sleep(startDate - timeNow)
+            for fac in self.patch.allFacilities:
+                if fac.abbrev == abbrev:
+                    fac.flushCaches()
+                    for ward in fac.getWards():
+                        ward.iA.flushCaches()
+                    for tP in fac.treatmentPolicies:
+                        if isinstance(tP, CREBundleTreatmentPolicy):
+                            tP.setValue('active', True)
+                            logger.info('Deactivated CREBundleScenario at %s' % abbrev)
+                            break
+                    else:
+                        raise RuntimeError('%s does not have a CREBundleTreatmentPolicy' % abbrev)
+                    break
+            else:
+                raise RuntimeError('Failed to find the facility %s' % abbrev)
+        for abbrev, startDate, endDate in testLocations:
+            if timeNow != endDate:
+                assert(timeNow < endDate), 'It is too late to start intervention at %s' % abbrev
+                timeNow = callingAgent.sleep(endDate - timeNow)
+            for fac in self.patch.allFacilities:
+                if fac.abbrev == abbrev:
+                    fac.flushCaches()
+                    for ward in fac.getWards():
+                        ward.iA.flushCaches()
+                    for tP in fac.treatmentPolicies:
+                        if isinstance(tP, CREBundleTreatmentPolicy):
+                            tP.setValue('active', False)
+                            logger.info('Deactivated CREBundleScenario at %s' % abbrev)
+                            break
+                    else:
+                        raise RuntimeError('%s does not have a CREBundleTreatmentPolicy' % abbrev)
+                    break
+            else:
+                raise RuntimeError('Failed to find the facility %s' % abbrev)
 
 def getPolicyClasses():
     return [CREBundleScenario]

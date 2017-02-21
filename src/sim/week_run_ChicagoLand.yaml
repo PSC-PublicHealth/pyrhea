@@ -38,7 +38,7 @@
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
   - 'category': 'scenario'
-    'policyClass': 'FirstExperimentalScenario'
+    'policyClass': 'CREBundleScenario'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'GenericDiagnosticPolicy'
 
@@ -50,7 +50,7 @@
 #'burnInDays': 365
 burnInDays: 2
 
-scenarioStartDays: 5
+scenarioWaitDays: 2
 
 'trackedFacilities':
   - 'GLEN_22660_V'

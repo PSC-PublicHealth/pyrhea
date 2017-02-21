@@ -123,7 +123,7 @@ class CRECore(object):
         return initialFracColonized
 
     def flushCaches(self):
-        """Force cached info to be regeneratoed"""
+        """Force cached info to be regenerated"""
         self.spontaneousLossTreeCache = {}
         self.exposureTreeCache = {}
 
@@ -166,7 +166,6 @@ class CRE(Pathogen):
         changed.  This method is called when the environment wants to trigger a cache
         flush.
         """
-        print '!!!!!!!!!!!!! CRE is flushing its caches !!!!!!!!!!!!!!!'
         self.core.flushCaches()
         self.treatmentProbModifierDict = None
 
