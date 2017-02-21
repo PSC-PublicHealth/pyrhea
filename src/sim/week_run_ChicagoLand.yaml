@@ -1,15 +1,19 @@
 'modelDir': '/home/welling/git/pyrhea/models/ChicagoLand'
 
-'notesFileName': 'notes_week_ChicagoLand.pkl'
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
 
 'facilityDirs':
-  - '/home/welling/git/pyrhea/models/ChicagoLand/facilityfacts'
-  - '/home/welling/git/pyrhea/models/ChicagoLand/synthCommunities'
+  - '$(MODELDIR)/facilityfacts'
+  - '$(MODELDIR)/synthCommunities'
 
 'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
 'facilitySelectors':
-  - 'category': '((SNF)|(VSNF))'
+  - 'category': 'SNF'
     'implementation': 'NURSINGHOME'
+  - 'category': 'VSNF'
+    'implementation': 'VSNF'
   - 'category': 'LTACH'
     'implementation': 'LTAC'
   - 'category': 'HOSPITAL'
@@ -17,17 +21,39 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/mrsaImplementation_OC2013'
+'pathogenImplementationDir': '../sim/creImplementation_ChicagoLand'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC))'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
-    'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'CapacityTransferDestinationPolicy'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleTreatmentPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+  - 'category': 'scenario'
+    'policyClass': 'FirstExperimentalScenario'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'GenericDiagnosticPolicy'
+
+'notesFileName': 'notes_week_ChicagoLand.pkl'
 
 #'runDurationDays': 1095
 'runDurationDays': 7
 
 #'burnInDays': 365
-burnInDays: 7
+burnInDays: 2
+
+scenarioStartDays: 5
+
+'trackedFacilities':
+  - 'GLEN_22660_V'
+  - 'ADVO_836_H'
+  - 'WASH_11308_S'
+  - 'THC_2544_L'

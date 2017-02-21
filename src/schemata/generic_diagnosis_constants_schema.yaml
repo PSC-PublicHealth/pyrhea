@@ -1,0 +1,17 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/generic_diagnosis_constants_schema.yaml'
+'title': 'generic diagnosis constants schema'
+'description': 'generic diagnosis constants schema'
+
+'$ref': '#/definitions/generic_diagnosis_constants'
+
+'definitions':
+
+  'generic_diagnosis_constants':
+    'type': 'object'
+    'properties':
+      'pathogenDiagnosticEffectiveness':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'If a patient arrives with COLONIZED pathogen status, how likely is it to be detected?'
+      
+     

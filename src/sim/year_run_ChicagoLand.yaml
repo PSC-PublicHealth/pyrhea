@@ -37,6 +37,8 @@
     'policyClass': 'DummyTreatmentPolicy'
   - 'category': 'scenario'
     'policyClass': 'FirstExperimentalScenario'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'GenericDiagnosticPolicy'
 
 #'runDurationDays': 1095
 'runDurationDays': 365

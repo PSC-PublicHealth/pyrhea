@@ -52,11 +52,12 @@ PatientStatus = namedtuple('PatientStatus',
                             'pthStatus',            # one of PthStatus
                             'startDatePth',         # date PthStatus status was entered
                             'relocateFlag',         # true if patient needs relocation
+                            'justArrivedFlag',      # true on patient's first day in new location
                             'canClear',             # true if patient can spontaneously clear infection
                             'homeAddr'              # GblAddr of patient's home tract or NH
                             ],
                            field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,
-                                        bool, bool, GblAddr])
+                                        bool, bool, bool, GblAddr])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
@@ -130,6 +131,7 @@ class Ward(pyrheabase.Ward):
 
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
+        patientAgent._status = patientAgent._status._replace(justArrived=True)
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, timeNow)
 
@@ -217,14 +219,9 @@ class DiagnosticPolicy(Policy):
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        if patientStatus.pthStatus == PthStatus.COLONIZED and (random() <= 0.12):
-            diagnosedPthStatus = PthStatus.COLONIZED
-        else:
-            diagnosedPthStatus = PthStatus.CLEAR
-            
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
-                                diagnosedPthStatus,
+                                patientStatus.pthStatus,
                                 patientStatus.relocateFlag)
     
     def initializePatientDiagnosis(self, careTier):
@@ -650,7 +647,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
-                                     False, True, None)
+                                     False, True, True, None)
         newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
                                                            TREATMENT_DEFAULT)[0:2]
         self.lastUpdateTime = timeNow
@@ -730,6 +727,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
         tpl = self.ward.fac.prescribe(self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
+        self._status = self._status._replace(justArrived=False)
         if len(tpl) == 3:
             modifierList = tpl[2]
         else:

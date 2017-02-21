@@ -249,12 +249,8 @@ class CRE(Pathogen):
         stateL = []
         for tP in self.ward.fac.treatmentPolicies:
             if hasattr(type(tP), 'treatmentKey'):
-                print tP
                 treatmentKey = getattr(type(tP), 'treatmentKey')
-                print treatmentKey
                 stateL.append('+' if p.getTreatment(treatmentKey) else '-')
-                print stateL
-        print 'state %s -> key %s' % (p._treatment, stateL)
         return ''.join(stateL)
 
 #     def getPropogationInfo(self, timeNow):
@@ -318,7 +314,6 @@ class CRE(Pathogen):
             if key not in self.core.exposureTreeCache:
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = 1.0  # degree to which the patient's treatments protect the patient
-                permD = {'': 1.0}
                 for tP in self.ward.fac.treatmentPolicies:
                     if hasattr(type(tP), 'treatmentKey'):
                         treatmentKey = getattr(type(tP), 'treatmentKey')
