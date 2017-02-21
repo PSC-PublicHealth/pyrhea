@@ -257,7 +257,7 @@ class CRE(Pathogen):
             pI = self.propogationInfo = defaultdict(lambda: 0)
             for p in self.ward.getPatientList():
                 pI[self.getPatientStateKey(p._status, p._treatment)] += 1
-            pI = {k, v for k, v in pI.items() if not k.startswith('-')} # because only sick people spread
+            pI = {k: v for k, v in pI.items() if not k.startswith('-')} # because only sick people spread
             lst = pI.items()[:]
             lst.sort()
             self.propogationInfoKey = tuple(lst)
