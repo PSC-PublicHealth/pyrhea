@@ -43,7 +43,7 @@ numCREBund = 9682.83
 totCarriersGettingCRE = 17.95
 carrierCPdays = 11.21
 nonCarrierCPDays = 3350.67
-fractionAttribMort = 0.26
+fractionAttribMorts = [0.26,0.35,0.44]
 infectionGivenCol = 0.15
 
 class Constants:
@@ -734,6 +734,14 @@ def extractContactPrecautionDays(abbrev,specialDict):
             sums[CareTier.names[tpl]] = sum(curve)
     return sums
 
+def extractCREBundlesGiven(abbrev,specialDict):
+    cpList = getTimeSeriesList(abbrev,specialDict,'localtierCREBundle')
+    sums = {}
+    for dayVec,curves in cpList:
+        for tpl,curve in curves.items():
+            sums[CareTier.names[tpl]] = sum(curve)
+    return sums   
+ 
 def main():
     
     parser = OptionParser(usage="""
@@ -799,140 +807,164 @@ def main():
     
     print 'Contact Pre Days = {0}'.format(cpDaysByType)
     
+    creBundles ={}
+    creBundlesAll = 0.0
+    if 'trackedFacilities' in inputDict:
+        for abbrev in inputDict['trackedFacilities']:
+            if abbrev in facDict:
+                creBundles[abbrev] = extractCREBundlesGiven(abbrev, specialDict)
+                for k,v in creBundles[abbrev].items():
+                    creBundlesAll += v
+                    
     with open("costModel_ChicagoLand.yaml","rb") as f:
         params = yaml.load(f)
     
     nReals = opts.nreals
     
-    costsOfRealization = [{} for x in range(nReals)]
+    costs = {'Societal Costs': {x:{} for x in fractionAttribMorts}, 
+             'Intervention Costs': {x:{} for x in fractionAttribMorts},
+             'thirdParty Costs':{x:{} for x in fractionAttribMorts},
+             'Hospitalization Costs':{x:{} for x in fractionAttribMorts},
+             'Colonizations':{x:{} for x in fractionAttribMorts}, 
+             'Deaths': {x:{} for x in fractionAttribMorts},
+             'CPDays': {x:{} for x in fractionAttribMorts}, 
+             'QALYs Lost': {x:{} for x in fractionAttribMorts},
+             'CRE Bundles': {x:{} for x in fractionAttribMorts}
+             }
     
-    
-    for i in range(0,nReals):
-        personAge = int(round(Distribution('uniform',{'low':60.0,'high':80.0}).draw()))
-        annualWage = Cost(Distribution(params['costs']['annualWage']['distribution']['type'],
-                                       params['costs']['annualWage']['distribution']['args']).draw(),
-                          params['costs']['annualWage']['year'])
-    
-    
-        hourlyWage = Cost(Distribution(params['costs']['hourlyWage']['distribution']['type'],
-                                       params['costs']['hourlyWage']['distribution']['args']).draw(),
-                          params['costs']['hourlyWage']['year'])
+    for fracAttribMort in fractionAttribMorts:
+        costsOfRealization = [{} for x in range(nReals)]
+        for i in range(0,nReals):
+            personAge = int(round(Distribution('uniform',{'low':60.0,'high':80.0}).draw()))
+            annualWage = Cost(Distribution(params['costs']['annualWage']['distribution']['type'],
+                                           params['costs']['annualWage']['distribution']['args']).draw(),
+                              params['costs']['annualWage']['year'])
+        
+        
+            hourlyWage = Cost(Distribution(params['costs']['hourlyWage']['distribution']['type'],
+                                           params['costs']['hourlyWage']['distribution']['args']).draw(),
+                              params['costs']['hourlyWage']['year'])
+            
+            
+            
+            ## for now, compute some common costs:
+            cGlovesDict = params['interventionParameters']['glovesPair']['cost']
+            cGloves = Cost(Distribution(cGlovesDict['distribution']['type'],
+                                        cGlovesDict['distribution']['args']).draw(),
+                           cGlovesDict['year'])
+                    
+            cGownsDict = params['interventionParameters']['gowns']['cost']
+            cGowns = Cost(Distribution(cGownsDict['distribution']['type'],
+                                       cGownsDict['distribution']['args']).draw(),
+                          cGownsDict['year'])
+            
+            rNurseWageDict = params['costs']['regNurseHourlyWage']
+            rNurseWage = Cost(Distribution(rNurseWageDict['distribution']['type'],
+                                           rNurseWageDict['distribution']['args']).draw(),
+                              rNurseWageDict['year'])
+            
+            costsOfRealization[i]['xdroCosts'] = Cost(0.0,opts.targetyear) #computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
+            costsOfRealization[i]['contPrecCosts'] = Cost(0.0,opts.targetyear)
+            #for fType,cpDays in cpDaysByType.items():
+            #    cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
+            #    costsOfRealization[i]['contPrecCosts'] += cpst 
+            costsOfRealization[i]['bundleCosts'] = computeCostsOfBundles(creBundlesAll, 0, opts.targetyear, params) # replace with RHEA
+            outcomesDict = determineOutcomes(newColAll,0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
+            costsOfRealization[i]['outcomesDict'] = outcomesDict
+            
+            totalSoc = 0.0
+            totalQALY = 0.0
+            totalHosp = 0.0
+            total3rd = 0.0
+            totalCases = 0.0
+            totalDead = 0.0
+            
+            for oC,oCD in outcomesDict.items():
+                if oC not in ['pneumoniaAll']:
+                    #print oC
+                    totalCases += oCD['nCases']
+                    totalDead += oCD['nDead']
+                    totalQALY += oCD['QALYs Lost'].value
+                    totalHosp += oCD['Hospitalization Cost'].value
+                    total3rd += oCD['thirdParty Costs'].value
+                    totalSoc += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
+                    
+                    
+            costsOfRealization[i]['Intervention Costs'] = Cost(costsOfRealization[i]['xdroCosts'].value + costsOfRealization[i]['contPrecCosts'].value + costsOfRealization[i]['bundleCosts'].value,opts.targetyear)
+            costsOfRealization[i]['QALYs Lost'] = Cost(totalQALY,opts.targetyear)
+            costsOfRealization[i]['Hospitalization Costs'] = Cost(totalHosp,opts.targetyear)
+            costsOfRealization[i]['thirdParty Costs'] = Cost(total3rd,opts.targetyear)
+            costsOfRealization[i]['Societal Costs'] = Cost(totalSoc,opts.targetyear)
+            costsOfRealization[i]['nCases'] = totalCases
+            costsOfRealization[i]['nDead'] = totalDead
+            costsOfRealization[i]['cpDays'] = sum([x for k,x in cpDaysByType.items()])
+            costsOfRealization[i]['creBundles'] = creBundlesAll
+            
+            
         
         
         
-        ## for now, compute some common costs:
-        cGlovesDict = params['interventionParameters']['glovesPair']['cost']
-        cGloves = Cost(Distribution(cGlovesDict['distribution']['type'],
-                                    cGlovesDict['distribution']['args']).draw(),
-                       cGlovesDict['year'])
-                
-        cGownsDict = params['interventionParameters']['gowns']['cost']
-        cGowns = Cost(Distribution(cGownsDict['distribution']['type'],
-                                   cGownsDict['distribution']['args']).draw(),
-                      cGownsDict['year'])
+        a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
+        costs['Societal Costs'][fracAttribMort]['mean'] = float(np.mean(a))
+        costs['Societal Costs'][fracAttribMort]['median'] = float(np.median(a))
+        costs['Societal Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
+        costs['Societal Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+        costs['Societal Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
         
-        rNurseWageDict = params['costs']['regNurseHourlyWage']
-        rNurseWage = Cost(Distribution(rNurseWageDict['distribution']['type'],
-                                       rNurseWageDict['distribution']['args']).draw(),
-                          rNurseWageDict['year'])
+        a = np.array([costsOfRealization[i]['Intervention Costs'].value for i in range(0,nReals)])
+        costs['Intervention Costs'][fracAttribMort]['mean'] =  float( np.mean(a))
+        costs['Intervention Costs'][fracAttribMort]['median'] =  float(np.median(a))
+        costs['Intervention Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
+        costs['Intervention Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+        costs['Intervention Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        a = np.array([costsOfRealization[i]['Hospitalization Costs'].value for i in range(0,nReals)])
+        costs['Hospitalization Costs'][fracAttribMort]['mean'] =  float(np.mean(a))
+        costs['Hospitalization Costs'][fracAttribMort]['median'] =  float(np.median(a))
+        costs['Hospitalization Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
+        costs['Hospitalization Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+        costs['Hospitalization Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
         
-        costsOfRealization[i]['xdroCosts'] = Cost(0.0,opts.targetyear) #computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
-        costsOfRealization[i]['contPrecCosts'] = Cost(0.0,opts.targetyear)
-        for fType,cpDays in cpDaysByType.items():
-            cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
-            costsOfRealization[i]['contPrecCosts'] += cpst 
-        costsOfRealization[i]['bundleCosts'] = computeCostsOfBundles(0, 0, opts.targetyear, params) # replace with RHEA
-        outcomesDict = determineOutcomes(newColAll,0,infectionGivenCol,fractionAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
-        costsOfRealization[i]['outcomesDict'] = outcomesDict
+        a = np.array([costsOfRealization[i]['thirdParty Costs'].value for i in range(0,nReals)])
+        costs['thirdParty Costs'][fracAttribMort]['mean'] =  float(np.mean(a))
+        costs['thirdParty Costs'][fracAttribMort]['median'] =  float(np.median(a))
+        costs['thirdParty Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
+        costs['thirdParty Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+        costs['thirdParty Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
         
-        totalSoc = 0.0
-        totalQALY = 0.0
-        totalHosp = 0.0
-        total3rd = 0.0
-        totalCases = 0.0
-        totalDead = 0.0
+        a = np.array([costsOfRealization[i]['QALYs Lost'].value for i in range(0,nReals)])
+        costs['QALYs Lost'][fracAttribMort]['mean'] =  float(np.mean(a))
+        costs['QALYs Lost'][fracAttribMort]['median'] =  float(np.median(a))
+        costs['QALYs Lost'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
+        costs['QALYs Lost'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+        costs['QALYs Lost'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
         
-        for oC,oCD in outcomesDict.items():
-            if oC not in ['pneumoniaAll']:
-                #print oC
-                totalCases += oCD['nCases']
-                totalDead += oCD['nDead']
-                totalQALY += oCD['QALYs Lost'].value
-                totalHosp += oCD['Hospitalization Cost'].value
-                total3rd += oCD['thirdParty Costs'].value
-                totalSoc += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
-                
-                
-        costsOfRealization[i]['Intervention Costs'] = Cost(costsOfRealization[i]['xdroCosts'].value + costsOfRealization[i]['contPrecCosts'].value + costsOfRealization[i]['bundleCosts'].value,opts.targetyear)
-        costsOfRealization[i]['QALYs Lost'] = Cost(totalQALY,opts.targetyear)
-        costsOfRealization[i]['Hospitalization Costs'] = Cost(totalHosp,opts.targetyear)
-        costsOfRealization[i]['thirdParty Costs'] = Cost(total3rd,opts.targetyear)
-        costsOfRealization[i]['Societal Costs'] = Cost(totalSoc,opts.targetyear)
-        costsOfRealization[i]['nCases'] = totalCases
-        costsOfRealization[i]['nDead'] = totalDead
-        costsOfRealization[i]['cpDays'] = sum([x for k,x in cpDaysByType.items()])
+        a = np.array([costsOfRealization[i]['nCases'] for i in range(0,nReals)])
+        costs['Colonizations'][fracAttribMort]['value'] =  float(np.mean(a))
+        #costs['Infections'][fracAttribMort]['median'] = np.median(a)
+        #costs['Infections'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
+        #costs['Infections'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+        #costs['Infections'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+        a = np.array([costsOfRealization[i]['cpDays'] for i in range(0,nReals)])
+        costs['CPDays'][fracAttribMort]['value'] =  float(np.mean(a))
         
-        
-    
-    costs = {'Societal Costs': {}, 'Intervention Costs': {},'thirdParty Costs':{},'Hospitalization Costs':{}, 'Colonizations':{}, 'Deaths': {}, 'CPDays': {}, 'QALYs Lost': {}}
-    
-    a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
-    costs['Societal Costs']['mean'] = float(np.mean(a))
-    costs['Societal Costs']['median'] = float(np.median(a))
-    costs['Societal Costs']['stdev'] =  float(np.std(a,ddof=1))
-    costs['Societal Costs']['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-    costs['Societal Costs']['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-    
-    a = np.array([costsOfRealization[i]['Intervention Costs'].value for i in range(0,nReals)])
-    costs['Intervention Costs']['mean'] =  float( np.mean(a))
-    costs['Intervention Costs']['median'] =  float(np.median(a))
-    costs['Intervention Costs']['stdev'] =  float(np.std(a,ddof=1))
-    costs['Intervention Costs']['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-    costs['Intervention Costs']['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-
-    a = np.array([costsOfRealization[i]['Hospitalization Costs'].value for i in range(0,nReals)])
-    costs['Hospitalization Costs']['mean'] =  float(np.mean(a))
-    costs['Hospitalization Costs']['median'] =  float(np.median(a))
-    costs['Hospitalization Costs']['stdev'] =  float(np.std(a,ddof=1))
-    costs['Hospitalization Costs']['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-    costs['Hospitalization Costs']['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-    
-    a = np.array([costsOfRealization[i]['thirdParty Costs'].value for i in range(0,nReals)])
-    costs['thirdParty Costs']['mean'] =  float(np.mean(a))
-    costs['thirdParty Costs']['median'] =  float(np.median(a))
-    costs['thirdParty Costs']['stdev'] =  float(np.std(a,ddof=1))
-    costs['thirdParty Costs']['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-    costs['thirdParty Costs']['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-    
-    a = np.array([costsOfRealization[i]['QALYs Lost'].value for i in range(0,nReals)])
-    costs['QALYs Lost']['mean'] =  float(np.mean(a))
-    costs['QALYs Lost']['median'] =  float(np.median(a))
-    costs['QALYs Lost']['stdev'] =  float(np.std(a,ddof=1))
-    costs['QALYs Lost']['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-    costs['QALYs Lost']['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-    
-    a = np.array([costsOfRealization[i]['nCases'] for i in range(0,nReals)])
-    costs['Colonizations']['value'] =  float(np.mean(a))
-    #costs['Infections']['median'] = np.median(a)
-    #costs['Infections']['stdev'] = np.std(a,ddof=1)
-    #costs['Infections']['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-    #costs['Infections']['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-    a = np.array([costsOfRealization[i]['cpDays'] for i in range(0,nReals)])
-    costs['CPDays']['value'] =  float(np.mean(a))
-    
-    a = np.array([costsOfRealization[i]['nDead'] for i in range(0,nReals)])
-    costs['Deaths']['value'] =  float(np.mean(a))
-#     costs['Deaths']['median'] = np.median(a)
-#     costs['Deaths']['stdev'] = np.std(a,ddof=1)
-#     costs['Deaths']['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-#     costs['Deaths']['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-#     
-    for k,d in costs.items():
-        if k in ['Colonizations','Deaths','CPDays']:
-            print '{0},{1}'.format(k,d['value'])
-        else:
-            print "{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'])
-        
+        a = np.array([costsOfRealization[i]['creBundles'] for i in range(0,nReals)])
+        costs['CRE Bundles'][fracAttribMort]['value'] =  float(np.mean(a))
+        a = np.array([costsOfRealization[i]['nDead'] for i in range(0,nReals)])
+        costs['Deaths'][fracAttribMort]['value'] =  float(np.mean(a))
+    #     costs['Deaths'][fracAttribMort]['median'] = np.median(a)
+    #     costs['Deaths'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
+    #     costs['Deaths'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+    #     costs['Deaths'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+    #     
+    for f,g in costs.items():
+        for k,d in g.items():
+            #print "{0} {1} {2}".format(f,k,d.keys)
+            if f in ['Colonizations','Deaths','CPDays','CRE Bundles']:
+                print '{2},{0},{1}'.format(k,d['value'],f)
+            else:
+                print "{6},{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'],f)
+            
     with open(outFileName,'wb') as f:
         yaml.dump(costs,f,indent=4,encoding='utf-8',width=130,explicit_start=True)
         
