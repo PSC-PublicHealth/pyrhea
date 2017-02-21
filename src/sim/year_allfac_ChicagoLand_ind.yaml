@@ -31,6 +31,8 @@
 'policySelectors':
   - 'locationAbbrev': '((MANO_9401_S)|(ADVE_500_H))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleTreatmentPolicy'
   - 'locationAbbrev': '((MANO_9401_S)|(ADVE_500_H))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
@@ -49,7 +51,7 @@
 'runDurationDays': 30
 
 #'burnInDays': 365
-burnInDays: 00
+burnInDays: 5
 
 'trackedFacilities':
   - ABBI_31_S

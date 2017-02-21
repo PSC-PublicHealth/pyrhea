@@ -221,15 +221,56 @@ def buildLocalTierCPDict(patch,timeNow):
             
     return facTrtDict
         
+def buildLocalTierCREBundleDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['creBundlesHandedOut']
+            ward.miscCounters['creBundlesHandedOut'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
+
+# def buildLocalTierCountersDict(patch, timeNow):
+#     global _TRACKED_FACILITIES_SET
+#     if not _TRACKED_FACILITIES_SET:
+#         _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+#     facTrtDict = {'day': timeNow}
+#     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+#     miscCounters = defaultdict(lambda:0.0)
+#     for fac in patch.allFacilities:
+#         if fac.abbrev not in _TRACKED_FACILITIES_SET:
+#             continue
+#         for ward in fac.getWards():
+#             for counter,value in ward.miscCounters.items():
+#                 key = '{0}_{1}'.format(ward.tier,counter)
+#                 miscCounters[key] += value
+#                 ward.miscCounters[counter] = 0.0
+#         
+#         for key,v in miscCounters.items():
+#             facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v
+#     print "Fac = {0}".format(facTrtDict)
+#     return facTrtDict
         
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
                           'localpathogen': buildLocalPthDict,
                           'localtierpathogen': buildLocalTierPthDict,
-                          #'localnewcolonized': buildLocalNColDict,
+                          #localnewcolonized': buildLocalNColDict,
                           'localtiernewcolonized':buildLocalTierNColDict,
-                          'localtierCP': buildLocalTierCPDict
+                          'localtierCP': buildLocalTierCPDict,
+                          'localtierCREBundle': buildLocalTierCREBundleDict,
+                          #'localCounters': buildLocalTierCountersDict
                           }
 
 
