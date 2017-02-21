@@ -55,7 +55,6 @@ def _parseFracByStatusByTierByCategory(fieldStr):
     return topD
 
 
-
 class CPTPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass

@@ -21,12 +21,12 @@ import random
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
 from collections import deque
-from facilitybase import CareTier
+from facilitybase import CareTier, PthStatus
 from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/cre_bundle_treatment_constants.yaml'
-_constants_schema = 'cre_treatment_constants_schema.yaml'
+_constants_schema = 'cre_bundle_treatment_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,23 @@ class CREBCore(object):
     __metaclass__ = SingletonMetaClass
     
     def __init__(self):
-        self.effectiveness = _constants['transmissibility']['value']
+        self.effectiveness = _constants['transmissibilityMultiplier']['value']
     
 
 class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
+    """
+    This treatment policy represents the application of the CRE Bundle- bathing, etc.
+    """
+    
+    """
+    If the presence of this treatment corresponds to a flag in TreatmentProtocol,
+    the name of that flag is the treatmentKey.
+    """
+    treatmentKey = 'creBundle'
+
     def __init__(self,patch,categoryNameMapper):
         super(CREBundleTreatmentPolicy,self).__init__(patch,categoryNameMapper)
+        self.core = CREBCore()
         
     def initializePatientTreatment(self, ward, patient):
         """
@@ -50,8 +61,8 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         """
         try:
             patient.setTreatment(creBundle=True)
-        except:
-            msg = ('Cannot set CRE Bundle treatment for patient in {0}'.format(ward))
+        except Exception, e:
+            msg = ('Cannot set CRE Bundle treatment for patient in {0}: {1}'.format(ward, e))
             logger.fatal(msg)
             raise RuntimeError(msg)
     
@@ -69,14 +80,41 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         patient.setTreatment(creBundle=False)
 
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
-            """
-            If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
-            return the scale factor by which the transmission coefficient tau is multiplied.
-            """
-            if 'creBundle' in kwargs and kwargs['creBundle']:
-                return self.core.effectiveness
-            else:
-                return 1.0
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the source of the transmission.
+        """
+        if 'creBundle' in kwargs and kwargs['creBundle']:
+            return self.core.effectiveness
+        else:
+            return 1.0
+
+    def getTransmissionToMultiplier(self, careTier, **kwargs):
+        """
+        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
+        return the scale factor by which the transmission coefficient tau is multiplied when
+        the patient with this treatment is the recipient of the transmission.
+        """
+        if 'creBundle' in kwargs and kwargs['creBundle']:
+            return self.core.effectiveness
+        else:
+            return 1.0
+
+    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
+        """
+        This returns a tuple of form (careTier, patientTreatment).
+        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
+        and is not generally relevant to the decisions made by this method.
+        """
+        newTier, newTreatment = \
+            super(CREBundleTreatmentPolicy, self).prescribe(patientDiagnosis,
+                                                            patientTreatment,
+                                                            modifierList)
+        if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
+            newTreatment = newTreatment._replace(contactPrecautions=True)
+        return newTier, newTreatment
+
 
 def getPolicyClasses():
     return [CREBundleTreatmentPolicy]

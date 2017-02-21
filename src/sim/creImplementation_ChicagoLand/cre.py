@@ -122,6 +122,10 @@ class CRECore(object):
 
         return initialFracColonized
 
+    def flushCaches(self):
+        """Force cached info to be regeneratoed"""
+        self.spontaneousLossTreeCache = {}
+        self.exposureTreeCache = {}
 
 class CRE(Pathogen):
     def __init__(self, ward, useWardCategory):
@@ -138,7 +142,9 @@ class CRE(Pathogen):
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
         self.propogationInfo = {}
+        self.propogationInfoKey = None
         self.propogationInfoTime = None
+        self.treatmentProbModifierDict = None
 
         self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
                                                                   ward.fac.category,
@@ -152,6 +158,17 @@ class CRE(Pathogen):
             if ent['tier'] == tierName:
                 self.colDischDelayTime = ent['value']
                 break
+
+    def flushCaches(self):
+        """
+        Derived classes often cache things like BayesTrees, but the items in the cache
+        can become invalid when a new scenario starts and the odds of transitions are
+        changed.  This method is called when the environment wants to trigger a cache
+        flush.
+        """
+        print '!!!!!!!!!!!!! CRE is flushing its caches !!!!!!!!!!!!!!!'
+        self.core.flushCaches()
+        self.treatmentProbModifierDict = None
 
     def _getInitialFracColonized(self, abbrev, category, tier):
         return self.core._getInitialFracColonized(abbrev, category, tier)
@@ -181,6 +198,7 @@ class CRE(Pathogen):
                 return 1.0
         else:
             return 1.0
+
 
     @classmethod
     def getEstimatedPrevalence(cls, pthStatus, abbrev, category, tier):
@@ -225,50 +243,101 @@ class CRE(Pathogen):
             self.patientPth = d
             self.patientPthTime = timeNow
         return self.patientPth
-    
+
+    def getPatientStateKey(self, p):
+        """ p is a patientAgent """
+        stateL = []
+        for tP in self.ward.fac.treatmentPolicies:
+            if hasattr(type(tP), 'treatmentKey'):
+                print tP
+                treatmentKey = getattr(type(tP), 'treatmentKey')
+                print treatmentKey
+                stateL.append('+' if p.getTreatment(treatmentKey) else '-')
+                print stateL
+        print 'state %s -> key %s' % (p._treatment, stateL)
+        return ''.join(stateL)
+
+#     def getPropogationInfo(self, timeNow):
+#         if self.propogationInfoTime != timeNow:
+#             pI = self.propogationInfo = defaultdict(lambda: 0)
+#             for p in self.ward.getPatientList():
+#                 if p.getPthStatus():
+#                     if p.getTreatment('contactPrecautions'):
+#                         pI['++'] += 1
+#                     else:
+#                         pI['+-'] += 1
+#                 else:
+#                     if p.getTreatment('contactPrecautions'):
+#                         pI['-+'] += 1
+#                     else:
+#                         pI['--'] += 1
+#             self.propogationInfoTime = timeNow
+#         return self.propogationInfo
+
     def getPropogationInfo(self, timeNow):
         if self.propogationInfoTime != timeNow:
             pI = self.propogationInfo = defaultdict(lambda: 0)
             for p in self.ward.getPatientList():
-                if p.getPthStatus():
-                    if p.getTreatment('contactPrecautions'):
-                        pI['++'] += 1
-                    else:
-                        pI['+-'] += 1
-                else:
-                    if p.getTreatment('contactPrecautions'):
-                        pI['-+'] += 1
-                    else:
-                        pI['--'] += 1
+                pI[self.getPatientStateKey(p)] += 1
+            lst = pI.items()[:]
+            lst.sort()
+            self.propogationInfoKey = tuple(lst)
             self.propogationInfoTime = timeNow
-        return self.propogationInfo
+        print self.propogationInfo
+        print self.propogationInfoKey
+        return self.propogationInfo, self.propogationInfoKey
+    
+    def getTreatmentProbModifierDict(self):
+        if not self.treatmentProbModifierDict:
+            dct = {'': 1.0}
+            for tP in self.ward.fac.treatmentPolicies:
+                if hasattr(type(tP), 'treatmentKey'):
+                    treatmentKey = getattr(type(tP), 'treatmentKey')
+                    factor = tP.getTransmissionFromMultiplier(self.ward.tier,
+                                                              **{treatmentKey: True})
+                    newDct = {}
+                    for kStr, prob in dct.items():
+                        newDct[kStr + '-'] = prob
+                        newDct[kStr + '+'] = factor * prob
+                    dct = newDct
+            self.treatmentProbModifierDict = dct
+        print self.treatmentProbModifierDict
+        return self.treatmentProbModifierDict
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         if patientStatus.pthStatus == PthStatus.CLEAR:
-            pI = self.getPropogationInfo(timeNow)
-            nBareExposures = pI['+-']
-            nCPExposures = pI['++']
-            nTot = nBareExposures * nCPExposures
+            pI, pIKey = self.getPropogationInfo(timeNow)
             dT = timeNow - startTime
             #
             # Note that this caching scheme assumes all wards with the same category and tier
             # have the same infectivity constant(s)
             #
-            key = (self.ward.fac.category, self.ward.tier, 
-                   treatment.contactPrecautions, nBareExposures, nCPExposures, nTot, dT)
+            propInfoKey = pI.items()[:]
+            propInfoKey.sort()
+            key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT)
             if key not in self.core.exposureTreeCache:
-                tP = self.ward.fac.treatmentPolicies[0]
-                effectivenessCP = tP.getTransmissionToMultiplier(careTier, contactPrecautions=True)
-                if effectivenessCP != tP.getTransmissionFromMultiplier(careTier, contactPrecautions=True):
-                    raise RuntimeError('Intermediate implementation of CRE only works with symmetrical treatments')
-                if treatment.contactPrecautions:
-                    # doubly protected
-                    pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
-                             * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
-                                        nCPExposures * dT))
-                else:
-                    pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
-                             * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
+                tPMD = self.getTreatmentProbModifierDict()
+                selfProt = 1.0  # degree to which the patient's treatments protect the patient
+                permD = {'': 1.0}
+                for tP in self.ward.fac.treatmentPolicies:
+                    if hasattr(type(tP), 'treatmentKey'):
+                        treatmentKey = getattr(type(tP), 'treatmentKey')
+                        selfProt *= tP.getTransmissionToMultiplier(self.ward.tier,
+                                                                   **{treatmentKey: True})
+                pSafe = 1.0 - (dT * self.tau * selfProt * sum([tPMD[key] * pI[key] for key in pI]))
+#                 tP = self.ward.fac.treatmentPolicy
+#                 effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
+#                 if treatment.contactPrecautions:
+#                     # doubly protected
+#                     pSafe = (1.0
+#                              - dT * self.tau * effectivenessCP * (nBareExposures
+#                                                                   + nCPExposures*effectivenessCP))
+#                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
+#                              * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
+#                                         nCPExposures * dT))
+#                 else:
+#                     pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
+#                              * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
