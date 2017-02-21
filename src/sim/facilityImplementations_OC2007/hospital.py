@@ -194,7 +194,7 @@ class Hospital(Facility):
         else:
             raise RuntimeError('Hospitals do not provide care tier %s' % careTier)
 
-    def prescribe(self, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:

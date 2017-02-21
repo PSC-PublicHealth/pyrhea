@@ -53,7 +53,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
     def __init__(self,patch,categoryNameMapper):
         super(CREBundleTreatmentPolicy,self).__init__(patch,categoryNameMapper)
         self.core = CREBCore()
-        self.active = True
+        self.active = False
         
     def initializePatientTreatment(self, ward, patient):
         """
@@ -61,7 +61,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         ward in which they start the simulation.
         """
         try:
-            patient.setTreatment(creBundle=True)
+            patient.setTreatment(creBundle=self.active)
         except Exception, e:
             msg = ('Cannot set CRE Bundle treatment for patient in {0}: {1}'.format(ward, e))
             logger.fatal(msg)

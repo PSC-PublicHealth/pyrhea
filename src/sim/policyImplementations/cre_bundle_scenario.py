@@ -28,16 +28,27 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-class FirstExperimentalScenario(BaseScenarioPolicy):
+# These have to be in order of start-up time, because it's late and I'm tired.
+# Format of tuples is (abbrev, startDate, endDate) where the dates start counting
+# after burn-in.  For consistency with the calibration, we assume 11/28/2011 
+# corresponds to post-burnin day number 150, and that date is the trigger date for
+# this intervention.
+testLocations = [('THC_4058_L', 250, 830),
+                 ('THC_365_L', 320, 830),
+                 ('THC_6130_L', 383, 830),
+                 ('THC_2544_L', 452, 830)
+                 ]
+
+class CREBundleScenario(BaseScenarioPolicy):
     def __init__(self, name, patch):
-        super(FirstExperimentalScenario, self).__init__(name, patch)
+        super(CREBundleScenario, self).__init__(name, patch)
         self.logThisString = _constants['stringToLogWhenStarting']
         
     def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
 
 def getPolicyClasses():
-    return [FirstExperimentalScenario]
+    return [CREBundleScenario]
 
 
 ###########

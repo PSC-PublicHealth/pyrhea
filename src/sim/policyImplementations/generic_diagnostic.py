@@ -56,6 +56,20 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
 
+    def setValue(self, key, val):
+        """
+        Setting values may be useful for changing phases in a scenario, for example. The
+        values that can be set are treatment-specific; attempting to set an incorrect value
+        is an error.
+        
+        This class supports setting pathogenDiagnosticEffectiveness, a fraction.
+        """
+        if key == 'pathogenDiagnosticEffectiveness':
+            self.effectiveness = val
+        else:
+            super(GenericDiagnosticPolicy, self).setValue(key, val)
+
+
 def getPolicyClasses():
     return [GenericDiagnosticPolicy]
 

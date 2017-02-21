@@ -146,7 +146,7 @@ class ForcedStateWard(Ward):
         
         patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
         patientAgent._diagnosis = self.fac.diagnose(patientAgent._status, patientAgent._diagnosis)
-        newTier, patientAgent._treatment = self.fac.prescribe(patientAgent._diagnosis,
+        newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent._diagnosis,
                                                               patientAgent._treatment)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
                                       % (self._name, CareTier.names[careTier],
@@ -249,10 +249,16 @@ class DiagnosticPolicy(Policy):
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
 
-
-class TransferDestinationPolicy(Policy):
-    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
-        raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
+    def setValue(self, key, val):
+        """
+        Setting values may be useful for changing phases in a scenario, for example. The
+        values that can be set are treatment-specific; attempting to set an incorrect value
+        is an error.
+        
+        The base class doesn't know how to set any values.
+        """
+        raise RuntimeError('Class %s does not know how to set the value %s'
+                           % (type(self).__name__, key))
 
 
 class TreatmentPolicy(Policy):
@@ -275,7 +281,7 @@ class TreatmentPolicy(Policy):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -352,6 +358,22 @@ class TreatmentPolicy(Policy):
         else:
             return 0.0
 
+    def setValue(self, key, val):
+        """
+        Setting values may be useful for changing phases in a scenario, for example. The
+        values that can be set are treatment-specific; attempting to set an incorrect value
+        is an error.
+        
+        The base class doesn't know how to set any values.
+        """
+        raise RuntimeError('Class %s does not know how to set the value %s'
+                           % (type(self).__name__, key))
+
+
+class TransferDestinationPolicy(Policy):
+    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
+        raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
+
 
 class PatientRecord(object):
     def __init__(self, patientID, arrivalDate, isFrail):
@@ -427,18 +449,6 @@ class Facility(pyrheabase.Facility):
         self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
                                   for treatmentPolicyClass in treatmentPolicyClasses]
         self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
-
-    def setValue(self, key, val):
-        """
-        Setting values may be useful for changing phases in a scenario, for example. The
-        values that can be set are treatment-specific; attempting to set an incorrect value
-        is an error.
-        
-        The base class doesn't know how to set any values.
-        """
-        raise RuntimeError('Class %s does not know how to set the value %s'
-                           % (type(self).__name__, key))
-
 
     def __str__(self):
         return '<%s>' % self.name
@@ -582,7 +592,7 @@ class Facility(pyrheabase.Facility):
         """
         return self.diagnosticPolicy.diagnose(patientStatus, oldDiagnosis)
 
-    def prescribe(self, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patientDiagnosis, patientTreatment):
         """
         This returns a tuple of either form (careTier, patientTreatment) or
         (careTier, patientTreatment, modifierList)
@@ -593,7 +603,7 @@ class Facility(pyrheabase.Facility):
             modifierList = []
         careTier = None
         for tP in self.treatmentPolicies:
-            newTier, patientTreatment = tP.prescribe(patientDiagnosis, patientTreatment,
+            newTier, patientTreatment = tP.prescribe(ward, patientDiagnosis, patientTreatment,
                                                      modifierList)
             if careTier and (newTier != careTier):
                 raise RuntimeError(('Treatment policies at %s prescribe different careTiers'
@@ -660,7 +670,8 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
                                      False, True, True, None)
-        newTier, self._treatment = self.ward.fac.prescribe(self._diagnosis,  # @UnusedVariable
+        newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
+                                                           self._diagnosis,
                                                            TREATMENT_DEFAULT)[0:2]
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
@@ -737,7 +748,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         if self._status.diagClassA == DiagClassA.DEATH:
             return None, []
         self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
-        tpl = self.ward.fac.prescribe(self._diagnosis, self._treatment)
+        tpl = self.ward.fac.prescribe(self.ward, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
         if len(tpl) == 3:

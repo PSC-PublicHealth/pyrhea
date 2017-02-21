@@ -132,18 +132,24 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         else:
             return 1.0
 
-    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
         and is not generally relevant to the decisions made by this method.
         """
         newTier, newTreatment = \
-            super(ContactPrecautionsTreatmentPolicy, self).prescribe(patientDiagnosis,
+            super(ContactPrecautionsTreatmentPolicy, self).prescribe(ward,
+                                                                     patientDiagnosis,
                                                                      patientTreatment,
                                                                      modifierList)
         if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
             newTreatment = newTreatment._replace(contactPrecautions=True)
+
+        # for accounting
+        if newTreatment.contactPrecautions:
+            ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
+
         return newTier, newTreatment
 
 
