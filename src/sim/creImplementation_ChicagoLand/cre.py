@@ -243,9 +243,9 @@ class CRE(Pathogen):
             self.patientPthTime = timeNow
         return self.patientPth
 
-    def getPatientStateKey(self, treatment):
+    def getPatientStateKey(self, status, treatment):
         """ treatment is the patient's current treatment status """
-        stateL = []
+        stateL = ['-' if status.pthStatus in [PthStatus.CLEAR, PthStatus.RECOVERED] else '+']
         for tP in self.ward.fac.treatmentPolicies:
             if hasattr(type(tP), 'treatmentKey'):
                 treatmentKey = getattr(type(tP), 'treatmentKey')
@@ -256,7 +256,8 @@ class CRE(Pathogen):
         if self.propogationInfoTime != timeNow:
             pI = self.propogationInfo = defaultdict(lambda: 0)
             for p in self.ward.getPatientList():
-                pI[self.getPatientStateKey(p._treatment)] += 1
+                pI[self.getPatientStateKey(p._status, p._treatment)] += 1
+            pI = {k, v for k, v in pI.items() if not k.startswith('-')} # because only sick people spread
             lst = pI.items()[:]
             lst.sort()
             self.propogationInfoKey = tuple(lst)
@@ -265,7 +266,8 @@ class CRE(Pathogen):
     
     def getTreatmentProbModifierDict(self):
         if not self.treatmentProbModifierDict:
-            dct = {'': (1.0, 1.0)}  # Store the two coefficients in from-to order
+            dct = {'+': (1.0, 1.0),
+                   '-': (0.0, 0.0)}  # Store the two coefficients in from-to order
             for tP in self.ward.fac.treatmentPolicies:
                 if hasattr(type(tP), 'treatmentKey'):
                     treatmentKey = getattr(type(tP), 'treatmentKey')
@@ -291,7 +293,25 @@ class CRE(Pathogen):
             #
             key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT)
             if key not in self.core.exposureTreeCache:
-                patientKey = self.getPatientStateKey(treatment)
+#                 nBareExposures = pI['+-']
+#                 nCPExposures = pI['++']
+#                 
+#                 tP = self.ward.fac.treatmentPolicies[0]
+#                 effectivenessCP = tP.getTransmissionToMultiplier(careTier, contactPrecautions=True)
+#                 if effectivenessCP != tP.getTransmissionFromMultiplier(careTier, contactPrecautions=True):
+#                     raise RuntimeError('Intermediate implementation of CRE only works with symmetrical treatments')
+#                 if treatment.contactPrecautions:
+#                     # doubly protected
+#                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
+#                              * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
+#                                         nCPExposures * dT))
+#                 else:
+#                     pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
+#                              * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
+
+                
+                
+                patientKey = self.getPatientStateKey(patientStatus, treatment)
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = tPMD[patientKey][1]
                 logPSafe = 0.0
