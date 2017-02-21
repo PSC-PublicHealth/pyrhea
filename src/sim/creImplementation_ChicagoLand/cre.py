@@ -254,12 +254,13 @@ class CRE(Pathogen):
 
     def getPropogationInfo(self, timeNow):
         if self.propogationInfoTime != timeNow:
-            pI = self.propogationInfo = defaultdict(lambda: 0)
+            pI = defaultdict(lambda: 0)
             for p in self.ward.getPatientList():
                 pI[self.getPatientStateKey(p._status, p._treatment)] += 1
             pI = {k: v for k, v in pI.items() if not k.startswith('-')} # because only sick people spread
             lst = pI.items()[:]
             lst.sort()
+            self.propogationInfo = pI
             self.propogationInfoKey = tuple(lst)
             self.propogationInfoTime = timeNow
         return self.propogationInfo, self.propogationInfoKey
@@ -267,7 +268,7 @@ class CRE(Pathogen):
     def getTreatmentProbModifierDict(self):
         if not self.treatmentProbModifierDict:
             dct = {'+': (1.0, 1.0),
-                   '-': (0.0, 0.0)}  # Store the two coefficients in from-to order
+                   '-': (0.0, 1.0)}  # Store the two coefficients in from-to order
             for tP in self.ward.fac.treatmentPolicies:
                 if hasattr(type(tP), 'treatmentKey'):
                     treatmentKey = getattr(type(tP), 'treatmentKey')
