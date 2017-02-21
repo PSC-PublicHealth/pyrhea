@@ -53,6 +53,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
+                                patientStatus.startDateA,
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
 

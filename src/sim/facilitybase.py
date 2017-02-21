@@ -62,10 +62,11 @@ PatientStatus = namedtuple('PatientStatus',
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth
                                'diagClassA',           # one of DiagClassA
+                               'startDateA',           # Date diagClassA was entered
                                'pthStatus',            # one of PthStatus
                                'relocateFlag'          # true if patient needs relocation
                                ],
-                              field_types=[PatientOverallHealth, DiagClassA, PthStatus, bool])
+                              field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, bool])
 
 
 class PatientStatusSetter(object):
@@ -221,31 +222,32 @@ class DiagnosticPolicy(Policy):
         """
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
+                                patientStatus.startDateA,
                                 patientStatus.pthStatus,
                                 patientStatus.relocateFlag)
     
-    def initializePatientDiagnosis(self, careTier):
+    def initializePatientDiagnosis(self, careTier, timeNow):
         if careTier == CareTier.HOME:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, defaultPthStatus, False)
+                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.NURSING:
             return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, defaultPthStatus, False)
+                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.LTAC:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSLTAC, defaultPthStatus, False)
+                                    DiagClassA.NEEDSLTAC, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.HOSP:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.SICK, defaultPthStatus, False)
+                                    DiagClassA.SICK, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.ICU:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.VERYSICK, defaultPthStatus, False)
+                                    DiagClassA.VERYSICK, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.VENT:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSVENT, defaultPthStatus, False)
+                                    DiagClassA.NEEDSVENT, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.SKILNRS:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSSKILNRS, defaultPthStatus, False)
+                                    DiagClassA.NEEDSSKILNRS, timeNow, defaultPthStatus, False)
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
 
@@ -612,12 +614,12 @@ class Facility(pyrheabase.Facility):
             careTier = newTier
         return (careTier, patientTreatment, modifierList)
 
-    def diagnosisFromCareTier(self, careTier):
+    def diagnosisFromCareTier(self, careTier, timeNow):
         """
         If I look at a patient under a given care tier, what would I expect their diagnostic class
         to be?  This is used for patient initialization purposes.
         """
-        return self.diagnosticPolicy.initializePatientDiagnosis(careTier)
+        return self.diagnosticPolicy.initializePatientDiagnosis(careTier, timeNow)
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         """
@@ -665,7 +667,7 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
-        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier)
+        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, timeNow)
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
