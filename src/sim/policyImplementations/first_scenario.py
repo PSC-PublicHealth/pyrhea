@@ -33,7 +33,7 @@ class FirstExperimentalScenario(BaseScenarioPolicy):
         super(FirstExperimentalScenario, self).__init__(name, patch)
         self.logThisString = _constants['stringToLogWhenStarting']
         
-    def begin(self):
+    def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
 
 def getPolicyClasses():

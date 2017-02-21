@@ -53,6 +53,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
     def __init__(self,patch,categoryNameMapper):
         super(CREBundleTreatmentPolicy,self).__init__(patch,categoryNameMapper)
         self.core = CREBCore()
+        self.active = True
         
     def initializePatientTreatment(self, ward, patient):
         """
@@ -71,7 +72,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they arrive at a ward.
         """
         self.initializePatientTreatment(ward,patient)
-        ward.missCounters['creBundlesHandedOut'] += 1
+        ward.miscCounters['creBundlesHandedOut'] += 1
 
     def handlePatientDeparture(self, ward, patient, timeNow):
         """
@@ -95,26 +96,24 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
         return the scale factor by which the transmission coefficient tau is multiplied when
         the patient with this treatment is the recipient of the transmission.
+        
+        The CRE Bundle interventions prevent patients from spreading, not from becoming colonized.
         """
-        if 'creBundle' in kwargs and kwargs['creBundle']:
-            return self.core.effectiveness
+        return 1.0
+    
+    def setValue(self, key, val):
+        """
+        Setting values may be useful for changing phases in a scenario, for example. The
+        values that can be set are treatment-specific; attempting to set an incorrect value
+        is an error.
+        
+        This class can be activated and deactivated via the 'active' flag (True/False)
+        """
+        if key == 'active':
+            self.activate = val
         else:
-            return 1.0
-
-    def prescribe(self, patientDiagnosis, patientTreatment, modifierList):
-        """
-        This returns a tuple of form (careTier, patientTreatment).
-        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
-        and is not generally relevant to the decisions made by this method.
-        """
-        newTier, newTreatment = \
-            super(CREBundleTreatmentPolicy, self).prescribe(patientDiagnosis,
-                                                            patientTreatment,
-                                                            modifierList)
-        if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
-            newTreatment = newTreatment._replace(contactPrecautions=True)
-        return newTier, newTreatment
-
+            super(CREBundleTreatmentPolicy, self).setValue(key, val)
+        
 
 def getPolicyClasses():
     return [CREBundleTreatmentPolicy]

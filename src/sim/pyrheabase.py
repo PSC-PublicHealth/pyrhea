@@ -34,7 +34,7 @@ class ScenarioPolicy(object):
         self.name = name
         self.patch = patch
 
-    def begin(self):
+    def begin(self, callingAgent, timeNow):
         logger.info('The scenario %s is beginning', self.name)
         assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                       % self.patch.name)

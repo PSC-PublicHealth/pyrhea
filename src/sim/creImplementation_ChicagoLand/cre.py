@@ -244,60 +244,42 @@ class CRE(Pathogen):
             self.patientPthTime = timeNow
         return self.patientPth
 
-    def getPatientStateKey(self, p):
-        """ p is a patientAgent """
+    def getPatientStateKey(self, treatment):
+        """ treatment is the patient's current treatment status """
         stateL = []
         for tP in self.ward.fac.treatmentPolicies:
             if hasattr(type(tP), 'treatmentKey'):
                 treatmentKey = getattr(type(tP), 'treatmentKey')
-                stateL.append('+' if p.getTreatment(treatmentKey) else '-')
+                stateL.append('+' if treatment._asdict()[treatmentKey] else '-')
         return ''.join(stateL)
-
-#     def getPropogationInfo(self, timeNow):
-#         if self.propogationInfoTime != timeNow:
-#             pI = self.propogationInfo = defaultdict(lambda: 0)
-#             for p in self.ward.getPatientList():
-#                 if p.getPthStatus():
-#                     if p.getTreatment('contactPrecautions'):
-#                         pI['++'] += 1
-#                     else:
-#                         pI['+-'] += 1
-#                 else:
-#                     if p.getTreatment('contactPrecautions'):
-#                         pI['-+'] += 1
-#                     else:
-#                         pI['--'] += 1
-#             self.propogationInfoTime = timeNow
-#         return self.propogationInfo
 
     def getPropogationInfo(self, timeNow):
         if self.propogationInfoTime != timeNow:
             pI = self.propogationInfo = defaultdict(lambda: 0)
             for p in self.ward.getPatientList():
-                pI[self.getPatientStateKey(p)] += 1
+                pI[self.getPatientStateKey(p._treatment)] += 1
             lst = pI.items()[:]
             lst.sort()
             self.propogationInfoKey = tuple(lst)
             self.propogationInfoTime = timeNow
-        print self.propogationInfo
-        print self.propogationInfoKey
         return self.propogationInfo, self.propogationInfoKey
     
     def getTreatmentProbModifierDict(self):
         if not self.treatmentProbModifierDict:
-            dct = {'': 1.0}
+            dct = {'': (1.0, 1.0)}  # Store the two coefficients in from-to order
             for tP in self.ward.fac.treatmentPolicies:
                 if hasattr(type(tP), 'treatmentKey'):
                     treatmentKey = getattr(type(tP), 'treatmentKey')
-                    factor = tP.getTransmissionFromMultiplier(self.ward.tier,
-                                                              **{treatmentKey: True})
+                    fromFac = tP.getTransmissionFromMultiplier(self.ward.tier,
+                                                               **{treatmentKey: True})
+                    toFac = tP.getTransmissionToMultiplier(self.ward.tier,
+                                                           **{treatmentKey: True})
                     newDct = {}
-                    for kStr, prob in dct.items():
-                        newDct[kStr + '-'] = prob
-                        newDct[kStr + '+'] = factor * prob
+                    for kStr, (fromProb, toProb) in dct.items():
+                        newDct[kStr + '-'] = (fromProb, toProb)
+                        newDct[kStr + '+'] = (fromFac * fromProb, toFac*toProb)
                     dct = newDct
             self.treatmentProbModifierDict = dct
-        print self.treatmentProbModifierDict
         return self.treatmentProbModifierDict
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
@@ -308,31 +290,15 @@ class CRE(Pathogen):
             # Note that this caching scheme assumes all wards with the same category and tier
             # have the same infectivity constant(s)
             #
-            propInfoKey = pI.items()[:]
-            propInfoKey.sort()
             key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT)
             if key not in self.core.exposureTreeCache:
+                patientKey = self.getPatientStateKey(treatment)
                 tPMD = self.getTreatmentProbModifierDict()
-                selfProt = 1.0  # degree to which the patient's treatments protect the patient
-                for tP in self.ward.fac.treatmentPolicies:
-                    if hasattr(type(tP), 'treatmentKey'):
-                        treatmentKey = getattr(type(tP), 'treatmentKey')
-                        selfProt *= tP.getTransmissionToMultiplier(self.ward.tier,
-                                                                   **{treatmentKey: True})
-                pSafe = 1.0 - (dT * self.tau * selfProt * sum([tPMD[key] * pI[key] for key in pI]))
-#                 tP = self.ward.fac.treatmentPolicy
-#                 effectivenessCP = tP.getTransmissionMultiplier(careTier, contactPrecautions=True)
-#                 if treatment.contactPrecautions:
-#                     # doubly protected
-#                     pSafe = (1.0
-#                              - dT * self.tau * effectivenessCP * (nBareExposures
-#                                                                   + nCPExposures*effectivenessCP))
-#                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
-#                              * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
-#                                         nCPExposures * dT))
-#                 else:
-#                     pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
-#                              * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
+                selfProt = tPMD[patientKey][1]
+                logPSafe = 0.0
+                for key, ct in pI.items():
+                    logPSafe += math.log(1.0 - (tPMD[key][0] * selfProt * self.tau)) * ct
+                pSafe = math.exp(dT * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
@@ -390,6 +356,5 @@ def getPathogenClass():
 ###########
 # Initialize the module
 ###########
-print "ConstS = {0}".format(_constants_schema)
 _constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

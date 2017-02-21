@@ -52,7 +52,7 @@ PatientStatus = namedtuple('PatientStatus',
                             'pthStatus',            # one of PthStatus
                             'startDatePth',         # date PthStatus status was entered
                             'relocateFlag',         # true if patient needs relocation
-                            'justArrivedFlag',      # true on patient's first day in new location
+                            'justArrived',          # true on patient's first day in new location
                             'canClear',             # true if patient can spontaneously clear infection
                             'homeAddr'              # GblAddr of patient's home tract or NH
                             ],
@@ -427,7 +427,19 @@ class Facility(pyrheabase.Facility):
         self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
                                   for treatmentPolicyClass in treatmentPolicyClasses]
         self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
+
+    def setValue(self, key, val):
+        """
+        Setting values may be useful for changing phases in a scenario, for example. The
+        values that can be set are treatment-specific; attempting to set an incorrect value
+        is an error.
         
+        The base class doesn't know how to set any values.
+        """
+        raise RuntimeError('Class %s does not know how to set the value %s'
+                           % (type(self).__name__, key))
+
+
     def __str__(self):
         return '<%s>' % self.name
 
