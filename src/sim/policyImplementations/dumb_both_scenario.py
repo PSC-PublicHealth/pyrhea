@@ -45,7 +45,9 @@ class DumbBothScenario(BaseScenarioPolicy):
             if fac.abbrev in self.facSet:
                 print 'XDRO setting %s' % fac.abbrev
                 for tP in fac.treatmentPolicies:
-                    if isinstance(tP, CREBundleTreatmentPolicy):
+                    # Why does isinstance fail in this context!?
+                    if type(tP).__name__ == CREBundleTreatmentPolicy.__name__:
+                        print 'CREBundle setting %s' % fac.abbrev
                         tP.setValue('active', True)
                 fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
 
