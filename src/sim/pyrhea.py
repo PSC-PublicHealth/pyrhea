@@ -214,9 +214,12 @@ def buildLocalTierCPDict(patch,timeNow):
         facPPC = defaultdict(lambda: 0)
         for ward in fac.getWards():
             key = "{0}".format(ward.tier)
+            print 'pong! %s %s' % (ward._name, ward.miscCounters['patientDaysOnCP'])
             facPPC[key] += ward.miscCounters['patientDaysOnCP']
+            print 'zip! %s %s' % (key, facPPC[key])
             ward.miscCounters['patientDaysOnCP'] = 0.0
         for key,v in facPPC.items():
+            print 'zorp! %s %s %s' % (fac.abbrev, key, v)
             facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
             
     return facTrtDict
