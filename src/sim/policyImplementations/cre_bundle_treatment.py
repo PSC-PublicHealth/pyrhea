@@ -72,7 +72,8 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they arrive at a ward.
         """
         self.initializePatientTreatment(ward,patient)
-        ward.miscCounters['creBundlesHandedOut'] += 1
+        if patient.getTreatment('creBundle'):
+            ward.miscCounters['creBundlesHandedOut'] += 1
 
     def handlePatientDeparture(self, ward, patient, timeNow):
         """
