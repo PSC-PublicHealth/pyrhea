@@ -102,7 +102,7 @@ class PthStatusSetter(PatientStatusSetter):
         self.newPthStatus = newPthStatus
 
     def set(self, patientStatus, timeNow):
-        return patientStatus._replace(pthStatus=self.newPthStatus, startDateA=timeNow)
+        return patientStatus._replace(pthStatus=self.newPthStatus, startDatePth=timeNow)
 
     def __str__(self):
         return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
@@ -133,6 +133,7 @@ class Ward(pyrheabase.Ward):
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         patientAgent._status = patientAgent._status._replace(justArrived=True)
+        self.miscCounters['arrivals'] += 1
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, timeNow)
 
@@ -140,6 +141,7 @@ class Ward(pyrheabase.Ward):
         """An opportunity for derived classes to customize the departure processing of patients"""
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientDeparture(self, patientAgent, timeNow)
+        self.miscCounters['departures'] += 1
 
 
 class ForcedStateWard(Ward):
