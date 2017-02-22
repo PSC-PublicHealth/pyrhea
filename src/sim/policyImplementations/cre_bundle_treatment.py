@@ -111,7 +111,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         This class can be activated and deactivated via the 'active' flag (True/False)
         """
         if key == 'active':
-            self.activate = val
+            self.active = val
         else:
             super(CREBundleTreatmentPolicy, self).setValue(key, val)
         
