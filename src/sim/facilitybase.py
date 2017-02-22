@@ -737,8 +737,6 @@ class PatientAgent(pyrheabase.PatientAgent):
             for tree in treeL:
                 setter = tree.traverse()
                 self._status = setter.set(self._status, timeNow)
-            if self.getTreatment('contactPrecautions'):
-                self.ward.miscCounters['patientsOnCP'] += 1
             #print "Patient status at {0} is {1}".format(facility.abbrev, self._status.pthStatus == PthStatus.CLEAR)
             if (previousStatus.pthStatus != PthStatus.COLONIZED
                 and self._status.pthStatus == PthStatus.COLONIZED):

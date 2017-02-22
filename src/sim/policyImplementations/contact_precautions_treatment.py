@@ -152,7 +152,6 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             
         # for accounting
         if newTreatment.contactPrecautions:
-            print 'ping! %s %s %s' % (ward._name, ward.miscCounters['patientDaysOnCP'], ward.checkInterval)
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
 
         return newTier, newTreatment
