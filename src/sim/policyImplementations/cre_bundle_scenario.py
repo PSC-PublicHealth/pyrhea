@@ -63,7 +63,8 @@ class CREBundleScenario(BaseScenarioPolicy):
                     for tP in fac.treatmentPolicies:
                         if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', True)
-                            logger.info('Deactivated CREBundleScenario at %s' % abbrev)
+                            print ('Activated CREBundleScenario at %s' % abbrev)
+                            logger.info('Activated CREBundleScenario at %s' % abbrev)
                             break
                     else:
                         raise RuntimeError('%s does not have a CREBundleTreatmentPolicy' % abbrev)
@@ -82,6 +83,7 @@ class CREBundleScenario(BaseScenarioPolicy):
                     for tP in fac.treatmentPolicies:
                         if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', False)
+                            print ('Deactivated CREBundleScenario at %s' % abbrev)
                             logger.info('Deactivated CREBundleScenario at %s' % abbrev)
                             break
                     else:

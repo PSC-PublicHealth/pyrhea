@@ -19,6 +19,8 @@ import logging
 
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from xdro_registry_scenario import XDRORegistryScenario
+from cre_bundle_scenario import CREBundleScenario
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/xdro_registry_scenario_constants.yaml'
@@ -27,26 +29,20 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-class XDRORegistryScenario(BaseScenarioPolicy):
+class BothScenario(XDRORegistryScenario):
     def __init__(self, name, patch):
-        super(XDRORegistryScenario, self).__init__(name, patch)
-        self.logThisString = _constants['stringToLogWhenStarting']
-        self.facSet = frozenset(_constants['locationsImplementingScenario']['locAbbrevList'])
-        self.newEffectiveness = _constants['enhancedDetectionFraction']['value']
+        super(BothScenario, self).__init__(name, patch)
+        self.innerCREBundleScenario = CREBundleScenario(self.name + '_CREBundleScenario', self.patch)
         
     def begin(self, callingAgent, timeNow):
-        logger.warn(self.logThisString)
-        assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
-                                                      % self.patch.name)
-        # All we have to do is turn on the intervention in all locations implementing
-        # the scenario.
-        for fac in self.patch.allFacilities:
-            if fac.abbrev in self.facSet:
-                print 'XDRO setting %s' % fac.abbrev
-                fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
+        logger.warn('BothScenario is starting')
+        super(BothScenario, self).begin(callingAgent, timeNow)
+
+        self.innerCREBundleScenario.begin(callingAgent, timeNow)
+                
 
 def getPolicyClasses():
-    return [XDRORegistryScenario]
+    return [BothScenario]
 
 
 ###########

@@ -38,7 +38,9 @@
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
   - 'category': 'scenario'
-    'policyClass': 'CREBundleScenario'
+    #'policyClass': 'CREBundleScenario'
+    'policyClass': 'DumbBothScenario'
+    #'policyClass': 'XDRORegistryScenario'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'GenericDiagnosticPolicy'
 

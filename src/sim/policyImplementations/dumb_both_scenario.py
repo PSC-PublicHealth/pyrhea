@@ -19,6 +19,7 @@ import logging
 
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from cre_bundle_treatment import CREBundleTreatmentPolicy
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/xdro_registry_scenario_constants.yaml'
@@ -27,9 +28,9 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-class XDRORegistryScenario(BaseScenarioPolicy):
+class DumbBothScenario(BaseScenarioPolicy):
     def __init__(self, name, patch):
-        super(XDRORegistryScenario, self).__init__(name, patch)
+        super(DumbBothScenario, self).__init__(name, patch)
         self.logThisString = _constants['stringToLogWhenStarting']
         self.facSet = frozenset(_constants['locationsImplementingScenario']['locAbbrevList'])
         self.newEffectiveness = _constants['enhancedDetectionFraction']['value']
@@ -43,10 +44,13 @@ class XDRORegistryScenario(BaseScenarioPolicy):
         for fac in self.patch.allFacilities:
             if fac.abbrev in self.facSet:
                 print 'XDRO setting %s' % fac.abbrev
+                for tP in fac.treatmentPolicies:
+                    if isinstance(tP, CREBundleTreatmentPolicy):
+                        tP.setValue('active', True)
                 fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
 
 def getPolicyClasses():
-    return [XDRORegistryScenario]
+    return [DumbBothScenario]
 
 
 ###########
