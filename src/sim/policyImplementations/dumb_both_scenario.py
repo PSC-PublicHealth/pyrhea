@@ -46,6 +46,7 @@ class DumbBothScenario(BaseScenarioPolicy):
                 print 'XDRO setting %s' % fac.abbrev
                 for tP in fac.treatmentPolicies:
                     if isinstance(tP, CREBundleTreatmentPolicy):
+                        print 'CREBundle setting %s' % fac.abbrev
                         tP.setValue('active', True)
                 fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
 
