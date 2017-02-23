@@ -33,7 +33,7 @@ if 'line_profiler' not in dir():
 
 import numpy as np
 import matplotlib as mpl
-mpl.use('png')
+mpl.use('svg')
 import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
