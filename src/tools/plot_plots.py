@@ -32,6 +32,8 @@ if 'line_profiler' not in dir():
         return func
 
 import numpy as np
+import matplotlib as mpl
+mpl.use('png')
 import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
