@@ -228,9 +228,25 @@ def plotStuff(abbrevList, specialDict, facDict):
 
     print totNewColV
 
-    fig, axes = plt.subplots(2,1)
+    totCPV = None
+    for abbrev in abbrevList:
+        print abbrev
+        tplList = getTimeSeriesList(abbrev, specialDict, 'localtierCP')
+        for dayVec3, curves in tplList:
+            if totCPV is None:
+                totCPV = np.zeros(dayVec3.shape[0])
+            else:
+                assert totNewColV.shape[0] == dayVec3.shape[0], 'notes files are of different lengths'
+            for tpl, lVec in curves.items():
+                tier = tpl
+                totCPV += lVec
+
+    print totCPV
+
+    fig, axes = plt.subplots(3,1)
     newColAxis = axes[0]
     prvAxis = axes[1]
+    cpAxis = axes[2]
     newColAxis.set_xlabel('Days')
     newColAxis.set_ylabel('New Colonizations')
     newColAxis.set_title("Total New Colonizations Across All Facilities")
@@ -238,6 +254,10 @@ def plotStuff(abbrevList, specialDict, facDict):
     prvAxis.set_xlabel('Days')
     prvAxis.set_ylabel('Prevalence')
     prvAxis.set_title("Net Prevalence Across All Facilities")
+
+    cpAxis.set_xlabel('Days')
+    cpAxis.set_ylabel('Total On CP')
+    cpAxis.set_title("Patients On Contact Precautions Across All Facilities")
         
     clrDict = defaultdict(lambda: None)
     if len(tplList) > 3:
@@ -247,6 +267,7 @@ def plotStuff(abbrevList, specialDict, facDict):
         
     newColP, = newColAxis.plot(dayVec2, totNewColV)
     prvP, = prvAxis.plot(dayVec1, totColV / totPopV)
+    cpP, = cpAxis.plot(dayVec3, totCPV)
 #     for idx, (dayVec, curves) in enumerate(tplList):
 #         tmpVecD = defaultdict(list)
 #         totVecD = {}
