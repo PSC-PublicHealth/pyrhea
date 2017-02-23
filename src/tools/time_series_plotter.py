@@ -32,6 +32,8 @@ if 'line_profiler' not in dir():
         return func
 
 import numpy as np
+import matplotlib as mpl
+mpl.use('svg')
 import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
@@ -341,6 +343,32 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
 
     return rsltL
 
+def oneFacArrivalsFig(abbrev, specialDict, opts, meanPop=None):
+    print abbrev
+    if abbrev == 'CHOC':
+        return
+    if abbrev == 'CMIS':
+        return
+    
+    tierMode = True
+    tplList = getTimeSeriesList(abbrev, specialDict, 'localtierCREBundle')
+    print tplList
+    if not tplList:
+        tierMode = False
+        tplList = getTimeSeriesList(abbrev, specialDict, 'localpathogen')
+        
+    if tierMode:
+        tierAxisD = {}
+        tAOffset = 0
+        for dayVec, curves in tplList:
+            print curves
+            for tier in curves:
+                if tier not in tierAxisD:
+                    tierAxisD[tier] = tAOffset
+                    tAOffset += 1
+    else:
+        tierAxisD = {None: 0}
+
 def oneFacTimeFig(abbrev, specialDict, opts, meanPop=None):
     print abbrev
     if abbrev == 'CHOC':
@@ -454,7 +482,7 @@ def main():
     if len(args) != 1:
         parser.error('A YAML run description is required')
 
-    if not len(opts.notes):
+    if not opts.notes:
         parser.error('At least one --notes option is required')
 
     parser.destroy()
@@ -491,6 +519,7 @@ def main():
                     oneFacTimeFig(abbrev, specialDict, opts, meanPop=facDict[abbrev]['meanPop']['value'])
                 else:
                     oneFacTimeFig(abbrev, specialDict, opts)
+                oneFacArrivalsFig(abbrev, specialDict, opts)
 
     if not opts.png:
         plt.show()
