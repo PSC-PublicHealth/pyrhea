@@ -750,12 +750,13 @@ def extractCREBundlesGiven(abbrev,specialDict):
 
 def extractXDROCounts(abbrev,specialDict):
     cpList = print_xdro_counts.getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
-    sums ={}
+    sumT = 0.0
     for dayVec,curves in cpList:
-        print curves
-        #for tpl,curve in curve.items():
-            
-def getNewCols(abbrevs,note,i,facDict,newColsReturn):
+        for tpl,curve in curves.items():
+            sumT += sum(curve)
+    return sumT
+
+def getNewCols(abbrevs,note,i,facDict,xdroabbrevs,newColsReturn):
     print note
     specialDict = mergeNotesFiles([note], False)
     specialXDRODict = print_xdro_counts.mergeNotesFiles([note], False)
@@ -770,8 +771,6 @@ def getNewCols(abbrevs,note,i,facDict,newColsReturn):
     
     cpDaysByType = {}
     for abbrev in abbrevs:
-        testthisplace = extractXDROCounts(abbrev, specialXDRODict)
-        print '{0}'.format(testthisplace)
         cpForThisPlace = extractContactPrecautionDays(abbrev,specialDict)
         #cpDaysL[abbrev] = cpForThisPlace
         facCat = facDict[abbrev]['category']
@@ -789,15 +788,20 @@ def getNewCols(abbrevs,note,i,facDict,newColsReturn):
         creBundlesDict = extractCREBundlesGiven(abbrev, specialDict)
         for k,v in creBundlesDict.items():
             creBundlesAll += v
-    newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll)
- 
-def determin_costs(newColsArray, cpDaysArray, creBundlesArray, params, opts, fracAttribMort, notes, i, costsOfRealizationTmp): 
+
+    xdroAll = 0.0
+    for abbrev in abbrevs:
+	if abbrev in xdroabbrevs:
+             xdroAll += extractXDROCounts(abbrev,specialXDRODict)
+    newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
+
+def determin_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, i, costsOfRealizationTmp): 
     costsOfReal = {}
     randomInt = random.randint(0,len(notes)-1)
     newColAll = newColsArray[randomInt]
     cpDaysByType = cpDaysArray[randomInt]
     creBundlesAll = creBundlesArray[randomInt]
-    
+    xdroAll = xdroArray[randomInt] 
     personAge = int(round(Distribution('uniform',{'low':60.0,'high':80.0}).draw()))
     annualWage = Cost(Distribution(params['costs']['annualWage']['distribution']['type'],
                                    params['costs']['annualWage']['distribution']['args']).draw(),
@@ -825,8 +829,10 @@ def determin_costs(newColsArray, cpDaysArray, creBundlesArray, params, opts, fra
     rNurseWage = Cost(Distribution(rNurseWageDict['distribution']['type'],
                                    rNurseWageDict['distribution']['args']).draw(),
                       rNurseWageDict['year'])
-    
-    xdroCosts = Cost(0.0,opts.targetyear) #computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
+    if opts.xdroyamlfile: 
+        xdroCosts = computeCostOfXDROReg(xdroAll,opts.targetyear, params) # replace with RHEA
+    else:
+        xdroCosts = Cost(0.0,opts.targetyear)
     contPrecCosts = Cost(0.0,opts.targetyear)
     for fType,cpDays in cpDaysByType.items():
         cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
@@ -910,24 +916,25 @@ def main():
         notes = glob.glob('{0}'.format(opts.notes[0]))
     else:
         notes = opts.notes
-    
+    xdroabbrevs = []
     if opts.xdroyamlfile:
         with open(opts.xdroyamlfile,'rb') as f:
             xdroparams = yaml.load(f)
+	xdroabbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
     #print xdroparams.keys()
     #print xdroparams['locationsImplementingScenario']['locAbbrevList']
-    
+     
     newColsArray = [0.0 for x in range(0,len(notes))]
     cpDaysArray = [0.0 for x in range(0,len(notes))]
     creBundlesArray = [0.0 for x in range(0,len(notes))]
-    
+    xdroArray = [0.0 for x in range(0,len(notes))] 
     abbrevs = []
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
                 abbrevs.append(abbrev)
                 
-    nprocs = 2
+    nprocs = 40
     for i in range(0,len(notes),nprocs):
         manager = Manager()
         newColsReturn = manager.dict()
@@ -937,18 +944,19 @@ def main():
             end = len(notes)
         
         for j in range(i,end):
-            p = Process(target=getNewCols,args = (abbrevs,notes[j],j,facDict,newColsReturn))
+            p = Process(target=getNewCols,args = (abbrevs,notes[j],j,facDict,xdroabbrevs,newColsReturn))
             jobs.append(p)
             p.start()
         
         for proc in jobs:
             proc.join()
-        print newColsReturn.keys()
         for k,v in newColsReturn.items():
             newColsArray[k] = v[0]
             cpDaysArray[k] = v[1]
             creBundlesArray[k] = v[2] 
+            xdroArray[k] = v[3]
         print cpDaysArray   
+        print xdroArray
     with open("costModel_ChicagoLand.yaml","rb") as f:
         params = yaml.load(f)
     
@@ -977,7 +985,7 @@ def main():
                 
             for j in range(i,end):
                 print "i= {0} j= {1}".format(i,j)
-                p = Process(target=determin_costs, args=(newColsArray, cpDaysArray, creBundlesArray, params, opts, fracAttribMort, notes, j, costsOfRealizationTmp ))
+                p = Process(target=determin_costs, args=(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, j, costsOfRealizationTmp ))
                 #determin_costs(newColsArray, cpDaysArray, creBundlesArray, params, opts, costsOfRealizationTmp, fracAttribMort, notes, i): 
                 jobs.append(p)
                 p.start()
