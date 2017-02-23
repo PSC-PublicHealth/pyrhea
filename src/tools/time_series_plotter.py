@@ -108,11 +108,12 @@ def occupancyTimeFig(specialDict, opts, meanPopByCat=None):
                         if not k.endswith('_all'):
                             # The '_all' curves count every arrival at the facility and
                             # are no longer of interest
+                            argD = {}
                             if ind == indList[0]:
-                                label = k
-                            else:
-                                label = None
-                            baseLine, = axes5[offset].plot(dayList, l, label=label, c=clrDict[k])
+                                argD['label'] = k
+                            if clrDict[k] is not None:
+                                argD['c'] = clrDict[k]
+                            baseLine, = axes5[offset].plot(dayList, l, **argD)
                             clrDict[k] = baseLine.get_color()
                             if (meanPopByCat is not None and k in FAC_TYPE_TO_CATEGORY_MAP
                                     and FAC_TYPE_TO_CATEGORY_MAP[k] in meanPopByCat):
@@ -195,17 +196,17 @@ def pathogenTimeFig(specialDict, opts):
                             curvesThisCat[pthLvl] = np.array(l)
                     totsThisCat = sum(curvesThisCat.values())
                     for pthLvl, lVec in curvesThisCat.items():
+                        argD = {}
                         if ind == indList[0]:
-                            lbl = '%s' % pth.PthStatus.names[pthLvl]
-                        else:
-                            lbl = None
+                            argD['label'] = k
+                        if clrDict[k] is not None:
+                            argD['c'] = clrDict[pthLvl]
                         if np.count_nonzero(lVec):
                             with np.errstate(divide='ignore', invalid='ignore'):
                                 scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totsThisCat))
                                 scaleV[scaleV == np.inf] = 0.0
                                 scaleV = np.nan_to_num(scaleV)
-                                thisP = axes6[rowOff, colOff].plot(dayVec, scaleV, label=lbl, 
-                                                                   c=clrDict[pthLvl])
+                                thisP = axes6[rowOff, colOff].plot(dayVec, scaleV, **argD)
                             if ind == indList[0]:
                                 clrDict[pthLvl] = thisP[0].get_color()
                     if ind == indList[0]:
@@ -431,10 +432,13 @@ def oneFacTimeFig(abbrev, specialDict, opts, meanPop=None):
                 lblStr = '%s' % pth.PthStatus.names[pthStatus]
             else:
                 lblStr = '%s %s' % (CareTier.names[tier], pth.PthStatus.names[pthStatus])
-            lbl = (None if idx else lblStr)
+            argD = {'alpha': alpha}
+            if idx:
+                argD['label'] = lblStr
+            if clrDict[tpl] is not None:
+                argD['c'] = clrDict[tpl]
             if np.count_nonzero(lVec):
-                thisP, = axes[tierAxisD[tier]].plot(dayVec, scaleV, label=lbl, c=clrDict[tpl],
-                                       alpha=alpha)
+                thisP, = axes[tierAxisD[tier]].plot(dayVec, scaleV, **argD)
                 clrDict[tpl] = thisP.get_color()
     for tAOffset in tierAxisD.values():
         #axes[tAOffset].legend()
@@ -447,7 +451,10 @@ def oneFacTimeFig(abbrev, specialDict, opts, meanPop=None):
     else:
         alpha = 1.0
     for dayVec, popVec in popTplList:
-        baseLine, = popAxis.plot(dayVec, popVec, c=popClr, alpha=alpha)
+        argD = {'alpha': alpha}
+        if popClr is not None:
+            argD['c'] = popClr
+        baseLine, = popAxis.plot(dayVec, popVec, **argD)
         popClr = baseLine.get_color()
     if meanPop is not None:
         popAxis.plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
