@@ -48,6 +48,8 @@ from pyrhea import getLoggerConfig
 
 logger = None
 
+XDRO_CONST_SCHEMA = 'xdro_registry_scenario_constants_schema.yaml'
+
 def buildEnumNameStr(name, ind):
     return '%s_%d' % (name, ind)
 
@@ -191,8 +193,12 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
     return rsltL
 
 
-def printStuff(abbrevList, specialDict, facDict, waitTime):
+def printStuff(abbrevList, specialDict, facDict, waitTime, locAbbrevList):
+    if locAbbrevList:
+        locAbbrevSet = set(locAbbrevList)
     for abbrev in abbrevList:
+        if locAbbrevList and abbrev not in locAbbrevSet:
+            continue
         tplList = getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
         tierAxisD = {}
         tAOffset = 0
@@ -220,8 +226,11 @@ def main():
     parser = OptionParser(usage="""
     %prog --notes notes_file.pkl run_descr.yaml
     """)
+
     parser.add_option('-n', '--notes', action='append', type='string',
                       help="Notes filename - may be repeated")
+    parser.add_option('-x', '--xdro', action='store', type='string',
+                      help="path to the yaml file defining locationsImplementingScenario")
     
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -247,9 +256,16 @@ def main():
 
     specialDict = mergeNotesFiles(opts.notes, False)
 
+    if opts.xdro:
+        xdroConsts = checkInputFileSchema(opts.xdro,
+                                          os.path.join(SCHEMA_DIR, XDRO_CONST_SCHEMA))
+        locAbbrevList = xdroConsts['locationsImplementingScenario']['locAbbrevList']
+    else:
+        locAbbrevList = None
+
     assert 'trackedFacilities' in inputDict, 'No trackedFacilities?'
     waitTime = inputDict['burnInDays'] + inputDict['scenarioWaitDays']
-    printStuff(inputDict['trackedFacilities'], specialDict, facDict, waitTime)
+    printStuff(inputDict['trackedFacilities'], specialDict, facDict, waitTime, locAbbrevList)
 
 if __name__ == "__main__":
     main()
