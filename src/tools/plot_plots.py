@@ -48,8 +48,6 @@ from pyrhea import getLoggerConfig
 
 logger = None
 
-XDRO_CONST_SCHEMA = 'xdro_registry_scenario_constants_schema.yaml'
-
 def buildEnumNameStr(name, ind):
     return '%s_%d' % (name, ind)
 
@@ -193,27 +191,102 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
     return rsltL
 
 
-def printStuff(abbrevList, specialDict, facDict, waitTime, locAbbrevList):
-    if locAbbrevList:
-        locAbbrevSet = set(locAbbrevList)
+def plotStuff(abbrevList, specialDict, facDict):
+    totPopV = None
+    totColV = None
     for abbrev in abbrevList:
-        if locAbbrevList and abbrev not in locAbbrevSet:
-            continue
-        tplList = getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
-        tierAxisD = {}
-        tAOffset = 0
-        for dayVec, curves in tplList:
-            tmpVecD = defaultdict(list)
-            totVecD = {}
+        print abbrev
+        tplList = getTimeSeriesList(abbrev, specialDict, 'localtierpathogen')
+        for dayVec1, curves in tplList:
+            if totPopV is None:
+                totPopV = np.zeros(dayVec1.shape[0])
+                totColV = np.zeros(dayVec1.shape[0])
+            else:
+                assert totPopV.shape[0] == dayVec1.shape[0], 'notes files are of different lengths'
+            for tpl, lVec in curves.items():
+                tier, pthStatus = tpl
+                totPopV += lVec
+                if pthStatus == PthStatus.COLONIZED:
+                    totColV += lVec
+    print totPopV
+    print totColV
+
+    totNewColV = None
+    for abbrev in abbrevList:
+        print abbrev
+        tplList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolonized')
+        for dayVec2, curves in tplList:
+            if totNewColV is None:
+                totNewColV = np.zeros(dayVec2.shape[0])
+            else:
+                assert totNewColV.shape[0] == dayVec2.shape[0], 'notes files are of different lengths'
             for tpl, lVec in curves.items():
                 tier = tpl
-                tmpVecD[tier].append(lVec)
-            for tier, lVecList in tmpVecD.items():
-                totVecD[tier] = sum(lVecList)
-            for tpl, lVec in curves.items():
-                tier = tpl
-                print '%s, %s, %s, %s' % (abbrev, CareTier.names[tier], 
-                                          np.sum(lVec[dayVec >= waitTime]), np.sum(totVecD[tier]))
+                totNewColV += lVec
+
+    print totNewColV
+
+    fig, axes = plt.subplots(2,1)
+    newColAxis = axes[0]
+    prvAxis = axes[1]
+    newColAxis.set_xlabel('Days')
+    newColAxis.set_ylabel('New Colonizations')
+    newColAxis.set_title("Total New Colonizations Across All Facilities")
+
+    prvAxis.set_xlabel('Days')
+    prvAxis.set_ylabel('Prevalence')
+    prvAxis.set_title("Net Prevalence Across All Facilities")
+        
+    clrDict = defaultdict(lambda: None)
+    if len(tplList) > 3:
+        alpha = 0.2
+    else:
+        alpha = 1.0
+        
+    newColP, = newColAxis.plot(dayVec2, totNewColV)
+    prvP, = prvAxis.plot(dayVec1, totColV / totPopV)
+#     for idx, (dayVec, curves) in enumerate(tplList):
+#         tmpVecD = defaultdict(list)
+#         totVecD = {}
+#         for tpl, lVec in curves.items():
+#             tier, pthStatus = (tpl if tierMode else (None, tpl))
+#             tmpVecD[tier].append(lVec)
+#         for tier, lVecList in tmpVecD.items():
+#             totVecD[tier] = sum(lVecList)
+#         for tpl, lVec in curves.items():
+#             tier, pthStatus = (tpl if tierMode else (None, tpl))
+#             with np.errstate(divide='ignore', invalid='ignore'):
+#                 scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVecD[tier]))
+#                 scaleV[scaleV == np.inf] = 0.0
+#                 scaleV = np.nan_to_num(scaleV)
+#             if tier is None:
+#                 lblStr = '%s' % pth.PthStatus.names[pthStatus]
+#             else:
+#                 lblStr = '%s %s' % (CareTier.names[tier], pth.PthStatus.names[pthStatus])
+#             lbl = (None if idx else lblStr)
+#             if np.count_nonzero(lVec):
+#                 thisP, = axes[tierAxisD[tier]].plot(dayVec, scaleV, label=lbl, c=clrDict[tpl],
+#                                        alpha=alpha)
+#                 clrDict[tpl] = thisP.get_color()
+#     for tAOffset in tierAxisD.values():
+#         #axes[tAOffset].legend()
+#         pass
+# 
+#     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
+#     popClr = None
+#     if len(popTplList) > 3:
+#         alpha = 0.2
+#     else:
+#         alpha = 1.0
+#     for dayVec, popVec in popTplList:
+#         baseLine, = popAxis.plot(dayVec, popVec, c=popClr, alpha=alpha)
+#         popClr = baseLine.get_color()
+#     if meanPop is not None:
+#         popAxis.plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
+
+    fig.tight_layout()
+    plt.savefig('plot1.png')
+
 
 def main():
     """
@@ -224,13 +297,10 @@ def main():
     logger = logging.getLogger(__name__)
     
     parser = OptionParser(usage="""
-    %prog --notes notes_file.pkl [--xdro xdro_const_file.yaml] run_descr.yaml
+    %prog --notes notes_file.pkl run_descr.yaml
     """)
-
     parser.add_option('-n', '--notes', action='append', type='string',
                       help="Notes filename - may be repeated")
-    parser.add_option('-x', '--xdro', action='store', type='string',
-                      help="path to the yaml file defining locationsImplementingScenario")
     
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -252,20 +322,13 @@ def main():
     pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
 
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
-    facDict = readFacFiles(facDirList)
+    #facDict = readFacFiles(facDirList)
+    facDict = None
 
     specialDict = mergeNotesFiles(opts.notes, False)
 
-    if opts.xdro:
-        xdroConsts = checkInputFileSchema(opts.xdro,
-                                          os.path.join(SCHEMA_DIR, XDRO_CONST_SCHEMA))
-        locAbbrevList = xdroConsts['locationsImplementingScenario']['locAbbrevList']
-    else:
-        locAbbrevList = None
-
     assert 'trackedFacilities' in inputDict, 'No trackedFacilities?'
-    waitTime = inputDict['burnInDays'] + inputDict['scenarioWaitDays']
-    printStuff(inputDict['trackedFacilities'], specialDict, facDict, waitTime, locAbbrevList)
+    plotStuff(inputDict['trackedFacilities'], specialDict, facDict)
 
 if __name__ == "__main__":
     main()
