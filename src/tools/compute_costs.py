@@ -707,22 +707,10 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
                                        targetYear_)
             
             outcomeCosts[k]['thirdParty Costs'] = thirdPartyCosts
-            
-            #print "{0} 3rd Party: {1}".format(k,thirdPartyCosts)
                         
-            
     return outcomeCosts
     
-        
-#     ### two special cases 
-#     nOutsDict['ventilatorAssociatedPneumonia'] = Distribution(outcomesDict['ventilatorAssociatedPneumonia']['probability']['distribution']['type'],
-#                                                               outcomesDict['ventilatorAssociatedPneumonia']['probability']['distribution']['args']).draw() \
-#                                                * nOutsDict['pneumoniaAll']
-#     nOutsDict['nonVentilatorAssociatedPneumonia'] = nOutsDict['pneumoniaAll'] - nOutsDict['ventilatorAssociatedPneumonia']
-#     
-#     
-#     
-#     print nOutsDict
+    
 def extractNewColonized(abbrev,specialDict):
     ncList = getTimeSeriesList(abbrev,specialDict,'localtiernewcolonized')
     sums = {}
@@ -767,20 +755,16 @@ def getNewCols(abbrevs,note,i,facDict,xdroabbrevs,newColsReturn):
         newColDict = extractNewColonized(abbrev,specialDict)
         for k,v in newColDict.items():
             newColAll += v
-    #newColsReturn[i] = newColAll
     
     cpDaysByType = {}
     for abbrev in abbrevs:
         cpForThisPlace = extractContactPrecautionDays(abbrev,specialDict)
-        #cpDaysL[abbrev] = cpForThisPlace
         facCat = facDict[abbrev]['category']
-        #print "{0}: {1}".format(abbrev,facCat)
         if facCat not in cpDaysByType.keys():
             cpDaysByType[facCat] = 0.0
         for k,v in cpForThisPlace.items():
-            cpDaysByType[facCat] += v #extractNewColonized(abbrev,spe)
-        #for k,v in cpDaysL[abbrev].items():
-        #    cpDaysAll += v
+            cpDaysByType[facCat] += v 
+ 
    
     creBundlesAll = 0.0
     
@@ -791,8 +775,8 @@ def getNewCols(abbrevs,note,i,facDict,xdroabbrevs,newColsReturn):
 
     xdroAll = 0.0
     for abbrev in abbrevs:
-	if abbrev in xdroabbrevs:
-             xdroAll += extractXDROCounts(abbrev,specialXDRODict)
+        if abbrev in xdroabbrevs:
+            xdroAll += extractXDROCounts(abbrev,specialXDRODict)
     newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
 
 def determin_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, i, costsOfRealizationTmp): 
@@ -869,9 +853,8 @@ def determin_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params
     costsOfReal['nDead'] = totalDead
     costsOfReal['cpDays'] = sum([x for k,x in cpDaysByType.items()])
     costsOfReal['creBundles'] = creBundlesAll
-    print "ihere = {0}".format(i)
-    print costsOfReal.keys()
     costsOfRealizationTmp[i] = costsOfReal
+    
 def main():
     
     parser = OptionParser(usage="""
@@ -887,8 +870,12 @@ def main():
                             "  (Remember to protect the filename string from the shell!)"))
     parser.add_option('-r','--nreals',type='int',default=1000,
                      help='number of realizations of the costing model to run through')
-    parser.add_option('-y','--targetyear',type='int',default=2017)
-    parser.add_option('-x','--xdroyamlfile',type='string', default=None)
+    parser.add_option('-y','--targetyear',type='int',default=2017,
+                      help='year that you would like the costing to be computed in')
+    parser.add_option('-x','--xdroyamlfile',type='string', default=None,
+                      help="specify the xdro scenario yaml file if there is one, if not, XDRO won't be costed")
+    parser.add_option('-m','--nprocs',type='int',default=1,
+                      help='number of cpus to run the costing model over')
     
     opts, args = parser.parse_args()
     
@@ -911,8 +898,6 @@ def main():
     
     notes = []
     if opts.glob:
-        #print "globing"
-        #print opts.notes[0]
         notes = glob.glob('{0}'.format(opts.notes[0]))
     else:
         notes = opts.notes
@@ -920,10 +905,8 @@ def main():
     if opts.xdroyamlfile:
         with open(opts.xdroyamlfile,'rb') as f:
             xdroparams = yaml.load(f)
-	xdroabbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
-    #print xdroparams.keys()
-    #print xdroparams['locationsImplementingScenario']['locAbbrevList']
-     
+    xdroabbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
+
     newColsArray = [0.0 for x in range(0,len(notes))]
     cpDaysArray = [0.0 for x in range(0,len(notes))]
     creBundlesArray = [0.0 for x in range(0,len(notes))]
@@ -934,7 +917,9 @@ def main():
             if abbrev in facDict:
                 abbrevs.append(abbrev)
                 
-    nprocs = 40
+    nprocs = opts.nprocs
+    
+    ### This part is the parallel reading of input data into the array
     for i in range(0,len(notes),nprocs):
         manager = Manager()
         newColsReturn = manager.dict()
@@ -955,8 +940,10 @@ def main():
             cpDaysArray[k] = v[1]
             creBundlesArray[k] = v[2] 
             xdroArray[k] = v[3]
-        print cpDaysArray   
-        print xdroArray
+        #print cpDaysArray   
+        #print xdroArray
+        
+        
     with open("costModel_ChicagoLand.yaml","rb") as f:
         params = yaml.load(f)
     
@@ -984,100 +971,18 @@ def main():
                 end = nReals
                 
             for j in range(i,end):
-                print "i= {0} j= {1}".format(i,j)
                 p = Process(target=determin_costs, args=(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, j, costsOfRealizationTmp ))
-                #determin_costs(newColsArray, cpDaysArray, creBundlesArray, params, opts, costsOfRealizationTmp, fracAttribMort, notes, i): 
                 jobs.append(p)
                 p.start()
             for proc in jobs:
                 proc.join()
         
-            print costsOfRealizationTmp.keys()
             for k,v in costsOfRealizationTmp.items():
-                print "K = {0} v= {1}".format(k,v)
                 costsOfRealization[k] = {}
             
                 for h,w in v.items():
                     costsOfRealization[k][h] = w
-                    
-            print costsOfRealization[0]   
-#         #= [{} for x in range(nReals)]
-#         for i in range(0,nReals):
-#             randomInt = random.randint(0,len(notes)-1)
-#             newColAll = newColsArray[randomInt]
-#             cpDaysByType = cpDaysArray[randomInt]
-#             creBundlesAll = creBundlesArray[randomInt]
-#             
-#             personAge = int(round(Distribution('uniform',{'low':60.0,'high':80.0}).draw()))
-#             annualWage = Cost(Distribution(params['costs']['annualWage']['distribution']['type'],
-#                                            params['costs']['annualWage']['distribution']['args']).draw(),
-#                               params['costs']['annualWage']['year'])
-#         
-#         
-#             hourlyWage = Cost(Distribution(params['costs']['hourlyWage']['distribution']['type'],
-#                                            params['costs']['hourlyWage']['distribution']['args']).draw(),
-#                               params['costs']['hourlyWage']['year'])
-#             
-#             
-#             
-#             ## for now, compute some common costs:
-#             cGlovesDict = params['interventionParameters']['glovesPair']['cost']
-#             cGloves = Cost(Distribution(cGlovesDict['distribution']['type'],
-#                                         cGlovesDict['distribution']['args']).draw(),
-#                            cGlovesDict['year'])
-#                     
-#             cGownsDict = params['interventionParameters']['gowns']['cost']
-#             cGowns = Cost(Distribution(cGownsDict['distribution']['type'],
-#                                        cGownsDict['distribution']['args']).draw(),
-#                           cGownsDict['year'])
-#             
-#             rNurseWageDict = params['costs']['regNurseHourlyWage']
-#             rNurseWage = Cost(Distribution(rNurseWageDict['distribution']['type'],
-#                                            rNurseWageDict['distribution']['args']).draw(),
-#                               rNurseWageDict['year'])
-#             
-#             costsOfRealization[i]['xdroCosts'] = Cost(0.0,opts.targetyear) #computeCostOfXDROReg(0,opts.targetyear, params) # replace with RHEA
-#             costsOfRealization[i]['contPrecCosts'] = Cost(0.0,opts.targetyear)
-#             for fType,cpDays in cpDaysByType.items():
-#                 cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
-#                 costsOfRealization[i]['contPrecCosts'] += cpst 
-#             costsOfRealization[i]['bundleCosts'] = computeCostsOfBundles(creBundlesAll, 0, opts.targetyear, params) # replace with RHEA
-#             outcomesDict = determineOutcomes(newColAll,0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
-#             costsOfRealization[i]['outcomesDict'] = outcomesDict
-#             
-#             totalSoc = 0.0
-#             totalQALY = 0.0
-#             totalHosp = 0.0
-#             total3rd = 0.0
-#             totalCases = 0.0
-#             totalDead = 0.0
-#             
-#             for oC,oCD in outcomesDict.items():
-#                 if oC not in ['pneumoniaAll']:
-#                     #print oC
-#                     totalCases += oCD['nCases']
-#                     totalDead += oCD['nDead']
-#                     totalQALY += oCD['QALYs Lost'].value
-#                     totalHosp += oCD['Hospitalization Cost'].value
-#                     total3rd += oCD['thirdParty Costs'].value
-#                     totalSoc += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
-#                     
-#                     
-#             costsOfRealization[i]['Intervention Costs'] = Cost(costsOfRealization[i]['xdroCosts'].value + costsOfRealization[i]['contPrecCosts'].value + costsOfRealization[i]['bundleCosts'].value,opts.targetyear)
-#             costsOfRealization[i]['QALYs Lost'] = Cost(totalQALY,opts.targetyear)
-#             costsOfRealization[i]['Hospitalization Costs'] = Cost(totalHosp,opts.targetyear)
-#             costsOfRealization[i]['thirdParty Costs'] = Cost(total3rd,opts.targetyear)
-#             costsOfRealization[i]['Societal Costs'] = Cost(totalSoc,opts.targetyear)
-#             costsOfRealization[i]['nCases'] = totalCases
-#             costsOfRealization[i]['nDead'] = totalDead
-#             costsOfRealization[i]['cpDays'] = sum([x for k,x in cpDaysByType.items()])
-#             costsOfRealization[i]['creBundles'] = creBundlesAll
-#             
-#             
-#         
-        
-        for i in range(0,nReals):
-            print "{0}: {1}".format(i,costsOfRealization[i])
+          
         a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
         costs['Societal Costs'][fracAttribMort]['mean'] = float(np.mean(a))
         costs['Societal Costs'][fracAttribMort]['median'] = float(np.median(a))
@@ -1142,17 +1047,10 @@ def main():
          
     for f,g in costs.items():
         for k,d in g.items():
-            #print "{0} {1} {2}".format(f,k,d.keys)
-            #if f in ['Colonizations','Deaths','CPDays','CRE Bundles']:
-            #    print '{2},{0},{1}'.format(k,d['value'],f)
-            #else:
             print "{6},{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'],f)
             
     with open(outFileName,'wb') as f:
         yaml.dump(costs,f,indent=4,encoding='utf-8',width=130,explicit_start=True)
-        
-    #for k,d in costs.items():
-    #    print "{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'])
         
 if __name__ == "__main__":
     main()
