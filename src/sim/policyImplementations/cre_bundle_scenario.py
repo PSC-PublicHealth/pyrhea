@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 #                  ('THC_2544_L', 452, 830)
 #                  ]
 testLocations = [('THC_4058_L', 4, 8),
+                 ('ADVO_450_H', 4, 8),
+                 ('ADVO_801_H', 4, 8),
+                 ('ADVO_836_H', 4, 8),
                  ('THC_365_L', 6, 8),
                  ]
 
@@ -61,7 +64,8 @@ class CREBundleScenario(BaseScenarioPolicy):
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
                     for tP in fac.treatmentPolicies:
-                        if isinstance(tP, CREBundleTreatmentPolicy):
+                        if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
+                        #if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', True)
                             print ('Activated CREBundleScenario at %s' % abbrev)
                             logger.info('Activated CREBundleScenario at %s' % abbrev)
@@ -81,7 +85,8 @@ class CREBundleScenario(BaseScenarioPolicy):
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
                     for tP in fac.treatmentPolicies:
-                        if isinstance(tP, CREBundleTreatmentPolicy):
+                        if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
+                        #if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', False)
                             print ('Deactivated CREBundleScenario at %s' % abbrev)
                             logger.info('Deactivated CREBundleScenario at %s' % abbrev)
