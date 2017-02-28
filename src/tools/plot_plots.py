@@ -47,6 +47,7 @@ from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
 from pyrhea import getLoggerConfig
+#from time_series_plotter import getTimeSeriesList
 
 logger = None
 
@@ -196,6 +197,7 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
 def plotStuff(abbrevList, specialDict, facDict):
     totPopV = None
     totColV = None
+    desiredTier = CareTier.LTAC
     for abbrev in abbrevList:
         print abbrev
         tplList = getTimeSeriesList(abbrev, specialDict, 'localtierpathogen')
@@ -207,6 +209,8 @@ def plotStuff(abbrevList, specialDict, facDict):
                 assert totPopV.shape[0] == dayVec1.shape[0], 'notes files are of different lengths'
             for tpl, lVec in curves.items():
                 tier, pthStatus = tpl
+                if desiredTier is not None and tier != desiredTier:
+                    continue
                 totPopV += lVec
                 if pthStatus == PthStatus.COLONIZED:
                     totColV += lVec
@@ -224,6 +228,8 @@ def plotStuff(abbrevList, specialDict, facDict):
                 assert totNewColV.shape[0] == dayVec2.shape[0], 'notes files are of different lengths'
             for tpl, lVec in curves.items():
                 tier = tpl
+                if desiredTier is not None and tier != desiredTier:
+                    continue
                 totNewColV += lVec
 
     print totNewColV
@@ -239,6 +245,8 @@ def plotStuff(abbrevList, specialDict, facDict):
                 assert totNewColV.shape[0] == dayVec3.shape[0], 'notes files are of different lengths'
             for tpl, lVec in curves.items():
                 tier = tpl
+                if desiredTier is not None and tier != desiredTier:
+                    continue
                 totCPV += lVec
 
     print totCPV
