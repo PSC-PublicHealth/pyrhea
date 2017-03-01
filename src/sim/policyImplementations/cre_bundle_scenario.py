@@ -64,7 +64,7 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if tp(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                    if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
                         fac.diagnosticPolicy.setValue('active', True)
                     else:
                         raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy' % abbrev)
@@ -89,7 +89,7 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if tp(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                    if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
                         fac.diagnosticPolicy.setValue('active', True)
                     for tP in fac.treatmentPolicies:
                         if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
