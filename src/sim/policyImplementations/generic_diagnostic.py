@@ -34,6 +34,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
     def __init__(self,  patch, categoryNameMapper):
         super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
+        self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         
     def diagnose(self, patientStatus, oldDiagnosis):
         """
@@ -44,12 +45,15 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         """
         
         if patientStatus.justArrived:
-            if patientStatus.pthStatus == PthStatus.COLONIZED and (random() <= self.effectiveness):
-                diagnosedPthStatus = PthStatus.COLONIZED
+            if patientStatus.pthStatus == PthStatus.COLONIZED:
+                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                                      else PthStatus.CLEAR)
             else:
-                diagnosedPthStatus = PthStatus.CLEAR
+                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                                      else PthStatus.CLEAR)
+
         else:
-            diagnosedPthStatus = oldDiagnosis.getPthStatus()
+            diagnosedPthStatus = oldDiagnosis.pthStatus
             
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
