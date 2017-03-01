@@ -316,7 +316,9 @@ class CRE(Pathogen):
                 selfProt = tPMD[patientKey][1]
                 logPSafe = 0.0
                 totPop = float(sum(pI.values()))
-                expScale = (totPop * self.exposureCutoff) / (totPop + self.exposureCutoff)
+                expScale = 1.0
+                if self.exposureCutoff < totPop:
+                    expScale = (self.exposureCutoff) / (totPop)
                 for key, ct in pI.items():
                     logPSafe += math.log(1.0 - (tPMD[key][0] * selfProt * self.tau)) * ct
                 pSafe = math.exp(dT * expScale * logPSafe)
