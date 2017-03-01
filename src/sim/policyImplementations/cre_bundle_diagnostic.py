@@ -20,22 +20,23 @@ from random import random
 
 import pyrheautils
 from facilitybase import PatientDiagnosis
-from facilitybase import DiagnosticPolicy as BaseDiagnosticPolicy
+from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/generic_diagnosis_constants.yaml'
-_constants_schema = 'generic_diagnosis_constants_schema.yaml'
+_constants_values = '$(MODELDIR)/constants/cre_bundle_treatment_constants.yaml'
+_constants_schema = 'cre_bundle_treatment_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
 
-class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
+class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
     def __init__(self,  patch, categoryNameMapper):
-        #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-        BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
-        self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
-        self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
+        #super(CREBundleDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
+        GenericDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
+        self.effectiveness = _constants['swabDiagnosticSensitivity']['value']
+        self.falsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
+        self.active = False
         
     def diagnose(self, patientStatus, oldDiagnosis):
         """
@@ -45,14 +46,21 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         This version provides some awareness of pathogen status
         """
         
-        if patientStatus.justArrived:
-            if patientStatus.pthStatus == PthStatus.COLONIZED:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
-                                      else PthStatus.CLEAR)
+        # Layer our diagnosis on top of any done by the base class
+        #oldDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(patientStatus, oldDiagnosis)
+        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patientStatus, oldDiagnosis)
+        
+        if self.active:
+            if patientStatus.justArrived:
+                if patientStatus.pthStatus == PthStatus.COLONIZED:
+                    diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                                          else PthStatus.CLEAR)
+                else:
+                    diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                                          else PthStatus.CLEAR)
+    
             else:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
-                                      else PthStatus.CLEAR)
-
+                diagnosedPthStatus = oldDiagnosis.pthStatus
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
             
@@ -62,23 +70,23 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
 
+
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
         
-        This class supports setting pathogenDiagnosticEffectiveness, a fraction.
+        This class can be activated and deactivated via the 'active' flag (True/False)
         """
-        if key == 'pathogenDiagnosticEffectiveness':
-            self.effectiveness = val
-            print 'effectiveness is now %s' % self.effectiveness
+        if key == 'active':
+            self.active = val
         else:
-            super(GenericDiagnosticPolicy, self).setValue(key, val)
+            super(CREBundleDiagnosticPolicy, self).setValue(key, val)
 
 
 def getPolicyClasses():
-    return [GenericDiagnosticPolicy]
+    return [CREBundleDiagnosticPolicy]
 
 
 ###########

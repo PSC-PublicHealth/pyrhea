@@ -20,6 +20,7 @@ import logging
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 from cre_bundle_treatment import CREBundleTreatmentPolicy
+from cre_bundle_diagnostic import CREBundleDiagnosticPolicy
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/cre_bundle_scenario_constants.yaml'
@@ -63,6 +64,10 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
+                    if tp(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                        fac.diagnosticPolicy.setValue('active', True)
+                    else:
+                        raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy' % abbrev)
                     for tP in fac.treatmentPolicies:
                         if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
                         #if isinstance(tP, CREBundleTreatmentPolicy):
@@ -84,6 +89,8 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
+                    if tp(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                        fac.diagnosticPolicy.setValue('active', True)
                     for tP in fac.treatmentPolicies:
                         if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
                         #if isinstance(tP, CREBundleTreatmentPolicy):
