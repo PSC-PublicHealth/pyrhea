@@ -315,9 +315,11 @@ class CRE(Pathogen):
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = tPMD[patientKey][1]
                 logPSafe = 0.0
+                totPop = float(sum(pI.values()))
+                expScale = (totPop * self.exposureCutoff) / (totPop + self.exposureCutoff)
                 for key, ct in pI.items():
                     logPSafe += math.log(1.0 - (tPMD[key][0] * selfProt * self.tau)) * ct
-                pSafe = math.exp(dT * logPSafe)
+                pSafe = math.exp(dT * expScale * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
