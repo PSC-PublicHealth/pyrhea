@@ -138,6 +138,9 @@
       'tau':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'transmission constants'
+      'facilityTau':
+        '$ref': '#/definitions/fracByTierByFacilityByCategory'
+        'descriptions': 'override transmission constants by facility and tier'
       'exposureCutoff':
         '$ref': '#/definitions/scaleByTierByCategory'
         'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'
@@ -158,10 +161,12 @@
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
       - 'tau'
+      - 'facilityTau'      
       - 'fracPermanentlyColonized'
       - 'spontaneousLossTimeConstant'
       - 'colonizedDischargeDelayTime'
       - 'colonizedTransferProbScale'
+      - 'exposureCutoff'
       
       
      

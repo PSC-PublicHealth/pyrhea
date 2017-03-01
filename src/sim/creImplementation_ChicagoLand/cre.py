@@ -56,7 +56,7 @@ def _parseFracByTierByFacilityByCategory(fieldStr):
     return topD
 
 
-def _parseFracByTierByCategory(fieldStr):
+def _parseFracByTierByCategory(fieldStr, eltKey='frac'):
     topD = {}
     for elt in _constants[fieldStr]:
         cat = elt['category']
@@ -65,11 +65,14 @@ def _parseFracByTierByCategory(fieldStr):
             topD[cat] = {}
         for tierElt in tiers:
             tier = tierElt['tier']
-            val = tierElt['frac']['value']
+            val = tierElt[eltKey]['value']
             assert tier not in topD[cat], ('Redundant categoryInitialFracColonized for %s %s' %
                                            (cat, CareTier.names[tier]))
             topD[cat][tier] = val
     return topD
+
+def _parseScaleByTierByCategory(fieldStr):
+    return _parseFracByTierByCategory(fieldStr, eltKey='scale')
 
 def _parseTierTierScaleList(fieldStr):
     result = {}
@@ -80,14 +83,23 @@ def _parseTierTierScaleList(fieldStr):
         result[(fmTier, toTier)] = value
     return result
 
-def _getFracByTierByCategory(tbl, tblNameForErr, ward, useWardCategory):
+def _getValByTierByCategory(tbl, tblNameForErr, ward, useWardCategory, overrideTbl=None):
     wardCat = ward.fac.category
     tierStr = CareTier.names[ward.tier]
-    if (wardCat in tbl and tierStr in tbl[wardCat]):
-        return tbl[wardCat][tierStr]
+    if overrideTbl:
+        # Override values are stored by [category][abbrev][tierName]
+        abbrev = ward.fac.abbrev
+        print abbrev
+        if (wardCat in overrideTbl
+            and abbrev in overrideTbl[wardCat]
+            and tierStr in overrideTbl[wardCat][abbrev]):
+            return overrideTbl[wardCat][abbrev][tierStr]
     else:
-        raise RuntimeError('No way to set %s for %s tier %s' %
-                           (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
+        if (wardCat in tbl and tierStr in tbl[wardCat]):
+            return tbl[wardCat][tierStr]
+        else:
+            raise RuntimeError('No way to set %s for %s tier %s' %
+                               (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
 
 
 class CRECore(object):
@@ -99,6 +111,8 @@ class CRECore(object):
         self.categoryInitialFracColonizedTbl = \
             _parseFracByTierByCategory('categoryInitialFractionColonized')
         self.tauTbl = _parseFracByTierByCategory('tau')
+        self.tauOverrideTbl = _parseFracByTierByFacilityByCategory('facilityTau')
+        self.exposureCutoffTbl = _parseScaleByTierByCategory('exposureCutoff')
         self.fracPermanentlyColonized = _constants['fracPermanentlyColonized']['value']
         self.spontaneousLossTimeConstant = _constants['spontaneousLossTimeConstant']['value']
         self.transferProbScaleDict = _parseTierTierScaleList('colonizedTransferProbScale')
@@ -150,7 +164,11 @@ class CRE(Pathogen):
                                                                   ward.fac.category,
                                                                   ward.tier)
         
-        self.tau = _getFracByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory)
+        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory,
+                                           overrideTbl=self.core.tauOverrideTbl)
+        self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
+                                                      'exposureCutoff',
+                                                      ward, useWardCategory)
         
         tierName = CareTier.names[self.ward.tier]
         self.colDischDelayTime = 0.0  # the default
