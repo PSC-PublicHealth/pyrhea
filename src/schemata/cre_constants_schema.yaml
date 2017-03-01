@@ -28,6 +28,17 @@
         - 'tier'
         - 'frac'
 
+  'scaleByTier':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tier': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
+        'scale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat', 'description': 'scale factor'}
+      'required':
+        - 'tier'
+        - 'scale'
+
   'nonnegfloatByTier':
     'type': 'array'
     'items':
@@ -78,6 +89,17 @@
         - 'category'
         - 'tiers'
 
+  'scaleByTierByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category':  {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'tiers': {'$ref': '#/definitions/scaleByTier'}
+      'required':
+        - 'category'
+        - 'tiers'
+
   'fracByTierByFacilityByCategory':
     'type': 'array'
     'items':
@@ -116,6 +138,9 @@
       'tau':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'transmission constants'
+      'exposureCutoff':
+        '$ref': '#/definitions/scaleByTierByCategory'
+        'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'
       'fracPermanentlyColonized':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
