@@ -49,7 +49,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             else:
                 diagnosedPthStatus = PthStatus.CLEAR
         else:
-            diagnosedPthStatus = patientStatus.pthStatus
+            diagnosedPthStatus = oldDiagnosis.getPthStatus()
             
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
@@ -67,6 +67,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         """
         if key == 'pathogenDiagnosticEffectiveness':
             self.effectiveness = val
+            print 'effectiveness is now %s' % self.effectiveness
         else:
             super(GenericDiagnosticPolicy, self).setValue(key, val)
 
