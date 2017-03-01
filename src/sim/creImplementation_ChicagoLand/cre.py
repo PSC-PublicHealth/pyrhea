@@ -87,19 +87,17 @@ def _getValByTierByCategory(tbl, tblNameForErr, ward, useWardCategory, overrideT
     wardCat = ward.fac.category
     tierStr = CareTier.names[ward.tier]
     if overrideTbl:
-        # Override values are stored by [category][abbrev][tierName]
+        # Potential override values are stored by [category][abbrev][tierName]
         abbrev = ward.fac.abbrev
-        print abbrev
         if (wardCat in overrideTbl
             and abbrev in overrideTbl[wardCat]
             and tierStr in overrideTbl[wardCat][abbrev]):
             return overrideTbl[wardCat][abbrev][tierStr]
+    if (wardCat in tbl and tierStr in tbl[wardCat]):
+        return tbl[wardCat][tierStr]
     else:
-        if (wardCat in tbl and tierStr in tbl[wardCat]):
-            return tbl[wardCat][tierStr]
-        else:
-            raise RuntimeError('No way to set %s for %s tier %s' %
-                               (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
+        raise RuntimeError('No way to set %s for %s tier %s' %
+                           (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
 
 
 class CRECore(object):
