@@ -225,7 +225,7 @@ class DiagnosticPolicy(Policy):
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
                                 patientStatus.startDateA,
-                                patientStatus.pthStatus,
+                                PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
     
     def initializePatientDiagnosis(self, careTier, timeNow):
