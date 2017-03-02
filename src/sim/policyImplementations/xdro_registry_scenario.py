@@ -19,6 +19,7 @@ import logging
 
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from generic_diagnostic import GenericDiagnosticPolicy
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/xdro_registry_scenario_constants.yaml'
@@ -42,8 +43,10 @@ class XDRORegistryScenario(BaseScenarioPolicy):
         # the scenario.
         for fac in self.patch.allFacilities:
             if fac.abbrev in self.facSet:
-                print 'XDRO setting %s' % fac.abbrev
-                fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
+                if type(fac.diagnosticPolicy).__name__ == GenericDiagnosticPolicy.__name__:
+                #if isinstance(fac.diagnosticPolicy, GenericDiagnosticPolicy):
+                    #print 'XDRO setting %s' % fac.abbrev
+                    fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
 
 def getPolicyClasses():
     return [XDRORegistryScenario]

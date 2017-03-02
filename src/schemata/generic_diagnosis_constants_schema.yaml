@@ -13,5 +13,8 @@
       'pathogenDiagnosticEffectiveness':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'If a patient arrives with COLONIZED pathogen status, how likely is it to be detected?'
+      'pathogenDiagnosticFalsePositiveRate':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'If a patient arrives with CLEAR pathogen status, how likely is the patient to be diagnosed as COLONIZED?'
       
      

@@ -32,8 +32,8 @@ if 'line_profiler' not in dir():
         return func
 
 import numpy as np
-import matplotlib as mpl
-mpl.use('svg')
+# import matplotlib as mpl
+# mpl.use('svg')
 import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
@@ -47,6 +47,7 @@ from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
 from pyrhea import getLoggerConfig
+from time_series_plotter import getTimeSeriesList, timeSeriesListGenerator
 
 logger = None
 
@@ -93,7 +94,7 @@ def mergeNotesFiles(notesPathList, globFlag=False):
 
 
 @profile
-def getTimeSeriesList(locKey, specialDict, specialDictKey):
+def oldGetTimeSeriesList(locKey, specialDict, specialDictKey):
     """
     key specifies the target entity, for example a loc abbrev or a facility category. These are
         typically in uppercase, but that is not enforced.
@@ -193,122 +194,167 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
     return rsltL
 
 
-def plotStuff(abbrevList, specialDict, facDict):
-    totPopV = None
-    totColV = None
-    for abbrev in abbrevList:
-        print abbrev
-        tplList = getTimeSeriesList(abbrev, specialDict, 'localtierpathogen')
-        for dayVec1, curves in tplList:
-            if totPopV is None:
-                totPopV = np.zeros(dayVec1.shape[0])
-                totColV = np.zeros(dayVec1.shape[0])
-            else:
-                assert totPopV.shape[0] == dayVec1.shape[0], 'notes files are of different lengths'
-            for tpl, lVec in curves.items():
-                tier, pthStatus = tpl
-                totPopV += lVec
-                if pthStatus == PthStatus.COLONIZED:
-                    totColV += lVec
-    print totPopV
-    print totColV
+def sortSelectedPthStatus(abbrevSet, specialDict, pthStatus, notesKey):
+    dayVecD = {}
+    totVecD = {}
+    for tpl in timeSeriesListGenerator(specialDict, notesKey):
+        notesInd, patchName, (loc, tier, pthLvl), dayV, dataV = tpl
+        if pthLvl != pthStatus:
+            continue
+        if tier not in dayVecD:
+            dayVecD[tier] = {}
+        if notesInd not in dayVecD[tier]:
+            dayVecD[tier][notesInd] = dayV
+        assert dayVecD[tier][notesInd] is dayV, 'Inconsistent day vectors?'
+        if tier not in totVecD:
+            totVecD[tier] = {}
+        if notesInd in totVecD[tier]:
+            totVecD[tier][notesInd] += dataV
+        else:
+            totVecD[tier][notesInd] = np.copy(dataV)
+    
+    return dayVecD, totVecD
 
-    totNewColV = None
-    for abbrev in abbrevList:
-        print abbrev
-        tplList = getTimeSeriesList(abbrev, specialDict, 'localtiernewcolonized')
-        for dayVec2, curves in tplList:
-            if totNewColV is None:
-                totNewColV = np.zeros(dayVec2.shape[0])
-            else:
-                assert totNewColV.shape[0] == dayVec2.shape[0], 'notes files are of different lengths'
-            for tpl, lVec in curves.items():
-                tier = tpl
-                totNewColV += lVec
 
-    print totNewColV
+def sortTiers(abbrevSet, specialDict, notesKey):
+    dayVecD = {}
+    totVecD = {}
+    for tpl in timeSeriesListGenerator(specialDict, notesKey):
+        notesInd, patchName, (loc, tier, pthLvl), dayV, dataV = tpl
+        assert pthLvl is None, "I am confused about this format"
+        if tier not in dayVecD:
+            dayVecD[tier] = {}
+        if notesInd not in dayVecD[tier]:
+            dayVecD[tier][notesInd] = dayV
+        assert dayVecD[tier][notesInd] is dayV, 'Inconsistent day vectors?'
+        if tier not in totVecD:
+            totVecD[tier] = {}
+        if notesInd in totVecD[tier]:
+            totVecD[tier][notesInd] += dataV
+        else:
+            totVecD[tier][notesInd] = np.copy(dataV)
+    
+    return dayVecD, totVecD
 
-    totCPV = None
-    for abbrev in abbrevList:
-        print abbrev
-        tplList = getTimeSeriesList(abbrev, specialDict, 'localtierCP')
-        for dayVec3, curves in tplList:
-            if totCPV is None:
-                totCPV = np.zeros(dayVec3.shape[0])
-            else:
-                assert totNewColV.shape[0] == dayVec3.shape[0], 'notes files are of different lengths'
-            for tpl, lVec in curves.items():
-                tier = tpl
-                totCPV += lVec
 
-    print totCPV
+def plotPrevalenceFig(abbrevList, specialDictA, specialDictB, facDict):
+    abbrevSet = set(abbrevList)
+    dayVecAD, totVecAD = sortSelectedPthStatus(abbrevSet, specialDictA, 
+                                               PthStatus.COLONIZED, 'localtierpathogen')
+    dayVecBD, totVecBD = sortSelectedPthStatus(abbrevSet, specialDictB,
+                                               PthStatus.COLONIZED, 'localtierpathogen')
 
-    fig, axes = plt.subplots(3,1)
-    newColAxis = axes[0]
-    prvAxis = axes[1]
-    cpAxis = axes[2]
-    newColAxis.set_xlabel('Days')
-    newColAxis.set_ylabel('New Colonizations')
-    newColAxis.set_title("Total New Colonizations Across All Facilities")
+    tierSet = set(dayVecAD.keys() + dayVecBD.keys())
+    tierL = list(tierSet)
+    tierL.sort()
 
-    prvAxis.set_xlabel('Days')
-    prvAxis.set_ylabel('Prevalence')
-    prvAxis.set_title("Net Prevalence Across All Facilities")
+    fig, axes = plt.subplots(len(tierL),1)
+    mAx = {tierL[idx]: axes[idx] for idx in xrange(len(tierL))}
+    for tier in tierL:
+        mAx[tier].set_xlabel('Days')
+        mAx[tier].set_ylabel('Prevalence')
+        mAx[tier].set_title("%s Prevalence Across All Facilities" % CareTier.names[tier])
 
-    cpAxis.set_xlabel('Days')
-    cpAxis.set_ylabel('Total On CP')
-    cpAxis.set_title("Patients On Contact Precautions Across All Facilities")
-        
-    clrDict = defaultdict(lambda: None)
-    if len(tplList) > 3:
-        alpha = 0.2
-    else:
-        alpha = 1.0
-        
-    newColP, = newColAxis.plot(dayVec2, totNewColV)
-    prvP, = prvAxis.plot(dayVec1, totColV / totPopV)
-    cpP, = cpAxis.plot(dayVec3, totCPV)
-#     for idx, (dayVec, curves) in enumerate(tplList):
-#         tmpVecD = defaultdict(list)
-#         totVecD = {}
-#         for tpl, lVec in curves.items():
-#             tier, pthStatus = (tpl if tierMode else (None, tpl))
-#             tmpVecD[tier].append(lVec)
-#         for tier, lVecList in tmpVecD.items():
-#             totVecD[tier] = sum(lVecList)
-#         for tpl, lVec in curves.items():
-#             tier, pthStatus = (tpl if tierMode else (None, tpl))
-#             with np.errstate(divide='ignore', invalid='ignore'):
-#                 scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVecD[tier]))
-#                 scaleV[scaleV == np.inf] = 0.0
-#                 scaleV = np.nan_to_num(scaleV)
-#             if tier is None:
-#                 lblStr = '%s' % pth.PthStatus.names[pthStatus]
-#             else:
-#                 lblStr = '%s %s' % (CareTier.names[tier], pth.PthStatus.names[pthStatus])
-#             lbl = (None if idx else lblStr)
-#             if np.count_nonzero(lVec):
-#                 thisP, = axes[tierAxisD[tier]].plot(dayVec, scaleV, label=lbl, c=clrDict[tpl],
-#                                        alpha=alpha)
-#                 clrDict[tpl] = thisP.get_color()
-#     for tAOffset in tierAxisD.values():
-#         #axes[tAOffset].legend()
-#         pass
-# 
-#     popTplList = getTimeSeriesList(abbrev, specialDict, 'localoccupancy')
-#     popClr = None
-#     if len(popTplList) > 3:
-#         alpha = 0.2
-#     else:
-#         alpha = 1.0
-#     for dayVec, popVec in popTplList:
-#         baseLine, = popAxis.plot(dayVec, popVec, c=popClr, alpha=alpha)
-#         popClr = baseLine.get_color()
-#     if meanPop is not None:
-#         popAxis.plot(dayVec, [meanPop] * len(dayVec), c=popClr, linestyle='--')
+        clr = None
+        if min(len(totVecAD[tier]), len(totVecBD[tier])) <= 3:
+            alpha = 1.0
+        else:
+            alpha = 0.2
+        argD = {'alpha': alpha}
+        for noteInd in totVecAD[tier]:
+            pltP, = mAx[tier].plot(dayVecAD[tier][noteInd], totVecAD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
+        argD = {'alpha': alpha}
+        for noteInd in totVecBD[tier]:
+            pltP, = mAx[tier].plot(dayVecBD[tier][noteInd], totVecBD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
 
     fig.tight_layout()
-    plt.savefig('plot1.png')
+    #plt.savefig('plot1.png')
+
+
+def plotCPFig(abbrevList, specialDictA, specialDictB, facDict):
+    abbrevSet = set(abbrevList)
+    dayVecAD, totVecAD = sortTiers(abbrevSet, specialDictA, 'localtierCP')
+    dayVecBD, totVecBD = sortTiers(abbrevSet, specialDictB, 'localtierCP')
+
+    tierSet = set(dayVecAD.keys() + dayVecBD.keys())
+    tierL = list(tierSet)
+    tierL.sort()
+
+    fig, axes = plt.subplots(len(tierL),1)
+    mAx = {tierL[idx]: axes[idx] for idx in xrange(len(tierL))}
+    for tier in tierL:
+        mAx[tier].set_xlabel('Days')
+        mAx[tier].set_ylabel('Patients On CP')
+        mAx[tier].set_title("%s Contact Precautions Across All Facilities" % CareTier.names[tier])
+
+        clr = None
+        if min(len(totVecAD[tier]), len(totVecBD[tier])) <= 3:
+            alpha = 1.0
+        else:
+            alpha = 0.2
+        argD = {'alpha': alpha}
+        for noteInd in totVecAD[tier]:
+            pltP, = mAx[tier].plot(dayVecAD[tier][noteInd], totVecAD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
+        argD = {'alpha': alpha}
+        for noteInd in totVecBD[tier]:
+            pltP, = mAx[tier].plot(dayVecBD[tier][noteInd], totVecBD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
+
+    fig.tight_layout()
+    #plt.savefig('plot1.png')
+
+
+def plotNewColFig(abbrevList, specialDictA, specialDictB, facDict):
+    abbrevSet = set(abbrevList)
+    dayVecAD, totVecAD = sortTiers(abbrevSet, specialDictA, 'localtiernewcolonized')
+    dayVecBD, totVecBD = sortTiers(abbrevSet, specialDictB, 'localtiernewcolonized')
+
+    tierSet = set(dayVecAD.keys() + dayVecBD.keys())
+    tierL = list(tierSet)
+    tierL.sort()
+
+    fig, axes = plt.subplots(len(tierL),1)
+    mAx = {tierL[idx]: axes[idx] for idx in xrange(len(tierL))}
+    for tier in tierL:
+        mAx[tier].set_xlabel('Days')
+        mAx[tier].set_ylabel('New Colonizations')
+        mAx[tier].set_title("%s New Colonizations Across All Facilities" % CareTier.names[tier])
+
+        clr = None
+        if min(len(totVecAD[tier]), len(totVecBD[tier])) <= 3:
+            alpha = 1.0
+        else:
+            alpha = 0.2
+        argD = {'alpha': alpha}
+        for noteInd in totVecAD[tier]:
+            pltP, = mAx[tier].plot(dayVecAD[tier][noteInd], totVecAD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
+        argD = {'alpha': alpha}
+        for noteInd in totVecBD[tier]:
+            pltP, = mAx[tier].plot(dayVecBD[tier][noteInd], totVecBD[tier][noteInd], **argD)
+            argD['c'] = pltP.get_color()
+
+    fig.tight_layout()
+    #plt.savefig('plot1.png')
+
+
+
+def plotStuff(abbrevList, specialDictA, specialDictB, facDict):
+    plotPrevalenceFig(abbrevList, specialDictA, specialDictB, facDict)
+    plotCPFig(abbrevList, specialDictA, specialDictB, facDict)
+    plotNewColFig(abbrevList, specialDictA, specialDictB, facDict)
+# 
+#     cpAxis.set_xlabel('Days')
+#     cpAxis.set_ylabel('Total On CP')
+#     cpAxis.set_title("Patients On Contact Precautions Across All Facilities")
+        
+#     newColP, = newColAxis.plot(dayVec2, totNewColV)
+#     prvP, = prvAxis.plot(dayVec1, totColV / totPopV)
+#     cpP, = cpAxis.plot(dayVec3, totCPV)
+
 
 
 def main():
@@ -322,15 +368,20 @@ def main():
     parser = OptionParser(usage="""
     %prog --notes notes_file.pkl run_descr.yaml
     """)
-    parser.add_option('-n', '--notes', action='append', type='string',
-                      help="Notes filename - may be repeated")
+    parser.add_option('-a', '--groupa', action='append', type='string',
+                      help="Notes filename to add to group a- may be repeated")
+
+    parser.add_option('-b', '--groupb', action='append', type='string',
+                      help="Notes filename to add to group b- may be repeated")
     
     opts, args = parser.parse_args()
     if len(args) != 1:
         parser.error('A YAML run description is required')
 
-    if not opts.notes or len(opts.notes)>1:
-        parser.error('One --notes option is required')
+    if not opts.groupa:
+        parser.error('At least one -a option is required')
+    if not opts.groupb:
+        parser.error('At least one -b option is required')
 
     parser.destroy()
 
@@ -348,10 +399,12 @@ def main():
     #facDict = readFacFiles(facDirList)
     facDict = None
 
-    specialDict = mergeNotesFiles(opts.notes, False)
+    specialDictA = mergeNotesFiles(opts.groupa, False)
+    specialDictB = mergeNotesFiles(opts.groupb, False)
 
     assert 'trackedFacilities' in inputDict, 'No trackedFacilities?'
-    plotStuff(inputDict['trackedFacilities'], specialDict, facDict)
+    plotStuff(inputDict['trackedFacilities'], specialDictA, specialDictB, facDict)
+    plt.show()
 
 if __name__ == "__main__":
     main()

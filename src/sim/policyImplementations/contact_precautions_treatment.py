@@ -146,9 +146,10 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
             newTreatment = newTreatment._replace(contactPrecautions=True)
             
-        # Apparently no one stays on CP for more than 10 days
-        if ward.patch.loop.sequencer.getTimeNow() - patientDiagnosis.startDateA > 10:
-            newTreatment = newTreatment._replace(contactPrecautions=False)
+        # Apparently no one stays on CP for more than 10 days in Nursing care tier
+        if ward.tier == CareTier.NURSING:
+            if ward.patch.loop.sequencer.getTimeNow() - patientDiagnosis.startDateA > 10:
+                newTreatment = newTreatment._replace(contactPrecautions=False)
             
         # for accounting
         if newTreatment.contactPrecautions:

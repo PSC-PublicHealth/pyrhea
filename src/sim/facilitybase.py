@@ -225,7 +225,7 @@ class DiagnosticPolicy(Policy):
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
                                 patientStatus.startDateA,
-                                patientStatus.pthStatus,
+                                PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
     
     def initializePatientDiagnosis(self, careTier, timeNow):
@@ -677,6 +677,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
                                                            self._diagnosis,
                                                            TREATMENT_DEFAULT)[0:2]
+
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])

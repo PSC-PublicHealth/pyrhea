@@ -56,7 +56,7 @@ def _parseFracByTierByFacilityByCategory(fieldStr):
     return topD
 
 
-def _parseFracByTierByCategory(fieldStr):
+def _parseFracByTierByCategory(fieldStr, eltKey='frac'):
     topD = {}
     for elt in _constants[fieldStr]:
         cat = elt['category']
@@ -65,11 +65,14 @@ def _parseFracByTierByCategory(fieldStr):
             topD[cat] = {}
         for tierElt in tiers:
             tier = tierElt['tier']
-            val = tierElt['frac']['value']
+            val = tierElt[eltKey]['value']
             assert tier not in topD[cat], ('Redundant categoryInitialFracColonized for %s %s' %
                                            (cat, CareTier.names[tier]))
             topD[cat][tier] = val
     return topD
+
+def _parseScaleByTierByCategory(fieldStr):
+    return _parseFracByTierByCategory(fieldStr, eltKey='scale')
 
 def _parseTierTierScaleList(fieldStr):
     result = {}
@@ -80,9 +83,16 @@ def _parseTierTierScaleList(fieldStr):
         result[(fmTier, toTier)] = value
     return result
 
-def _getFracByTierByCategory(tbl, tblNameForErr, ward, useWardCategory):
+def _getValByTierByCategory(tbl, tblNameForErr, ward, useWardCategory, overrideTbl=None):
     wardCat = ward.fac.category
     tierStr = CareTier.names[ward.tier]
+    if overrideTbl:
+        # Potential override values are stored by [category][abbrev][tierName]
+        abbrev = ward.fac.abbrev
+        if (wardCat in overrideTbl
+            and abbrev in overrideTbl[wardCat]
+            and tierStr in overrideTbl[wardCat][abbrev]):
+            return overrideTbl[wardCat][abbrev][tierStr]
     if (wardCat in tbl and tierStr in tbl[wardCat]):
         return tbl[wardCat][tierStr]
     else:
@@ -99,6 +109,8 @@ class CRECore(object):
         self.categoryInitialFracColonizedTbl = \
             _parseFracByTierByCategory('categoryInitialFractionColonized')
         self.tauTbl = _parseFracByTierByCategory('tau')
+        self.tauOverrideTbl = _parseFracByTierByFacilityByCategory('facilityTau')
+        self.exposureCutoffTbl = _parseScaleByTierByCategory('exposureCutoff')
         self.fracPermanentlyColonized = _constants['fracPermanentlyColonized']['value']
         self.spontaneousLossTimeConstant = _constants['spontaneousLossTimeConstant']['value']
         self.transferProbScaleDict = _parseTierTierScaleList('colonizedTransferProbScale')
@@ -150,7 +162,11 @@ class CRE(Pathogen):
                                                                   ward.fac.category,
                                                                   ward.tier)
         
-        self.tau = _getFracByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory)
+        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory,
+                                           overrideTbl=self.core.tauOverrideTbl)
+        self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
+                                                      'exposureCutoff',
+                                                      ward, useWardCategory)
         
         tierName = CareTier.names[self.ward.tier]
         self.colDischDelayTime = 0.0  # the default
@@ -294,31 +310,18 @@ class CRE(Pathogen):
             #
             key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT)
             if key not in self.core.exposureTreeCache:
-#                 nBareExposures = pI['+-']
-#                 nCPExposures = pI['++']
-#                 
-#                 tP = self.ward.fac.treatmentPolicies[0]
-#                 effectivenessCP = tP.getTransmissionToMultiplier(careTier, contactPrecautions=True)
-#                 if effectivenessCP != tP.getTransmissionFromMultiplier(careTier, contactPrecautions=True):
-#                     raise RuntimeError('Intermediate implementation of CRE only works with symmetrical treatments')
-#                 if treatment.contactPrecautions:
-#                     # doubly protected
-#                     pSafe = (math.pow((1.0 - effectivenessCP*self.tau), nBareExposures * dT)
-#                              * math.pow((1.0 - effectivenessCP*effectivenessCP*self.tau),
-#                                         nCPExposures * dT))
-#                 else:
-#                     pSafe = (math.pow((1.0 - self.tau), nBareExposures * dT)
-#                              * math.pow((1.0 - effectivenessCP*self.tau), nCPExposures * dT))
-
-                
                 
                 patientKey = self.getPatientStateKey(patientStatus, treatment)
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = tPMD[patientKey][1]
                 logPSafe = 0.0
+                totPop = float(sum(pI.values()))
+                expScale = 1.0
+                if self.exposureCutoff < totPop:
+                    expScale = (self.exposureCutoff) / (totPop)
                 for key, ct in pI.items():
                     logPSafe += math.log(1.0 - (tPMD[key][0] * selfProt * self.tau)) * ct
-                pSafe = math.exp(dT * logPSafe)
+                pSafe = math.exp(dT * expScale * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
                                  pSafe)
