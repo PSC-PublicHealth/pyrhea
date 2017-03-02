@@ -319,8 +319,8 @@ class CRE(Pathogen):
                 expScale = 1.0
                 if self.exposureCutoff < totPop:
                     expScale = (self.exposureCutoff) / (totPop)
-                for key, ct in pI.items():
-                    logPSafe += math.log(1.0 - (tPMD[key][0] * selfProt * self.tau)) * ct
+                for k2, ct in pI.items():
+                    logPSafe += math.log(1.0 - (tPMD[k2][0] * selfProt * self.tau)) * ct
                 pSafe = math.exp(dT * expScale * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 
