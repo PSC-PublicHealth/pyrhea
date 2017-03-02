@@ -4,7 +4,7 @@ import glob
 import numpy as np
 import scipy.stats as st
 import yaml
-from multiprocessing import Process,Manager
+from multiprocessing import Process,Manager,cpu_count,Pool
 from optparse import OptionParser
 
 cwd = os.path.dirname(__file__)
@@ -17,12 +17,20 @@ from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
 from pyrhea import getLoggerConfig
-import print_xdro_counts, print_counts
+import print_counts
 from collections import defaultdict
+import affinity
+
+#print "Cpu_Count = {0}".format(cpu_count())
+#sys.stdout.flush()
+#affinity.set_process_affinity_mask(0,2**50-1)
+
+#os.system("taskset -p 0xff %d"%os.getpid())
 
 DEFAULT_OUT_FILE = 'counts_output.yaml'
 
-def extractCountsFromNotes(note,totalStats,abbrevList, facDict, i):
+
+def extractCountsFromNotes(note, abbrevList, facDict):
     print "note = {0}".format(note)
     returnDict = {}
     ### totalStats is assumed to be a Manager
@@ -45,10 +53,12 @@ def extractCountsFromNotes(note,totalStats,abbrevList, facDict, i):
                 tier, pthStatus = tpl
                 if pthStatus == PthStatus.COLONIZED:
                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec),'bedDays':np.sum(totVecD[tier])}
-                    #totalStats[i] = {'abbrev':abbrev,'tier':CareTier.names[tier],
-    totalStats[i] = returnDict
+                    
+    return returnDict
     
-    
+def pool_helper(args):
+    return extractCountsFromNotes(*args)
+
 def main():
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl [--out outname.yaml] run_descr.yaml
@@ -94,30 +104,48 @@ def main():
     
     abbrevList = inputDict['trackedFacilities']
     nprocs = opts.nprocs
+    print "nprocs = {0}".format(nprocs)
+    print "notes = {0}".format(notes)
     totalCounts = [{} for x in range(0,len(notes))]
+    
+    argsList = [(notes[i],abbrevList,facDict) for i in range(0,len(notes))]
+
+    p = Pool(nprocs)
+    totalStats = p.map(pool_helper,argsList)
+    p.close()
+    
+    '''
     for i in range(0,len(notes),nprocs):
+        print "i = {0}".format(i)
         manager = Manager()
         totalStats = manager.dict()
+        #newColsReturn = manager.dict()
+        print "HERE"
         jobs = []
         end = i + nprocs
         if end > len(notes):
             end = len(notes)
-            
+
         for j in range(i,end):
-            p = Process(target=extractCountsFromNotes, args=(notes[j],totalStats,abbrevList, facDict, j))
+            print "j = {0}".format(j)
+            #p = Process(target=shit,args=())
+            p = Process(target=extractCountsFromNotes, args=(notes[j],abbrevList, facDict, j,totalStats))
             jobs.append(p)
             p.start()
-        
+
         for proc in jobs:
             proc.join()
-        
-        for k,v in totalStats.items():
-            print "K = {0} v={1}".format(k,v)
-            totalCounts[k] = v
+    '''
+    #print totalStats
     
-    print "totalCounts = {0}".format(totalCounts)
+    for v in totalStats:
+        #print "K = {0} v={1}".format(k,v)
+        totalCounts[totalStats.index(v)] = v
+
+    #print "totalCounts = {0}".format(totalCounts)
     ### By Tier
     ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
+        
     statsByTier = {}
     statsByAbbrev = {}
     for abbrev,tD in totalCounts[0].items():
@@ -200,30 +228,33 @@ def main():
                                 d['colonizedDays']['mean'],
                                 d['bedDays']['mean'],
                                 d['prevalence']['mean']
-                                ])        
-        #cDs = [x['colonizedDays'] for x in totalCounts if x['abbrev'] == data['abbrev'] and x['tier'] == data['tier']]
-        #bDs = [x['bedDays'] for x in totalCounts if x['abbrev'] == data['abbrev'] and x['tier'] == data['tier']]
-#        statsByTier[(data['abbrev'],data['tier'])] = {}
-        
-    
-    ### By Facility
-    
-    
-    
-#     for data in totalCounts:
-#         if data['abbrev'] not in averageCountsByFacility
-#     for abbrev,indprev in counts.items():
-#         print indprev
-#         indSum = indprev[0]/float(len(files)) 
-#         prevSum = indprev[1]/float(len(files)) 
-#         averageCounts[abbrev] = (indSum,prevSum)
-#     
-#     with open('base2_average_counts.csv',"wb") as f:
-#         csvWriter = csv.writer(f)
-#         csvWriter.writerow(['Abbev','colonized (counts)','beddays (counts)'])
-#         for abbrev,values in averageCounts.items():
-#             csvWriter.writerow([abbrev,values[0],values[1]])
-        
+                                ])  
+
+    with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
+        csvWriter = csv.writer(f)
+        csvWriter.writerow(['Facility Abbrev','Prevalence Mean','Prevalence Median',
+                            'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI'])
+        for abbrev,d in statsByAbbrev.items():
+            csvWriter.writerow([abbrev,
+                                d['prevalence']['mean'],
+                                d['prevalence']['median'],
+                                d['prevalence']['stdv'],
+                                d['prevalence']['5%CI'],
+                                d['prevalence']['95%CI']])
+
+    with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
+        csvWriter = csv.writer(f)
+        csvWriter.writerow(['Facility Type','Prevalence Mean'])
+        typeDict = {}
+        for abbrev,tD in statsByTier.items():
+            for tier,d in tD.items():
+                if tier not in typeDict.keys():
+                    typeDict[tier] = []
+		if not np.isnan(d['prevalence']['mean']):
+                    typeDict[tier].append(d['prevalence']['mean'])
+        for tier,p in typeDict.items():
+            csvWriter.writerow([tier,np.mean(typeDict[tier])])
+	
 if __name__ == "__main__":
     main()
 
