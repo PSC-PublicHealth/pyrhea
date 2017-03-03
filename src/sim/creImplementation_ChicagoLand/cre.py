@@ -184,6 +184,7 @@ class CRE(Pathogen):
         """
         self.core.flushCaches()
         self.treatmentProbModifierDict = None
+        self.propogationInfoTime = None
 
     def _getInitialFracColonized(self, abbrev, category, tier):
         return self.core._getInitialFracColonized(abbrev, category, tier)

@@ -116,7 +116,7 @@ class Ward(pyrheabase.Ward):
         self.miscCounters = defaultdict(lambda: 0)
 
     def getPatientList(self):
-        return self._lockingAgentList[1:self._nLocks]
+        return self._lockingAgentList[:self._nLocks]
 
     def setInfectiousAgent(self, iA):
         self.iA = iA
