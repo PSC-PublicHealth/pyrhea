@@ -224,6 +224,28 @@ def buildLocalTierArrivalsDict(patch,timeNow):
         #facPthDict['{0}'.format(fac.abbrev)] = facSum
     return facPthDict
 
+def buildLocalTierCREArrivalsDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facPthDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        facSum= 0.0
+        for ward in fac.getWards():
+            pPC = ward.miscCounters['creArrivals']
+            ward.miscCounters['creArrivals'] = 0.0
+            key = "{0}".format(ward.tier)
+            facPPC[key] += pPC
+            facSum += pPC
+        for key, v in facPPC.items():
+            facPthDict['{0}_{1}'.format(fac.abbrev,key)] = v
+        #facPthDict['{0}'.format(fac.abbrev)] = facSum
+    return facPthDict
+
 def buildLocalTierDeparturesDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
     if not _TRACKED_FACILITIES_SET:
@@ -316,6 +338,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierCREBundle': buildLocalTierCREBundleDict,
                           'localtierarrivals': buildLocalTierArrivalsDict,
                           'localtierdepartures': buildLocalTierDeparturesDict,
+                          'localtiercrearrivals': buildLocalTierCREArrivalsDict,
                           #'localCounters': buildLocalTierCountersDict
                           }
 
