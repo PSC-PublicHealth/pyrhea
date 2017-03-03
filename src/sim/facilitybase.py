@@ -134,8 +134,11 @@ class Ward(pyrheabase.Ward):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         patientAgent._status = patientAgent._status._replace(justArrived=True)
         self.miscCounters['arrivals'] += 1
+        if patientAgent._status.pthStatus == PthStatus.COLONIZED:
+            self.miscCounters['creArrival'] += 1
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, timeNow)
+
 
     def handlePatientDeparture(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the departure processing of patients"""
