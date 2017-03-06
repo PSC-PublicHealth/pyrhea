@@ -24,7 +24,7 @@ from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/cre_bundle_treatment_constants.yaml'
+_constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'
 _constants_schema = 'cre_bundle_treatment_constants_schema.yaml'
 _constants = None
 

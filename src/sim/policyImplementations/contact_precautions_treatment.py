@@ -25,7 +25,7 @@ from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
 from pathogenbase import PthStatus
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/contact_precautions_constants.yaml'
+_constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'
 _constants_schema = 'contact_precautions_constants_schema.yaml'
 _constants = None
 

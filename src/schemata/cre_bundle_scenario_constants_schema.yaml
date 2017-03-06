@@ -16,4 +16,17 @@
     'required':
     - 'stringToLogWhenStarting'
       
+  'locationsImplementingScenario': 
+    'type': 'array'
+    'items': 
+      'type': 'object'
+      'properties': 
+        'abbrev': {'type': string}
+        'times':
+          'type': 'object'
+          'properties':
+            'startDate': {'type': 'number'}
+            'endDate': {'type': 'number'}
      
+    
+    

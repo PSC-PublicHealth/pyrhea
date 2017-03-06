@@ -22,7 +22,7 @@ import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/scenario_constants.yaml'
+_constants_values = '$(CONSTANTS)/scenario_constants.yaml'
 _constants_schema = 'scenario_constants_schema.yaml'
 _constants = None
 

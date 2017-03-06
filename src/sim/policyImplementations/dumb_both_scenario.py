@@ -22,7 +22,7 @@ from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 from cre_bundle_treatment import CREBundleTreatmentPolicy
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/xdro_registry_scenario_constants.yaml'
+_constants_values = '$(CONSTANTS)/xdro_registry_scenario_constants.yaml'
 _constants_schema = 'xdro_registry_scenario_constants_schema.yaml'
 _constants = None
 

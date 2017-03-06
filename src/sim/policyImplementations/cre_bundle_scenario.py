@@ -23,7 +23,7 @@ from cre_bundle_treatment import CREBundleTreatmentPolicy
 from cre_bundle_diagnostic import CREBundleDiagnosticPolicy
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/cre_bundle_scenario_constants.yaml'
+_constants_values = '$(CONSTANTS)/cre_bundle_scenario_constants.yaml'
 _constants_schema = 'scenario_constants_schema.yaml'
 _constants = None
 
@@ -39,12 +39,12 @@ logger = logging.getLogger(__name__)
 #                  ('THC_6130_L', 383, 830),
 #                  ('THC_2544_L', 452, 830)
 #                  ]
-testLocations = [('THC_4058_L', 4, 6),
-                 ('ADVO_450_H', 4, 7),
-                 ('ADVO_801_H', 4, 7),
-                 ('ADVO_836_H', 5, 8),
-                 ('THC_365_L', 6, 8),
-                 ]
+#testLocations = [('THC_4058_L', 4, 6),
+#                 ('ADVO_450_H', 4, 7),
+#                 ('ADVO_801_H', 4, 7),
+#                 ('ADVO_836_H', 5, 8),
+#                 ('THC_365_L', 6, 8),
+#                 ]
 # testLocations = [
 #                  ('ABBI_31_S',0,100),
 # ('ADAM_119_S',0,100),
@@ -514,15 +514,23 @@ class CREBundleScenario(BaseScenarioPolicy):
     def __init__(self, name, patch):
         super(CREBundleScenario, self).__init__(name, patch)
         self.logThisString = _constants['stringToLogWhenStarting']
+        self.locationImplementationInformation = _constants['locationsImplementingScenario']['facilities']
+        
         
     def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
         assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                       % self.patch.name)
-        for abbrev, startDate, endDate in testLocations:
+        
+        #for abbrev, startDate, endDate in testLocations:
+        for facImp in self.locationImplementationInformation:
+            abbrev = facImp['abbrev']
+            startDate = facImp['times']['startDate']
+            endDate = facImp['times']['endDate']
             if timeNow != startDate:
                 assert(timeNow < startDate), 'It is too late to start intervention at %s' % abbrev
                 timeNow = callingAgent.sleep(startDate - timeNow)
+                
             for fac in self.patch.allFacilities:
                 if fac.abbrev == abbrev:
                     fac.flushCaches()
@@ -548,7 +556,13 @@ class CREBundleScenario(BaseScenarioPolicy):
                     break
             else:
                 raise RuntimeError('Failed to find the facility %s' % abbrev)
-        for abbrev, startDate, endDate in testLocations:
+        #for abbrev, startDate, endDate in testLocations:
+        for facImp in self.locationImplementationInformation:
+            abbrev = facImp['abbrev']
+            startDate = facImp['times']['startDate']
+            endDate = facImp['times']['endDate']
+            print "{0}: {1} {2}".format(abbrev,startDate,endDate)
+            
             if timeNow != endDate:
                 assert(timeNow < endDate), 'It is too late to start intervention at %s' % abbrev
                 timeNow = callingAgent.sleep(endDate - timeNow)
@@ -581,3 +595,5 @@ def getPolicyClasses():
 ###########
 _constants = pyrheautils.importConstants(pyrheautils.pathTranslate(_constants_values),
                                          _constants_schema)
+
+

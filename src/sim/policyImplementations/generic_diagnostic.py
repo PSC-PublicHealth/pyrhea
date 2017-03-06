@@ -24,7 +24,7 @@ from facilitybase import DiagnosticPolicy as BaseDiagnosticPolicy
 from pathogenbase import PthStatus
 
 _validator = None
-_constants_values = '$(MODELDIR)/constants/generic_diagnosis_constants.yaml'
+_constants_values = '$(CONSTANTS)/generic_diagnosis_constants.yaml'
 _constants_schema = 'generic_diagnosis_constants_schema.yaml'
 _constants = None
 
