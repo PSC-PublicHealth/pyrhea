@@ -309,7 +309,7 @@ class CRE(Pathogen):
             # Note that this caching scheme assumes all wards with the same category and tier
             # have the same infectivity constant(s)
             #
-            key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT)
+            key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT, self.tau)
             if key not in self.core.exposureTreeCache:
                 
                 patientKey = self.getPatientStateKey(patientStatus, treatment)
