@@ -3,13 +3,13 @@ import sys,os
 from optparse import OptionParser
 import subprocess
 
-def createPBSForRun(fileName,nreals,inputfile,outprefix,rheadir,jobName):
+def createPBSForRun(fileName,nreals,queue,inputfile,outprefix,rheadir,jobName):
     
     with open(fileName,"wb") as f:
         f.write("#!/bin/bash\n")
         f.write("#PBS -l walltime=96:00:00\n")
         f.write("#PBS -l nodes=1:ppn=1\n")
-        f.write("#PBS -q intel256\n")
+        f.write("#PBS -q {0}\n".format(queue))
         f.write("#PBS -l pmem=30gb\n")
         f.write("#PBS -t 1-{0}\n".format(nreals))
         f.write("#PBS -N {0}_run\n".format(jobName))
@@ -63,13 +63,14 @@ def main():
     parser.add_option('-n', '--nreals', action='store', type='int',
                       help='Number of realizations to run Rhea for', default=20)
     parser.add_option('-j','--jobname',action='store',type='string',default="job")
+    parser.add_option('-q','--queue',action='store',type='string',default='batch')
     #parser.add_option('-t', '--tmpDir')
     
     opts, args = parser.parse_args()
     
     runFileName = "run_rhea_{0}.pbs".format(opts.inputyaml)
     
-    createPBSForRun(runFileName, opts.nreals,opts.inputyaml,opts.outprefix,opts.rheadir,opts.jobname)
+    createPBSForRun(runFileName, opts.nreals, opts.queue, opts.inputyaml,opts.outprefix,opts.rheadir,opts.jobname)
     cmd = 'qsub {0}'.format(runFileName)
     pbsId = subprocess.check_output([cmd],shell=True)
     
