@@ -41,6 +41,7 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
         tierAxisD = {}
         tAOffset = 0
         for dayVec, curves in tplList:
+            dayIndex = np.where(dayVec==burninDays)[0][0]
             tmpVecD = defaultdict(list)
             totVecD = {}
             for tpl, lVec in curves.items():
@@ -52,49 +53,21 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
             for tpl, lVec in curves.items():
                 tier, pthStatus = tpl
                 if pthStatus == PthStatus.COLONIZED:
-                    returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[burninDays:]),
-                                                                'bedDays':np.sum(totVecD[tier][burninDays:])}
+                    returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
+                                                                'bedDays':np.sum(totVecD[tier][dayIndex:])}
                     
                     for key in translationDict.keys():
                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
                         
-#                                                                 'newColonized': 0.0,
-#                                                                 'creArrivals':0.0,
-#                                                                 'arrivals': 0.0,
-#                                                                 'contactPrecautionDays':0.0,
-#                                                                 'creBundlesHandedOut':0.0 }
-    
     for key,noteKey in translationDict.items():
         for abbrev in abbrevList:
             tplList = print_counts.getTimeSeriesList(abbrev,specialDict,noteKey)
             for dayVec,curves in tplList:
+                dayIndex = np.where(dayVec==burninDays)[0][0]
+                print dayIndex
                 for tpl, curve in curves.items():
-                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[burninDays:])
+                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve)
     
-#     for abbrev in abbrevList:
-#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtiercrearrivals')
-#         for dayVec,curves in tplList:
-#             for tpl, curve in curves.items():
-#                 returnDict[abbrev][CareTier.names[tpl]]['creArrivals'] = np.sum(curve[burninDays:])
-#         
-#     for abbrev in abbrevList:
-#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierarrivals')
-#         for dayVec,curves in tplList:
-#             for tpl, curve in curves.items():
-#                 returnDict[abbrev][CareTier.names[tpl]]['arrivals'] = np.sum(curve[burninDays:])
-#                 
-#     for abbrev in abbrevList:
-#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierCP')
-#         for dayVec,curves in tplList:
-#             for tpl, curve in curves.items():
-#                 returnDict[abbrev][CareTier.names[tpl]]['contactPrecautionDays'] = np.sum(curve[burninDays:])
-#                 
-#     for abbrev in abbrevList:
-#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierCREBundle')
-#         for dayVec,curves in tplList:
-#             for tpl, curve in curves.items():
-#                 returnDict[abbrev][CareTier.names[tpl]]['creBundlesHandedOut'] = np.sum(curve[burninDays:])    
-                
     return returnDict
     
 def pool_helper(args):
@@ -137,6 +110,7 @@ def main():
     facDict = readFacFiles(facDirList)
     
     burninDays = int(inputDict['burnInDays'])
+    print "burninDays = {0}".format(burninDays)
     
     ### Translation Dict
     valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 'creBundlesHandedOut']
@@ -221,6 +195,8 @@ def main():
             bDs = np.array([float(x[abbrev][tier]['bedDays']) for x in totalCounts])
             
             for k in valuesToGather.keys():
+                #if k == "newColonized":
+                #    print np.array([float(x[abbrev][tier][k]) for x in totalCounts])
                 statTierDict[k] = np.array([float(x[abbrev][tier][k]) for x in totalCounts])
             #ncDs = np.array([float(x[abbrev][tier]['newColonized']) for x in totalCounts])
             #caDs = np.array([float(x[abbrev][tier]['creArrivals']) for x in totalCounts])
