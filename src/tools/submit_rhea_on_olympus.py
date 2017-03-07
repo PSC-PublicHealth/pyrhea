@@ -10,7 +10,7 @@ def createPBSForRun(fileName,nreals,queue,inputfile,outprefix,rheadir,jobName):
         f.write("#PBS -l walltime=96:00:00\n")
         f.write("#PBS -l nodes=1:ppn=1\n")
         f.write("#PBS -q {0}\n".format(queue))
-        f.write("#PBS -l pmem=30gb\n")
+        f.write("#PBS -l mem=20gb\n")
         f.write("#PBS -t 1-{0}\n".format(nreals))
         f.write("#PBS -N {0}_run\n".format(jobName))
         
@@ -21,6 +21,7 @@ def createPBSForRun(fileName,nreals,queue,inputfile,outprefix,rheadir,jobName):
         
         f.write("cd $PBS_O_WORKDIR\n")
         #f.write("sleep 100\n")
+        f.write("hostname\n")
         f.write("python {0}/src/sim/pyrhea.py -o {1}_$PBS_ARRAYID.pkl {2} > out.{1}.$PBS_ARRAYID".format(rheadir,
                                                                                                          outprefix,
                                                                                                          inputfile))
