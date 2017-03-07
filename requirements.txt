@@ -5,3 +5,4 @@ PyYAML==3.11
 pika==0.10.0
 jsonschema==2.5.1
 scipy==0.17.0
+ujson==1.35
