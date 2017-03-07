@@ -30,7 +30,7 @@ from collections import defaultdict
 DEFAULT_OUT_FILE = 'counts_output.yaml'
 
 
-def extractCountsFromNotes(note, abbrevList, facDict):
+def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDays):
     print "note = {0}".format(note)
     returnDict = {}
     ### totalStats is assumed to be a Manager
@@ -52,29 +52,49 @@ def extractCountsFromNotes(note, abbrevList, facDict):
             for tpl, lVec in curves.items():
                 tier, pthStatus = tpl
                 if pthStatus == PthStatus.COLONIZED:
-                    returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec),
-                                                                'bedDays':np.sum(totVecD[tier]),
-                                                                'newColonized': 0.0,
-                                                                'creArrivals':0.0,
-                                                                'arrivals': 0.0 }
+                    returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[burninDays:]),
+                                                                'bedDays':np.sum(totVecD[tier][burninDays:])}
+                    
+                    for key in translationDict.keys():
+                        returnDict[abbrev][CareTier.names[tier]][key] = 0.0
+                        
+#                                                                 'newColonized': 0.0,
+#                                                                 'creArrivals':0.0,
+#                                                                 'arrivals': 0.0,
+#                                                                 'contactPrecautionDays':0.0,
+#                                                                 'creBundlesHandedOut':0.0 }
     
-    for abbrev in abbrevList:
-        tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtiernewcolonized')
-        for dayVec,curves in tplList:
-            for tpl, curve in curves.items():
-                returnDict[abbrev][CareTier.names[tpl]]['newColonized'] = np.sum(curve)
+    for key,noteKey in translationDict.items():
+        for abbrev in abbrevList:
+            tplList = print_counts.getTimeSeriesList(abbrev,specialDict,noteKey)
+            for dayVec,curves in tplList:
+                for tpl, curve in curves.items():
+                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[burninDays:])
     
-    for abbrev in abbrevList:
-        tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtiercrearrivals')
-        for dayVec,curves in tplList:
-            for tpl, curve in curves.items():
-                returnDict[abbrev][CareTier.names[tpl]]['creArrivals'] = np.sum(curve)
-        
-    for abbrev in abbrevList:
-        tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierarrivals')
-        for dayVec,curves in tplList:
-            for tpl, curve in curves.items():
-                returnDict[abbrev][CareTier.names[tpl]]['arrivals'] = np.sum(curve)
+#     for abbrev in abbrevList:
+#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtiercrearrivals')
+#         for dayVec,curves in tplList:
+#             for tpl, curve in curves.items():
+#                 returnDict[abbrev][CareTier.names[tpl]]['creArrivals'] = np.sum(curve[burninDays:])
+#         
+#     for abbrev in abbrevList:
+#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierarrivals')
+#         for dayVec,curves in tplList:
+#             for tpl, curve in curves.items():
+#                 returnDict[abbrev][CareTier.names[tpl]]['arrivals'] = np.sum(curve[burninDays:])
+#                 
+#     for abbrev in abbrevList:
+#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierCP')
+#         for dayVec,curves in tplList:
+#             for tpl, curve in curves.items():
+#                 returnDict[abbrev][CareTier.names[tpl]]['contactPrecautionDays'] = np.sum(curve[burninDays:])
+#                 
+#     for abbrev in abbrevList:
+#         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierCREBundle')
+#         for dayVec,curves in tplList:
+#             for tpl, curve in curves.items():
+#                 returnDict[abbrev][CareTier.names[tpl]]['creBundlesHandedOut'] = np.sum(curve[burninDays:])    
+                
     return returnDict
     
 def pool_helper(args):
@@ -116,7 +136,22 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    burninDays = int(inputDict['burnInDays'])
     
+    ### Translation Dict
+    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 'creBundlesHandedOut']
+    valuesToGather = {'newColonized':'localtiernewcolonized',
+                      'creArrivals':'localtiercrearrivals',
+                      'arrivals':'localtierarrivals',
+                      'contactPrecautionDays': 'localtierCP',
+                      'creBundlesHandedOut': 'localtierCREBundle'
+                      }
+    tableHeadings = {'newColonized':'Newly Colonized',
+                      'creArrivals':'CRE Colonized Patients Admissions',
+                      'arrivals':'Patient Admissions',
+                      'contactPrecautionDays': 'Contact Precaution Days',
+                      'creBundlesHandedOut': 'CRE Bundles Given Out'
+                      }
     notes = []
     if opts.glob:
         notes = glob.glob('{0}'.format(opts.notes[0]))
@@ -129,7 +164,7 @@ def main():
     print "notes = {0}".format(notes)
     totalCounts = [{} for x in range(0,len(notes))]
     
-    argsList = [(notes[i],abbrevList,facDict) for i in range(0,len(notes))]
+    argsList = [(notes[i],abbrevList,facDict, valuesToGather, burninDays) for i in range(0,len(notes))]
 
     p = Pool(nprocs)
     totalStats = p.map(pool_helper,argsList)
@@ -173,34 +208,35 @@ def main():
         if abbrev not in statsByTier.keys():
             statsByTier[abbrev] = {}
             statsByAbbrev[abbrev] = {}
+            statDict = {k:np.array([0.0 for x in range(0,len(totalCounts))]) for k in valuesToGather.keys()}
             cDAs = np.array([0.0 for x in range(0,len(totalCounts))])
             bDAs = np.array([0.0 for x in range(0,len(totalCounts))])
             prevAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            ncAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            caDAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            aDAs = np.array([0.0 for x in range(0,len(totalCounts))])
             
         for tier,d in tD.items():
             if tier not in statsByTier[abbrev].keys():
                 statsByTier[abbrev][tier] = {}
+                statTierDict = {k:np.array([0.0 for x in range(0,len(totalCounts))]) for k in valuesToGather.keys()}
             cDs = np.array([float(x[abbrev][tier]['colonizedDays']) for x in totalCounts])
             bDs = np.array([float(x[abbrev][tier]['bedDays']) for x in totalCounts])
-            ncDs = np.array([float(x[abbrev][tier]['newColonized']) for x in totalCounts])
-            caDs = np.array([float(x[abbrev][tier]['creArrivals']) for x in totalCounts])
-            aDs = np.array([float(x[abbrev][tier]['arrivals']) for x in totalCounts])
+            
+            for k in valuesToGather.keys():
+                statTierDict[k] = np.array([float(x[abbrev][tier][k]) for x in totalCounts])
+            #ncDs = np.array([float(x[abbrev][tier]['newColonized']) for x in totalCounts])
+            #caDs = np.array([float(x[abbrev][tier]['creArrivals']) for x in totalCounts])
+            #aDs = np.array([float(x[abbrev][tier]['arrivals']) for x in totalCounts])
             prevs = []
             for i in range(0,len(cDs)):
                 prevs.append((cDs[i]/bDs[i]))
                 cDAs[i] += cDs[i]
                 bDAs[i] += bDs[i]
-                ncAs[i] += ncDs[i]
-                caDAs[i] += caDs[i]
-                aDAs[i] += aDs[i]
+                for k in valuesToGather.keys():
+                    statDict[k] += statTierDict[k]
+#                 ncAs[i] += ncDs[i]
+#                 caDAs[i] += caDs[i]
+#                 aDAs[i] += aDs[i]
+#                 
                 
-                
-            
-            
-        
             statsByTier[abbrev][tier]['colonizedDays'] = {'mean':np.mean(cDs),
                                                           'median':np.median(cDs),
                                                           'stdv':np.std(cDs),
@@ -216,6 +252,13 @@ def main():
                                                        'stdv':np.std(prevs),
                                                        '5%CI':st.t.interval(0.95,len(prevs)-1, loc=np.mean(prevs),scale=st.sem(prevs))[0],
                                                        '95%CI':st.t.interval(0.95,len(prevs)-1, loc=np.mean(prevs),scale=st.sem(prevs))[1]}
+            for k in valuesToGather.keys():
+                statsByTier[abbrev][tier][k] = {'mean':np.mean(statTierDict[k]),
+                                                       'median':np.median(statTierDict[k]),
+                                                       'stdv':np.std(statTierDict[k]),
+                                                       '5%CI':st.t.interval(0.95, len(statTierDict[k]) - 1, loc=np.mean(statTierDict[k]), scale=st.sem(statTierDict[k]))[0],
+                                                       '95%CI':st.t.interval(0.95, len(statTierDict[k]) - 1, loc=np.mean(statTierDict[k]), scale=st.sem(statTierDict[k]))[1]}
+            '''
             statsByTier[abbrev][tier]['newColonized'] = {'mean':np.mean(ncDs),
                                                        'median':np.median(ncDs),
                                                        'stdv':np.std(ncDs),
@@ -231,7 +274,7 @@ def main():
                                                      'stdv':np.std(aDs),
                                                      '5%CI':st.t.interval(0.95, len(aDs) - 1, loc=np.mean(aDs), scale=st.sem(aDs))[0],
                                                      '95%CI':st.t.interval(0.95, len(aDs) - 1, loc=np.mean(aDs), scale=st.sem(aDs))[1]}
-            
+            '''
         for i in range(0,len(cDAs)):
             prevAs[i] = (cDAs[i]/bDAs[i])
         
@@ -252,6 +295,13 @@ def main():
                                              '5%CI':st.t.interval(0.95,len(prevAs)-1, loc=np.mean(prevAs),scale=st.sem(prevAs))[0],
                                              '95%CI':st.t.interval(0.95,len(prevAs)-1, loc=np.mean(prevAs),scale=st.sem(prevAs))[1]}
         
+        for k in valuesToGather.keys():
+            statsByAbbrev[abbrev][k] = {'mean':np.mean(statDict[k]),
+                                        'median':np.median(statDict[k]),
+                                        'stdv':np.std(statDict[k]),
+                                        '5%CI':st.t.interval(0.95,len(statDict[k])-1, loc=np.mean(statDict[k]),scale=st.sem(statDict[k]))[0],
+                                        '95%CI':st.t.interval(0.95,len(statDict[k])-1, loc=np.mean(statDict[k]),scale=st.sem(statDict[k]))[1]}
+    '''
         statsByAbbrev[abbrev]['newColonized'] = {'mean':np.mean(ncAs),
                                              'median':np.median(ncAs),
                                              'stdv':np.std(ncAs),
@@ -269,34 +319,40 @@ def main():
                                              'stdv':np.std(aDAs),
                                              '5%CI':st.t.interval(0.95,len(aDAs)-1, loc=np.mean(aDAs),scale=st.sem(aDAs))[0],
                                              '95%CI':st.t.interval(0.95,len(aDAs)-1, loc=np.mean(aDAs),scale=st.sem(aDAs))[1]}
-        
+        '''  
+            
     with open("{0}_stats_by_tier.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
-        csvWriter.writerow(['Facility Abbrev','Tier Of Care','Colonized Patient Days','Paitent Bed Days','Prevalence','New Colonizations','CRE Colonized Admissions','Admissions'])
+        headingRow = ['Facility Abbrev','Tier Of Care','Colonized Patient Days','Paitent Bed Days','Prevalence']
+        for k in valuesToGatherList:
+            headingRow.append(tableHeadings[k])
+        csvWriter.writerow(headingRow)
+        #csvWriter.writerow(['Facility Abbrev','Tier Of Care','Colonized Patient Days',','New Colonizations','CRE Colonized Admissions','Admissions'])
         for abbrev,tD in statsByTier.items():
             for tier,d in tD.items():
-                print "{0},{1}".format(abbrev,tier)
-                csvWriter.writerow([abbrev,tier,
-                                    d['colonizedDays']['mean'],
-                                    d['bedDays']['mean'],
-                                    d['prevalence']['mean'],
-                                    d['newColonized']['mean'],
-                                    d['creArrivals']['mean'],
-                                    d['arrivals']['mean']
-                                    ])
+                entryRow = [abbrev,tier,
+                            d['colonizedDays']['mean'],
+                            d['bedDays']['mean'],
+                            d['prevalence']['mean']]
+                for k in valuesToGatherList:
+                    entryRow.append(d[k]['mean'])
+                
+                csvWriter.writerow(entryRow)
                 
     with open("{0}_stats_by_abbrev.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
-        csvWriter.writerow(['Facility Abbrev','Colonized Patient Days','Paitent Bed Days','Prevalence','New Colonizations','CRE Colonized Admissions','Admissions'])
+        headingRow = ['Facility Abbrev','Colonized Patient Days','Paitent Bed Days','Prevalence']
+        for k in valuesToGatherList:
+            headingRow.append(tableHeadings[k])
+        csvWriter.writerow(headingRow)
         for abbrev,d in statsByAbbrev.items():
-            csvWriter.writerow([abbrev,
-                                d['colonizedDays']['mean'],
-                                d['bedDays']['mean'],
-                                d['prevalence']['mean'],
-                                d['newColonized']['mean'],
-                                d['creArrivals']['mean'],
-                                d['arrivals']['mean']
-                                ])  
+            entryRow = [abbrev,
+                        d['colonizedDays']['mean'],
+                        d['bedDays']['mean'],
+                        d['prevalence']['mean']]
+            for k in valuesToGatherList:
+                entryRow.append(d[k]['mean'])
+            csvWriter.writerow(entryRow)
 
     with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
@@ -312,28 +368,29 @@ def main():
 
     with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
-        csvWriter.writerow(['Facility Type','Prevalence Mean','New Colonizations Mean','CRE Admissions Mean','Admissions Mean'])
+        headingRow = ['Facility Type','Prevalence Mean']
+        for k in valuesToGatherList:
+            headingRow.append(tableHeadings[k])
+        csvWriter.writerow(headingRow)
         typeDict = {}
         for abbrev,tD in statsByTier.items():
             for tier,d in tD.items():
                 if tier not in typeDict.keys():
-                    typeDict[tier] = {'prev':[],
-                                      'inc':[],
-                                      'creAr':[],
-                                      'arr':[]
-                                      }
+                    typeDict[tier] = {'prev':[]}
+                    for k in valuesToGatherList:
+                        typeDict[tier][k] = []
+                        
                 if not np.isnan(d['prevalence']['mean']):
                     typeDict[tier]['prev'].append(d['prevalence']['mean'])
-                    typeDict[tier]['inc'].append(d['newColonized']['mean'])
-                    typeDict[tier]['creAr'].append(d['creArrivals']['mean'])
-                    typeDict[tier]['arr'].append(d['arrivals']['mean'])
+                    for k in valuesToGatherList:
+                        typeDict[tier][k].append(d[k]['mean'])
+            
         for tier,p in typeDict.items():
-            csvWriter.writerow([tier,
-                                np.mean(typeDict[tier]['prev']),
-                                np.mean(typeDict[tier]['inc']),
-                                np.mean(typeDict[tier]['creAr']),
-                                np.mean(typeDict[tier]['arr'])
-                                    ])
+            entryRow = [tier,np.mean(typeDict[tier]['prev'])]
+            for k in valuesToGatherList:
+                entryRow.append(np.mean(typeDict[tier][k]))
+            
+            csvWriter.writerow(entryRow)
 
 if __name__ == "__main__":
     main()

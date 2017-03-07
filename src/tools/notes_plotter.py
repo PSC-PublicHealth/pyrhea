@@ -40,6 +40,7 @@ import pathogenbase as pth
 import map_transfer_matrix as mtm
 import math
 import pickle
+import ujson
 import types
 from imp import load_source
 from collections import defaultdict
@@ -185,7 +186,8 @@ def loadFacilityTypeConstants(category, implementationDir):
 
 def importNotes(fname):
     with open(fname, 'r') as f:
-        stuff = pickle.load(f)
+        stuff = ujson.load(f) 
+        #pickle.load(f)
     return stuff
 
 

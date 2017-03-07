@@ -34,6 +34,7 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
+import ujson 
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -931,7 +932,12 @@ def main():
     #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
     #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
             with open(outputNotesName, 'w') as f:
-                pickle.dump(d, f)
+                #pickle.dump(d, f)
+                f.write('{\n')
+                for k,v in d.items():
+                    f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
+                
+                f.write("}\n")
 
         logging.shutdown()
 
