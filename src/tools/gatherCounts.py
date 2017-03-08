@@ -219,6 +219,8 @@ def main():
             cDAs = np.array([0.0 for x in range(0,len(totalCounts))])
             bDAs = np.array([0.0 for x in range(0,len(totalCounts))])
             prevAs = np.array([0.0 for x in range(0,len(totalCounts))])
+            
+            
             if opts.producetimeseries:
                 cTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
                 bTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
@@ -259,7 +261,7 @@ def main():
                 cDAs[i] += cDs[i]
                 bDAs[i] += bDs[i]
                 for k in valuesToGather.keys():
-                    statDict[k]['value'] += statTierDict[k]['value']
+                    statDict[k]['value'][i] += statTierDict[k]['value'][i]
                     if opts.producetimeseries:
                         for j in range(0,runDays):
                             statDict[k]['ts'][i][j] += statTierDict[k]['ts'][i][j]
