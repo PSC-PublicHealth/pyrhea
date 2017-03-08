@@ -748,6 +748,8 @@ class PatientAgent(pyrheabase.PatientAgent):
                 and self._status.pthStatus == PthStatus.COLONIZED):
                 #print "New Infection at {0}".format(self.ward.fac.abbrev)
                 self.ward.miscCounters['newColonizationsSinceLastChecked'] += 1
+            if self.getTreatment('creBundle'):
+                self.ward.miscCounters['creBundlesHandedOut'] += 1
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)

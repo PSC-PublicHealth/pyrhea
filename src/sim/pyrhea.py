@@ -39,7 +39,7 @@ import ujson
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
-DEFAULT_OUTPUT_NOTES_NAME = 'notes.pkl'
+DEFAULT_OUTPUT_NOTES_NAME = 'notes.json'
 
 _TRACKED_FACILITIES = []
 _TRACKED_FACILITIES_SET = None
