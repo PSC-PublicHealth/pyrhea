@@ -67,9 +67,9 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
             for dayVec,curves in tplList:
                 dayIndex = np.where(dayVec==burninDays)[0][0]
                 for tpl, curve in curves.items():
-                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve)
-                    returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve
-    
+                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
+                    returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
+
     return returnDict
 
 def combineTimeSeries(tsArray,runDays, tsIncrement=1):
@@ -158,6 +158,14 @@ def main():
     
     argsList = [(notes[i],abbrevList,facDict, valuesToGather, burninDays) for i in range(0,len(notes))]
 
+    xdroAbbrevs = []
+    if opts.xdroyamlfile:
+        with open("{0}".format(opts.xdroyamlfile),"rb") as f:
+            xdroparams = yaml.load(f)
+            xdroAbbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
+    
+    print "XDRO Facilities = {0}".format(xdroAbbrevs)    
+        
     p = Pool(nprocs)
     totalStats = p.map(pool_helper,argsList)
     p.close()
@@ -277,6 +285,27 @@ def main():
                                                        '5%CI':st.t.interval(0.95, len(statTierDict[k]['value']) - 1, loc=np.mean(statTierDict[k]['value']), scale=st.sem(statTierDict[k]['value']))[0],
                                                        '95%CI':st.t.interval(0.95, len(statTierDict[k]['value']) - 1, loc=np.mean(statTierDict[k]['value']), scale=st.sem(statTierDict[k]['value']))[1]}
                 statsByTier[abbrev][tier]["{0}TS".format(k)] = combineTimeSeries(statTierDict[k]['ts'],runDays,1)
+            
+            if abbrev in xdroAbbrevs:
+                statsByTier[abbrev][tier]["xdroAdmissions"] = {'mean':np.mean(statTierDict['arrivals']['value']),
+                                                               'median':np.median(statTierDict['arrivals']['value']),
+                                                               'stdv':np.std(statTierDict['arrivals']['value']),
+                                                               '5%CI':st.t.interval(0.95, len(statTierDict['arrivals']['value']) - 1, loc=np.mean(statTierDict['arrivals']['value']), scale=st.sem(statTierDict['arrivals']['value']))[0],
+                                                               '95%CI':st.t.interval(0.95, len(statTierDict['arrivals']['value']) - 1, loc=np.mean(statTierDict['arrivals']['value']), scale=st.sem(statTierDict['arrivals']['value']))[1]}
+                statsByTier[abbrev][tier]['xdroAdmissionsTS'] = combineTimeSeries(statTierDict['arrivals']['ts'],runDays,1)
+            
+            else:
+                statsByTier[abbrev][tier]["xdroAdmissions"] = {'mean':0.0,
+                                                               'median':0.0,
+                                                               'stdv':0.0,
+                                                               '5%CI':0.0,
+                                                               '95%CI':0.0}
+                
+                statsByTier[abbrev][tier]['xdroAdmissionsTS'] = {'mean':[0.0 for x in range(0,runDays)],
+                                                                 'median':[0.0 for x in range(0,runDays)],
+                                                                 'stdv':[0.0 for x in range(0,runDays)],
+                                                                 '5%CI':[0.0 for x in range(0,runDays)],
+                                                                 '95%CI':[0.0 for x in range(0,runDays)]}
                 
             '''
             statsByTier[abbrev][tier]['newColonized'] = {'mean':np.mean(ncDs),
@@ -325,6 +354,28 @@ def main():
                                         '5%CI':st.t.interval(0.95,len(statDict[k]['value'])-1, loc=np.mean(statDict[k]['value']),scale=st.sem(statDict[k]['value']))[0],
                                         '95%CI':st.t.interval(0.95,len(statDict[k]['value'])-1, loc=np.mean(statDict[k]['value']),scale=st.sem(statDict[k]['value']))[1]}
             statsByAbbrev[abbrev]["{0}TS".format(k)] = combineTimeSeries(statDict[k]['ts'], runDays, 1)
+            
+        if abbrev in xdroAbbrevs:
+            statsByAbbrev[abbrev]["xdroAdmissions"] = {'mean':np.mean(statDict['arrivals']['value']),
+                                                           'median':np.median(statDict['arrivals']['value']),
+                                                           'stdv':np.std(statDict['arrivals']['value']),
+                                                           '5%CI':st.t.interval(0.95, len(statDict['arrivals']['value']) - 1, loc=np.mean(statDict['arrivals']['value']), scale=st.sem(statDict['arrivals']['value']))[0],
+                                                           '95%CI':st.t.interval(0.95, len(statDict['arrivals']['value']) - 1, loc=np.mean(statDict['arrivals']['value']), scale=st.sem(statDict['arrivals']['value']))[1]}
+            statsByAbbrev[abbrev]['xdroAdmissionsTS'] = combineTimeSeries(statDict['arrivals']['ts'],runDays,1)
+        
+        else:
+            statsByAbbrev[abbrev]["xdroAdmissions"] = {'mean':0.0,
+                                                       'median':0.0,
+                                                       'stdv':0.0,
+                                                       '5%CI':0.0,
+                                                       '95%CI':0.0}
+            
+            statsByAbbrev[abbrev]['xdroAdmissionsTS'] = {'mean':[0.0 for x in range(0,runDays)],
+                                                        'median':[0.0 for x in range(0,runDays)],
+                                                        'stdv':[0.0 for x in range(0,runDays)],
+                                                        '5%CI':[0.0 for x in range(0,runDays)],
+                                                        '95%CI':[0.0 for x in range(0,runDays)]}
+            
     '''
         statsByAbbrev[abbrev]['newColonized'] = {'mean':np.mean(ncAs),
                                              'median':np.median(ncAs),
@@ -350,6 +401,9 @@ def main():
         headingRow = ['Facility Abbrev','Tier Of Care','Colonized Patient Days','Paitent Bed Days','Prevalence']
         for k in valuesToGatherList:
             headingRow.append(tableHeadings[k])
+        if len(xdroAbbrevs) > 0:
+            headingRow.append("XDRO Admissions")
+         
         csvWriter.writerow(headingRow)
         #csvWriter.writerow(['Facility Abbrev','Tier Of Care','Colonized Patient Days',','New Colonizations','CRE Colonized Admissions','Admissions'])
         for abbrev,tD in statsByTier.items():
@@ -361,6 +415,9 @@ def main():
                 for k in valuesToGatherList:
                     entryRow.append(d[k]['mean'])
                 
+                if len(xdroAbbrevs) > 0:
+                    entryRow.append(d['xdroAdmissions']['mean'])
+                    
                 csvWriter.writerow(entryRow)
                 
     with open("{0}_stats_by_abbrev.csv".format(outFileName),"wb") as f:
@@ -368,6 +425,9 @@ def main():
         headingRow = ['Facility Abbrev','Colonized Patient Days','Paitent Bed Days','Prevalence']
         for k in valuesToGatherList:
             headingRow.append(tableHeadings[k])
+        if len(xdroAbbrevs) > 0:
+            headingRow.append("XDRO Admissions")
+            
         csvWriter.writerow(headingRow)
         for abbrev,d in statsByAbbrev.items():
             entryRow = [abbrev,
@@ -376,6 +436,8 @@ def main():
                         d['prevalence']['mean']]
             for k in valuesToGatherList:
                 entryRow.append(d[k]['mean'])
+            if len(xdroAbbrevs) > 0:
+                entryRow.append(d['xdroAdmissions']['mean'])
             csvWriter.writerow(entryRow)
 
     with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
@@ -460,7 +522,10 @@ def main():
             
             csvWriter.writerow(entryRow)
     
-    for key in valuesToGatherList:
+    valuesToWrite =[x for x in valuesToGatherList]
+    if len(xdroAbbrevs) > 0:
+        valuesToWrite.append("xdroAdmissions")
+    for key in valuesToWrite:
             with open("{0}_{1}_per_day_by_abbrev.csv".format(outFileName,key),"wb") as f:
                 csvWriter = csv.writer(f)
                 headRow = ['Day']
@@ -502,6 +567,7 @@ def main():
                         entryRow.append("{0}".format(statsByAbbrev[abbrev]['{0}TS'.format(key)]['95%CI'][i]))
                     
                     csvWriter.writerow(entryRow)
+                    
     with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
         headingRow = ['Facility Type','Prevalence Mean']
