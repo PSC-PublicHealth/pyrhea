@@ -608,7 +608,7 @@ def main():
                         typeDict[tier][k] = []
                         
                 if not np.isnan(d['prevalence']['mean']):
-                    print d['prevalence']['mean']
+                    #print d['prevalence']['mean']
                     typeDict[tier]['prev'].append(d['prevalence']['mean'])
                     for k in valuesToGatherList:
                         typeDict[tier][k].append(d[k]['mean'])
