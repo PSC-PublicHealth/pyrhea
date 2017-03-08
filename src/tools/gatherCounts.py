@@ -608,12 +608,13 @@ def main():
                         typeDict[tier][k] = []
                         
                 if not np.isnan(d['prevalence']['mean']):
+                    print d['prevalence']['mean']
                     typeDict[tier]['prev'].append(d['prevalence']['mean'])
                     for k in valuesToGatherList:
                         typeDict[tier][k].append(d[k]['mean'])
             
         for tier,p in typeDict.items():
-            entryRow = [tier,np.sum(typeDict[tier]['prev'])]
+            entryRow = [tier,np.mean(typeDict[tier]['prev'])]
             for k in valuesToGatherList:
                 entryRow.append(np.mean(typeDict[tier][k]))
             
