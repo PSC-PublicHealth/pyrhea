@@ -23,7 +23,6 @@ import pyrheautils
 from facilitybase import CareTier
 from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
 from pathogenbase import PthStatus
-from __builtin__ import True
 
 _validator = None
 _constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'

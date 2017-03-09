@@ -66,7 +66,7 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                     else:
                         diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
                                               else PthStatus.CLEAR)
-                    ward.miscCounters['swabDiagnostic'] += 1
+                    ward.miscCounters['swabDiagnostics'] += 1
             else:
                 diagnosedPthStatus = oldDiagnosis.pthStatus
         else:
