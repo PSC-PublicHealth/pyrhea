@@ -20,6 +20,7 @@ import logging
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 from cre_bundle_treatment import CREBundleTreatmentPolicy
+from cre_bundle_diagnostic import CREBundleDiagnosticPolicy
 
 _validator = None
 _constants_values = '$(CONSTANTS)/xdro_registry_scenario_constants.yaml'
@@ -49,7 +50,11 @@ class DumbBothScenario(BaseScenarioPolicy):
                     if type(tP).__name__ == CREBundleTreatmentPolicy.__name__:
                         print 'CREBundle setting %s' % fac.abbrev
                         tP.setValue('active', True)
-                fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
+                if type(fac.diagnosticPolicy)._name == CREBundleDiagnosticPolicy.__name__:
+                    fac.diagnosticPolicy.setValue('active',True)
+                    
+                    
+                #fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
 
 def getPolicyClasses():
     return [DumbBothScenario]
