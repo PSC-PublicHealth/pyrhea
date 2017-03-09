@@ -726,6 +726,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         PatientAgent.idCounters[abbrev] += 1
         ward.fac.getPatientRecord(self.id, timeNow=timeNow)  # force creation of a blank record
         newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
+                                                           self.id,
                                                            self._diagnosis,
                                                            TREATMENT_DEFAULT)[0:2]
 
@@ -803,14 +804,13 @@ class PatientAgent(pyrheabase.PatientAgent):
         tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
-        if len(tpl) == 3:
-            modifierList = tpl[2]
-        else:
-            modifierList = []
+        modifierList = (tpl[2] if len(tpl) == 3 else [])
         if self.debug:
             self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
                               % (self.name, self._status, self._diagnosis,
                                  self._treatment))
+            self.logger.debug('%s: record at %s is %s',
+                              self.name, self.ward._name, self.ward.fac.getPatientRecord(self.id))
             self.logger.debug('%s: modifiers are %s',
                               self.name,
                               [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
