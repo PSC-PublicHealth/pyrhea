@@ -23,6 +23,7 @@ import pyrheautils
 from facilitybase import CareTier
 from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
 from pathogenbase import PthStatus
+from __builtin__ import True
 
 _validator = None
 _constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'
@@ -77,7 +78,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
         self.core = CPTPCore()
 
-    def initializePatientTreatment(self, ward, patient):
+    def initializePatientTreatment(self, ward, patient, timeNow=0):
         """
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
@@ -87,7 +88,11 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         tier = ward.tier
         try:
             frac = self.core.baseFracTbl[ward.fac.category][ward.tier][pthStatus]
-            patient.setTreatment(contactPrecautions=(random() <= frac))
+            if random() <= frac:
+                patient.setTreatment(contactPrecautions=True)
+                pRec = ward.fac.getPatientRecord(patient.id, timeNow)
+                pRec.isContagious = True
+                ward.fac.mergePatientRecord(patient.id, pRec, timeNow)
         except KeyError:
             if tier in CareTier.names:
                 tier = CareTier.names[tier]
@@ -102,7 +107,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         This is called on patients when they arrive at a ward.
         """
-        self.initializePatientTreatment(ward, patient)
+        self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
     def handlePatientDeparture(self, ward, patient, timeNow):
         """
@@ -132,7 +137,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         else:
             return 1.0
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -140,10 +145,15 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         newTier, newTreatment = \
             super(ContactPrecautionsTreatmentPolicy, self).prescribe(ward,
+                                                                     patientId,
                                                                      patientDiagnosis,
                                                                      patientTreatment,
                                                                      modifierList)
-        if patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED):
+        
+        pRec = ward.fac.getPatientRecord(patientId)
+
+        if (patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED)
+            or pRec.isContagious):
             newTreatment = newTreatment._replace(contactPrecautions=True)
             
         # Apparently no one stays on CP for more than 10 days in Nursing care tier

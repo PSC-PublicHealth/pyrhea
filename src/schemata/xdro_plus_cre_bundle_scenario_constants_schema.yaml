@@ -1,0 +1,44 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/scenerio_constants_schema.yaml'
+'title': 'scenerio constants schema'
+'description': 'scenerio constants schema'
+
+'$ref': '#/definitions/scenario_constants'
+
+'definitions':
+
+  'lIS': 
+    'type': 'array'
+#    'items': 
+#      'type': 'object'
+#      'properties': 
+#        'abbrev': {'type': string}
+#        'times':
+#          'type': 'object'
+#          'properties':
+#            'startDate': {'type': 'number'}
+#            'endDate': {'type': 'number'}
+
+  'lISWrapper': 
+    'type': 'object'
+    'properties':
+      'prov': { 'type': 'string' }
+      'facilities': { '$ref': '#/definitions/lIS' }
+    'required':
+    - 'prov'
+    - 'facilities'
+   
+
+  'scenario_constants':
+    'type': 'object'
+    'properties':
+       'locationsImplementingScenario':
+         '$ref': '#/definitions/lISWrapper'
+       'enhancedDetectionFraction':
+         '$ref': 'basics_schema.yaml#/definitions/fraction'
+    'required':
+    - 'locationsImplementingScenario'
+    - 'enhancedDetectionFraction'
+      
+
+    

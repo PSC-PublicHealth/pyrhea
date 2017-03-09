@@ -37,7 +37,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, ward, patientID, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
@@ -52,7 +52,6 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             else:
                 diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
                                       else PthStatus.CLEAR)
-
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
             
@@ -71,7 +70,11 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         This class supports setting pathogenDiagnosticEffectiveness, a fraction.
         """
         if key == 'pathogenDiagnosticEffectiveness':
-            self.effectiveness = val
+            if val:
+                self.effectiveness = val
+            else:
+                # None means reset to default
+                self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
             print 'effectiveness is now %s' % self.effectiveness
         else:
             super(GenericDiagnosticPolicy, self).setValue(key, val)

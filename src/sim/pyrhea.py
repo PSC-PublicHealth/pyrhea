@@ -286,6 +286,28 @@ def buildLocalTierCPDict(patch,timeNow):
             facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
             
     return facTrtDict
+
+def generateLocalTierDictBuilder(counterKey):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    def buildDict(patch, timeNow):
+        facTrtDict = {'day': timeNow}
+        assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
+                                                 % patch.name)
+        for fac in patch.allFacilities:
+            if fac.abbrev not in _TRACKED_FACILITIES_SET:
+                continue
+            facPPC = defaultdict(lambda: 0)
+            for ward in fac.getWards():
+                key = "{0}".format(ward.tier)
+                facPPC[key] += ward.miscCounters[counterKey]
+                ward.miscCounters[counterKey] = 0.0
+            for key, v in facPPC.items():
+                facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+        return facTrtDict
+    return buildDict
+
         
 def buildLocalTierCREBundleDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
@@ -339,6 +361,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierarrivals': buildLocalTierArrivalsDict,
                           'localtierdepartures': buildLocalTierDeparturesDict,
                           'localtiercrearrivals': buildLocalTierCREArrivalsDict,
+                          'localtierswabdiagnostics': generateLocalTierDictBuilder('swabDiagnostics'),
                           #'localCounters': buildLocalTierCountersDict
                           }
 
@@ -492,7 +515,6 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
     else:
         myLogger = logger
     try:
-        print "HERE"
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
             if os.name != 'nt':

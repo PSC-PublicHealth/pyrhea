@@ -35,14 +35,16 @@
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'CREBundleTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleDiagnosticPolicy'
+
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
+
   - 'category': 'scenario'
-    #'policyClass': 'CREBundleScenario'
-    'policyClass': 'DumbBothScenario'
+    'policyClass': 'XDROPlusCREBundleScenario'
+    #'policyClass': 'DumbBothScenario'
     #'policyClass': 'XDRORegistryScenario'
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'GenericDiagnosticPolicy'
 
 'notesFileName': 'notes_week_ChicagoLand.pkl'
 
@@ -58,4 +60,4 @@ scenarioWaitDays: 2
   - 'GLEN_22660_V'
   - 'ADVO_836_H'
   - 'WASH_11308_S'
-  - 'THC_2544_L'
+  - 'PRES_100_L'

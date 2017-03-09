@@ -148,11 +148,16 @@ class Ward(pyrheabase.Ward):
 
 
 class ForcedStateWard(Ward):
-    def forceState(self, patientAgent, careTier, diagClassA):
+    def forceState(self, patientAgent, careTier, diagClassA, timeNow=None):
         
         patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
-        patientAgent._diagnosis = self.fac.diagnose(patientAgent._status, patientAgent._diagnosis)
-        newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent._diagnosis,
+        patientAgent._diagnosis = self.fac.diagnose(patientAgent.ward,
+                                                    patientAgent.id,
+                                                    patientAgent._status,
+                                                    patientAgent._diagnosis,
+                                                    timeNow=timeNow)
+        newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent.id,
+                                                              patientAgent._diagnosis,
                                                               patientAgent._treatment)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
                                       % (self._name, CareTier.names[careTier],
@@ -220,7 +225,7 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
@@ -288,7 +293,7 @@ class TreatmentPolicy(Policy):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -383,18 +388,44 @@ class TransferDestinationPolicy(Policy):
 
 
 class PatientRecord(object):
-    def __init__(self, patientID, arrivalDate, isFrail):
+    def __init__(self, patientID, arrivalDate, isFrail, isContagious=False):
         self.patientID = patientID
         self.arrivalDate = arrivalDate
         self.departureDate = None
         self.prevVisits = 0
         self.isFrail = isFrail
+        self.isContagious = isContagious
+        
+    def merge(self, otherRec):
+        assert self.patientID == otherRec.patientID, 'Cannot merge records for different patients'
+        if otherRec.arrivalDate > self.arrivalDate:     # newer visit
+            self.arrivalDate = otherRec.arrivalDate
+            self.departureDate = otherRec.departureDate
+            self.prevVisits = otherRec.prevVisits       # new record overrides
+            self.isContagious = otherRec.isContagious   # new record overrides
+            self.isFrail = otherRec.isFrail             # new record overrides
+        elif otherRec.arrivalDate < self.arrivalDate: # earlier visit
+            assert (otherRec.departureDate is not None
+                    and (self.departureDate is None
+                         or otherRec.departureDate <= self.arrivalDate)), 'record-keeping inconsistency'
+            # Fields are more recent and thus stay the same
+        else:  # same visit
+            if self.departureDate is None:
+                self.departureDate = otherRec.departureDate
+            else:
+                if (otherRec.departureDate is not None
+                        and otherRec.departureDate > self.departureDate):
+                    self.departureDate = otherRec.departureDate
+            self.isContagious = (self.isContagious or otherRec.isContagious)
+            self.prevVisits = max(self.prevVisits, otherRec.prevVisits)
+            self.isFrail = (self.isFrail or otherRec.isFrail)
 
     def __str__(self):
-        return '<patient %s, %s -> %s, %s>' % (self.patientID,
-                                               self.arrivalDate,
-                                               self.departureDate,
-                                               'Frail' if self.isFrail else 'Healthy')
+        return '<patient %s, %s -> %s, %s, %s>' % (self.patientID,
+                                                   self.arrivalDate,
+                                                   self.departureDate,
+                                                   'Frail' if self.isFrail else 'Healthy',
+                                                   'Contagious' if self.isContagious else 'NonContagious')
 
 class PatientStats(object):
     def __init__(self):
@@ -467,6 +498,21 @@ class Facility(pyrheabase.Facility):
     def getNoteHolder(self):
         return self.noteHolder
     
+    def getPatientRecord(self, patientId, timeNow=None):
+        if patientId in self.patientDataDict:
+            return pickle.loads(self.patientDataDict[patientId])
+        else:
+            # Create a new blank record
+            assert timeNow is not None, 'Record not found and cannot create a new one'
+            rec = PatientRecord(patientId, timeNow, isFrail=False)
+            self.patientDataDict[patientId] = pickle.dumps(rec, 2)  # keep a copy
+            return rec
+
+    def mergePatientRecord(self, patientId, newPatientRec, timeNow):
+        patientRec = self.getPatientRecord(patientId, timeNow)
+        patientRec.merge(newPatientRec)
+        self.patientDataDict[patientId] = pickle.dumps(patientRec, 2)
+
     def flushCaches(self):
         """
         Derived classes often cache things like BayesTrees, but the items in the cache
@@ -498,21 +544,17 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientID, tier, isFrail, patientName = myPayload
-            if patientID in self.patientDataDict:
-                logger.debug('Patient %s has returned to %s' % (patientID, self.name))
-                patientRec = pickle.loads(self.patientDataDict[patientID])
-                if patientRec.departureDate is None:  # ie patient is being readmitted without previously leaving
-                    self.patientStats.remPatient()
-                patientRec.prevVisits += 1
+            patientId, tier, isFrail, patientName = myPayload
+            patientRec = self.getPatientRecord(patientId, timeNow)
+            if patientRec.arrivalDate != timeNow:
+                logger.debug('Patient %s has returned to %s' % (patientId, self.name))
                 patientRec.arrivalDate = timeNow
-                patientRec.departureDate = None
-                self.patientDataDict[patientID] = pickle.dumps(patientRec)
-            else:
-#                patientRec = Facility.PatientRecord(patientID, timeNow, isFrail)
-                patientRec = PatientRecord(patientID, timeNow, isFrail)
-                self.patientDataDict[patientID] = pickle.dumps(patientRec,2)
-                
+                patientRec.prevVisits += 1
+            if patientRec.departureDate is None:  # ie patient is being readmitted without previously leaving
+                self.patientStats.remPatient()
+            patientRec.isFrail = isFrail
+            patientRec.departureDate = None
+            self.mergePatientRecord(patientId, patientRec, timeNow)
             self.patientStats.addPatient()
             if timeNow != 0:  # Exclude initial populations
                 nh = self.getNoteHolder()
@@ -592,14 +634,15 @@ class Facility(pyrheabase.Facility):
                                           transferKey: nSuccess,
                                           fromToKey: nSuccess})
 
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, ward, patientID, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        return self.diagnosticPolicy.diagnose(patientStatus, oldDiagnosis)
+        return self.diagnosticPolicy.diagnose(ward, patientID, patientStatus, oldDiagnosis,
+                                              timeNow=timeNow)
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment):
         """
         This returns a tuple of either form (careTier, patientTreatment) or
         (careTier, patientTreatment, modifierList)
@@ -610,7 +653,8 @@ class Facility(pyrheabase.Facility):
             modifierList = []
         careTier = None
         for tP in self.treatmentPolicies:
-            newTier, patientTreatment = tP.prescribe(ward, patientDiagnosis, patientTreatment,
+            newTier, patientTreatment = tP.prescribe(ward, patientId,
+                                                     patientDiagnosis, patientTreatment,
                                                      modifierList)
             if careTier and (newTier != careTier):
                 raise RuntimeError(('Treatment policies at %s prescribe different careTiers'
@@ -677,14 +721,15 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
                                      False, True, True, None)
+        abbrev = self.ward.fac.abbrev
+        self.id = (abbrev, PatientAgent.idCounters[abbrev])
+        PatientAgent.idCounters[abbrev] += 1
+        ward.fac.getPatientRecord(self.id, timeNow=timeNow)  # force creation of a blank record
         newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
                                                            self._diagnosis,
                                                            TREATMENT_DEFAULT)[0:2]
 
         self.lastUpdateTime = timeNow
-        abbrev = self.ward.fac.abbrev
-        self.id = (abbrev, PatientAgent.idCounters[abbrev])
-        PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
     def printSummary(self):
@@ -753,8 +798,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
         if self._status.diagClassA == DiagClassA.DEATH:
             return None, []
-        self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
-        tpl = self.ward.fac.prescribe(self.ward, self._diagnosis, self._treatment)
+        self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self._status, self._diagnosis,
+                                                 timeNow=timeNow)
+        tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
         if len(tpl) == 3:
