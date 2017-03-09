@@ -2,6 +2,8 @@ import csv
 import sys,os
 import glob
 import numpy as np
+import pandas as pd
+import statsmodels.stats.api as sms
 import scipy.stats as st
 import yaml
 from multiprocessing import Process,Manager,cpu_count,Pool
@@ -19,6 +21,7 @@ from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATE
 from pyrhea import getLoggerConfig
 import print_counts
 from collections import defaultdict
+import time
 #import affinity
 
 #print "Cpu_Count = {0}".format(cpu_count())
@@ -73,18 +76,53 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
     return returnDict
 
 def combineTimeSeries(tsArray,runDays, tsIncrement=1):
-    returnDict = {'mean':[],'median':[],'stdv':[],'5%CI':[],'95%CI':[]}
+    def ci(x):
+        ci_tuple = st.t.interval(0.95,len(x)-1, loc = np.mean(x), scale=st.sem(x))
+        return pd.Series(ci_tuple)
+#     
+    #DataFrame({'5per':ci_tuple[0],'95per':ci_tuple[1]})
+
+    returnDict = {'mean':np.zeros(runDays),'median':np.zeros(runDays),'stdv':np.zeros(runDays),'5%CI':np.zeros(runDays),'95%CI':np.zeros(runDays)}
     
-    for i in range(0,runDays):
-        #print "array = {0}".format([x[i] for x in tsArray])
-        #print "mean = {0}".format(np.mean([x[i] for x in tsArray]))
-        returnDict['mean'].append(np.mean([x[i] for x in tsArray]))
-        returnDict['median'].append(np.median([x[i] for x in tsArray]))
-        returnDict['stdv'].append(np.std([x[i] for x in tsArray]))
-        returnDict['5%CI'].append(st.t.interval(0.95, len([x[i] for x in tsArray]) - 1, loc=np.mean([x[i] for x in tsArray]), scale=st.sem([x[i] for x in tsArray]))[0])
-        returnDict['95%CI'].append(st.t.interval(0.95, len([x[i] for x in tsArray]) - 1, loc=np.mean([x[i] for x in tsArray]), scale=st.sem([x[i] for x in tsArray]))[1])
-        
     
+    df = pd.DataFrame(tsArray).transpose()
+    
+    #df2 = df.mean(axis=1)
+    
+    #print tsArray
+    returnDict['mean'] = df.mean(axis=1)
+    returnDict['median'] = df.median(axis=1)
+    returnDict['stdv'] = df.std(axis=1)
+    
+    n = len(df.columns)
+    rf = pd.DataFrame({'sem':(df.std(axis=1)),'mean':df.mean(axis=1)})
+    i95 = st.t._ppf(1.95/2.0, n-1)
+    rf['c95_lower'] = rf['mean'] - (rf['sem'] * i95)
+    rf['c95_upper'] = rf['mean'] + (rf['sem'] * i95)
+
+    returnDict['5%CI'] = rf['c95_lower']
+    returnDict['95%CI'] = rf['c95_upper']
+    #ciTmp = df.apply(lambda x: pd.Series(sms.DescrStatsW(x).tconfint_mean(), index=['ci5','ci95']), axis=1)
+    #returnDict['5%CI'] = np.zeciTmp.ci5
+    #returnDict['95%CI'] = ciTmp.ci95
+    
+#     semArray = np.apply_along_axis(st.sem, 0, tsArray)
+#     #[0.0 for i in range(0,runDays)]
+#     #returnDict['95%CI'] = [0.0 for i in range(0,runDays)]
+#     lenArray= np.array(tsArray.shape[1])
+#     
+#     print "len = {0}".format(lenArray)
+#     for i in range(0,runDays):
+#         #print "array = {0}".format([x[i] for x in tsArray])
+#         #print "mean = {0}".format(np.mean([x[i] for x in tsArray]))
+# #        returnDict['mean'].append(np.mean([x[i] for x in tsArray]))
+# #        returnDict['median'].append(np.median([x[i] for x in tsArray]))
+# #        returnDict['stdv'].append(np.std([x[i] for x in tsArray]))
+#         ci = st.t.interval(0.95, lenArray - 1, loc=returnDict['mean'][i], scale=semArray[i])
+#         returnDict['5%CI'].append(ci[0])
+#         returnDict['95%CI'].append(ci[1])
+#         
+#     #print "returnDict mean = {0}".format(returnDict['mean'])
     return returnDict    
 def pool_helper(args):
     return extractCountsFromNotes(*args)
@@ -204,9 +242,12 @@ def main():
     ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
     
     print "Processing Outputs"
+    
     sys.stdout.flush()
     statsByTier = {}
     statsByAbbrev = {}
+    time1Counter = 0.0
+    time2Counter = 0.0
     for abbrev,tD in totalCounts[0].items():
         if abbrev not in statsByTier.keys():
             statsByTier[abbrev] = {}
@@ -224,8 +265,9 @@ def main():
             if opts.producetimeseries:
                 cTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
                 bTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
-            
+          
         for tier,d in tD.items():
+            time1 = time.time()
             if tier not in statsByTier[abbrev].keys():
                 statsByTier[abbrev][tier] = {}
                 #statsByTierTS[abbrev][tier] = {}
@@ -238,6 +280,7 @@ def main():
             if opts.producetimeseries:
                 cTs = [ x[abbrev][tier]['colonizedDaysTS'] for x in totalCounts ]
                 bTs = [ x[abbrev][tier]['bedDaysTS'] for x in totalCounts ]
+                #print "bTs = {0}".format(bTs)
             
             for k in valuesToGather.keys():
                 #if k == "newColonized":
@@ -258,6 +301,7 @@ def main():
     #                    print j
     #                    print cTs[i][j]
                         cTAs[i][j] += cTs[i][j]
+                        bTAs[i][j] += bTs[i][j]
                 cDAs[i] += cDs[i]
                 bDAs[i] += bDs[i]
                 for k in valuesToGather.keys():
@@ -271,6 +315,11 @@ def main():
 #                 
             #print "{0} {1} {2}".format(abbrev,tier,cDs)
             #print statsByTier  
+            
+            time2 = time.time()
+            time1Counter += time2-time1
+            
+            time1 = time.time()
             statsByTier[abbrev][tier]['colonizedDays'] = {'mean':np.mean(cDs),
                                                           'median':np.median(cDs),
                                                           'stdv':np.std(cDs),
@@ -321,24 +370,9 @@ def main():
                                                                      'stdv':[0.0 for x in range(0,runDays)],
                                                                      '5%CI':[0.0 for x in range(0,runDays)],
                                                                      '95%CI':[0.0 for x in range(0,runDays)]}
-                
-            '''
-            statsByTier[abbrev][tier]['newColonized'] = {'mean':np.mean(ncDs),
-                                                       'median':np.median(ncDs),
-                                                       'stdv':np.std(ncDs),
-                                                       '5%CI':st.t.interval(0.95, len(ncDs) - 1, loc=np.mean(ncDs), scale=st.sem(ncDs))[0],
-                                                       '95%CI':st.t.interval(0.95, len(ncDs) - 1, loc=np.mean(ncDs), scale=st.sem(ncDs))[1]}
-            statsByTier[abbrev][tier]['creArrivals'] = {'mean':np.mean(caDs),
-                                                       'median':np.median(caDs),
-                                                       'stdv':np.std(caDs),
-                                                       '5%CI':st.t.interval(0.95, len(caDs) - 1, loc=np.mean(caDs), scale=st.sem(caDs))[0],
-                                                       '95%CI':st.t.interval(0.95, len(caDs) - 1, loc=np.mean(caDs), scale=st.sem(caDs))[1]}
-            statsByTier[abbrev][tier]['arrivals'] = {'mean':np.mean(aDs),
-                                                     'median':np.median(aDs),
-                                                     'stdv':np.std(aDs),
-                                                     '5%CI':st.t.interval(0.95, len(aDs) - 1, loc=np.mean(aDs), scale=st.sem(aDs))[0],
-                                                     '95%CI':st.t.interval(0.95, len(aDs) - 1, loc=np.mean(aDs), scale=st.sem(aDs))[1]}
-            '''
+            time2 = time.time()
+            time2Counter += time2-time1
+            
         for i in range(0,len(cDAs)):
             prevAs[i] = (cDAs[i]/bDAs[i])
         
@@ -393,27 +427,9 @@ def main():
                                                             'stdv':[0.0 for x in range(0,runDays)],
                                                             '5%CI':[0.0 for x in range(0,runDays)],
                                                             '95%CI':[0.0 for x in range(0,runDays)]}
-            
-    '''
-        statsByAbbrev[abbrev]['newColonized'] = {'mean':np.mean(ncAs),
-                                             'median':np.median(ncAs),
-                                             'stdv':np.std(ncAs),
-                                             '5%CI':st.t.interval(0.95,len(ncAs)-1, loc=np.mean(ncAs),scale=st.sem(ncAs))[0],
-                                             '95%CI':st.t.interval(0.95,len(ncAs)-1, loc=np.mean(ncAs),scale=st.sem(ncAs))[1]}
         
-        statsByAbbrev[abbrev]['creArrivals'] = {'mean':np.mean(caDAs),
-                                             'median':np.median(caDAs),
-                                             'stdv':np.std(caDAs),
-                                             '5%CI':st.t.interval(0.95,len(caDAs)-1, loc=np.mean(caDAs),scale=st.sem(caDAs))[0],
-                                             '95%CI':st.t.interval(0.95,len(caDAs)-1, loc=np.mean(caDAs),scale=st.sem(caDAs))[1]}
-        
-        statsByAbbrev[abbrev]['arrivals'] = {'mean':np.mean(aDAs),
-                                             'median':np.median(aDAs),
-                                             'stdv':np.std(aDAs),
-                                             '5%CI':st.t.interval(0.95,len(aDAs)-1, loc=np.mean(aDAs),scale=st.sem(aDAs))[0],
-                                             '95%CI':st.t.interval(0.95,len(aDAs)-1, loc=np.mean(aDAs),scale=st.sem(aDAs))[1]}
-        '''  
-    
+    print "time 1 = {0}".format(time1Counter)
+    print "time 2 = {0}".format(time2Counter)
     print "Writing Files"
     sys.stdout.flush()        
     with open("{0}_stats_by_tier.csv".format(outFileName),"wb") as f:
