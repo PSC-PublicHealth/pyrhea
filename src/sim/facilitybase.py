@@ -151,7 +151,7 @@ class ForcedStateWard(Ward):
     def forceState(self, patientAgent, careTier, diagClassA):
         
         patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
-        patientAgent._diagnosis = self.fac.diagnose(patientAgent._status, patientAgent._diagnosis)
+        patientAgent._diagnosis = self.fac.diagnose(patientAgent, patientAgent._diagnosis)
         newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent._diagnosis,
                                                               patientAgent._treatment)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
@@ -220,18 +220,20 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, patient, oldDiagnosis, fac=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
+        patientStatus = patient._status
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
                                 patientStatus.startDateA,
                                 PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
     
-    def initializePatientDiagnosis(self, careTier, timeNow):
+    def initializePatientDiagnosis(self, ward, timeNow):
+        careTier = ward.tier
         if careTier == CareTier.HOME:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,
                                     DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
@@ -408,6 +410,41 @@ class PatientStats(object):
     def remPatient(self):
         self.currentOccupancy -=1
 
+class FacilityRegistry(object):
+    def __init__(self,abbrev):
+        ### there is a dict that will keep a list of patients on the registry of known something or other at this facility
+        self.registryDict = {}
+        self.facilityAbbrev = abbrev
+        
+    def startRegistry(self,key):
+        ### Starting the registry with the same key will provide a no op
+        if not self.isRegistryStarted(key):
+            self.registryDict[key] = []
+    
+    def isRegistryStarted(self,key):
+        return key in self.registryDict.keys()
+    
+    def registerPatient(self,key,patientName):
+        if key not in self.registryDict.keys():
+            raise RuntimeError("The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,key))
+        
+        if patientName not in self.registryDict[key]:
+            self.registryDict[key].append(patientName)
+    
+    def isPatientInRegistry(self,key,patientName):
+        if key not in self.registryDict.keys():
+            raise RuntimeError("The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,key))
+        return patientName in self.registryDict[key]
+           
+    def __str__(self):
+        returnString = "<{0} Registry>\n".format(self.facilityAbbrev)
+        for key,reg in self.registryDict.items():
+            returnString += '   Key: {0}\n'.format(key)
+            for pat in reg:
+                returnString += '    - {0}\n'.format(pat)
+        
+        return returnString
+    
         
 class Facility(pyrheabase.Facility):
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
@@ -437,6 +474,8 @@ class Facility(pyrheabase.Facility):
         self.idCounter = 0
         self.patientDataDict = {}
         self.patientStats = PatientStats()
+        self.registry = FacilityRegistry(self.abbrev)
+        self.registry.startRegistry('knownCRECarrier')
         transferDestinationPolicyClass = TransferDestinationPolicy
         treatmentPolicyClasses = []
         diagnosticPolicyClass = DiagnosticPolicy
@@ -497,6 +536,8 @@ class Facility(pyrheabase.Facility):
     def handleIncomingMsg(self, msgType, payload, timeNow):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
+            #print "myPayLoad = {0}".format(myPayload)
+            #print "innerPayload = {0}".format(innerPayload)
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientID, tier, isFrail, patientName = myPayload
             if patientID in self.patientDataDict:
@@ -521,6 +562,7 @@ class Facility(pyrheabase.Facility):
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
+            #print "innerPayload = {0}".format(innerPayload)
             patientID, tier, isFrail, patientName = myPayload
             if patientID not in self.patientDataDict:
                 logger.error('%s has no record of patient %s' % (self.name, patientID))
@@ -592,12 +634,12 @@ class Facility(pyrheabase.Facility):
                                           transferKey: nSuccess,
                                           fromToKey: nSuccess})
 
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, patient, oldDiagnosis):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        return self.diagnosticPolicy.diagnose(patientStatus, oldDiagnosis)
+        return self.diagnosticPolicy.diagnose(patient, oldDiagnosis, self)
 
     def prescribe(self, ward, patientDiagnosis, patientTreatment):
         """
@@ -619,12 +661,12 @@ class Facility(pyrheabase.Facility):
             careTier = newTier
         return (careTier, patientTreatment, modifierList)
 
-    def diagnosisFromCareTier(self, careTier, timeNow):
+    def diagnosisFromCareTier(self, ward, timeNow):
         """
         If I look at a patient under a given care tier, what would I expect their diagnostic class
         to be?  This is used for patient initialization purposes.
         """
-        return self.diagnosticPolicy.initializePatientDiagnosis(careTier, timeNow)
+        return self.diagnosticPolicy.initializePatientDiagnosis(ward, timeNow)
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
         """
@@ -672,7 +714,7 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
-        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, timeNow)
+        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward, timeNow)
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
@@ -683,6 +725,7 @@ class PatientAgent(pyrheabase.PatientAgent):
 
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
+        self.prevFac = None
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
@@ -753,9 +796,10 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def updateEverything(self, timeNow):
         self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
+        
         if self._status.diagClassA == DiagClassA.DEATH:
             return None, []
-        self._diagnosis = self.ward.fac.diagnose(self._status, self._diagnosis)
+        self._diagnosis = self.ward.fac.diagnose(self, self._diagnosis)
         tpl = self.ward.fac.prescribe(self.ward, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
@@ -770,6 +814,8 @@ class PatientAgent(pyrheabase.PatientAgent):
             self.logger.debug('%s: modifiers are %s',
                               self.name,
                               [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
+    
+        self.prevFac = self.ward.fac
         self.lastUpdateTime = timeNow
         return newTier, modifierList
 
@@ -801,6 +847,7 @@ class PatientAgent(pyrheabase.PatientAgent):
             # It's about to move, so clear relocateFlag
             self._diagnosis = self._diagnosis._replace(relocateFlag=False)
             self._status = self._status._replace(relocateFlag=False)
+            self.prevWardArr = self.locAddr
         return newAddr
     
     def getCandidateFacilityList(self, timeNow, newTier):

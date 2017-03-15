@@ -288,6 +288,7 @@ class PatientAgent(peopleplaces.Person):
         super(PatientAgent, self).__init__(name, patch, ward, debug=debug)
         self.tier = ward.tier
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
+        self.prevFac = None
 
     @property
     def ward(self):
@@ -305,7 +306,7 @@ class PatientAgent(peopleplaces.Person):
     @newWardAddr.setter
     def newWardAddr(self, value):
         self.newLocAddr = value
-
+                
     def handleTierUpdate(self, timeNow):
         """
         The PatientAgent computes a new needed CareTier and a (potentially empty) list

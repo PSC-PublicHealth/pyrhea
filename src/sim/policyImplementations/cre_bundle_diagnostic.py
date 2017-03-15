@@ -30,6 +30,29 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
+def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['category']
+        topD[cat] = float(elt['frac']['value'])
+    
+    return topD
+
+def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['categoryFrom']
+        topD[cat] = float(elt['frac']['value'])
+    return topD    
+
+class CBDPCore(object):
+    """This is where we put things that are best shared across all instances"""
+    __metaclass__ = SingletonMetaClass
+    
+    def __init__(self):
+        self.sameFacilityDiagnosisMemory = _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
+        self.communicateDiagnosisBetweenFacility = _parseCommunicateDiagnosisBetweenFacility('communitcateDiagnosisBetweenFacility')
+            
 class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
     def __init__(self,  patch, categoryNameMapper):
         #super(CREBundleDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
@@ -38,7 +61,7 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         self.falsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
         self.active = False
         
-    def diagnose(self, patientStatus, oldDiagnosis):
+    def diagnose(self, patient, oldDiagnosis):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
@@ -50,6 +73,7 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         #oldDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(patientStatus, oldDiagnosis)
         oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patientStatus, oldDiagnosis)
         
+        patientStatus = patient._status
         if self.active:
             if patientStatus.justArrived:
                 if patientStatus.pthStatus == PthStatus.COLONIZED:

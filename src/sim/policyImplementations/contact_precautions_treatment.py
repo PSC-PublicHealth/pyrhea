@@ -153,6 +153,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             
         # for accounting
         if newTreatment.contactPrecautions:
+            #print "patient is on contact precautions"
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
 
         return newTier, newTreatment
