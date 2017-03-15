@@ -19,6 +19,7 @@ import logging
 from random import random
 
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import PatientDiagnosis
 from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
@@ -59,9 +60,10 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         GenericDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
         self.effectiveness = _constants['swabDiagnosticSensitivity']['value']
         self.falsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
+        self.core = CBDPCore()
         self.active = False
         
-    def diagnose(self, patient, oldDiagnosis):
+    def diagnose(self, patient, oldDiagnosis, facility=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
@@ -71,17 +73,25 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         
         # Layer our diagnosis on top of any done by the base class
         #oldDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(patientStatus, oldDiagnosis)
-        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patientStatus, oldDiagnosis)
-        
         patientStatus = patient._status
+        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patientStatus, oldDiagnosis)
+          
         if self.active:
             if patientStatus.justArrived:
+                
                 if patientStatus.pthStatus == PthStatus.COLONIZED:
                     diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
                                           else PthStatus.CLEAR)
                 else:
                     diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
                                           else PthStatus.CLEAR)
+                    
+                ### need to add these folks to the registry... maybe
+                if facility is not None:
+                    if diagnosedPthStatus == PthStatus.COLONIZED:
+                        sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
+                        if random() <= sameFacProb:
+                            facility.registry.registerPatient('knownCRECarrier',patient.name)     
     
             else:
                 diagnosedPthStatus = oldDiagnosis.pthStatus

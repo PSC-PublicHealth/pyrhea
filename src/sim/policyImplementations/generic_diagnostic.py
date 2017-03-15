@@ -106,10 +106,11 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             
             ### if they are known to be colonized at the facility, then we need ot see if they go on the 
             ### registry
-            if diagnosedPthStatus == PthStatus.COLONIZED:
-                sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
-                if random() <= sameFacProb:
-                    facility.registry.registerPatient('knownCRECarrier',patient.name)          
+            if facility is not None:
+                if diagnosedPthStatus == PthStatus.COLONIZED:
+                    sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
+                    if random() <= sameFacProb:
+                        facility.registry.registerPatient('knownCRECarrier',patient.name)          
                     
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
