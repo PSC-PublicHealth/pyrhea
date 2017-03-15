@@ -3,7 +3,7 @@ import sys,os
 import glob
 import numpy as np
 import pandas as pd
-import statsmodels.stats.api as sms
+#import statsmodels.stats.api as sms
 import scipy.stats as st
 import yaml
 from multiprocessing import Process,Manager,cpu_count,Pool
@@ -59,16 +59,17 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
                                                                 'colonizedDaysTS':lVec[dayIndex:],
-                                                                'bedDaysTS':lVec[dayIndex:]}
+                                                                'bedDaysTS':totVecD[tier][dayIndex:]}
                     
                     for key in translationDict.keys():
                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
                         
     for key,noteKey in translationDict.items():
+	print "Key = {0}".format(key)
         for abbrev in abbrevList:
             tplList = print_counts.getTimeSeriesList(abbrev,specialDict,noteKey)
             for dayVec,curves in tplList:
-                dayIndex = np.where(dayVec==burninDays)[0][0]
+                dayIndex = np.where(dayVec==(burninDays+1))[0][0]
                 for tpl, curve in curves.items():
                     returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
                     returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
