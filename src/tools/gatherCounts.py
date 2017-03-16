@@ -166,6 +166,12 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    ### get the abbreviations within a 13 mile radius
+    facilitiesWithin13Miles = []
+    with open("{0}/constants/facilities_in_13miles.yaml".format(modelDir),"rb") as f:
+        facilitiesWithin13Miles = yaml.load(f)['facilitiesWithin13Miles']['locAbbrevList']
+    
+    
     burninDays = int(inputDict['burnInDays'])
     print "burninDays = {0}".format(burninDays)
     runDays = int(inputDict['runDurationDays'])
@@ -357,7 +363,7 @@ def main():
                 statsByTier[abbrev][tier]['colonizedDaysTS'] = combineTimeSeries(cTs,runDays,1)
                 statsByTier[abbrev][tier]['bedDaysTS'] = combineTimeSeries(bTs,runDays,1)
             for k in valuesToGather.keys():
-                print "Key 2 = {0}".format(k)
+                #print "Key 2 = {0}".format(k)
                 statsByTier[abbrev][tier][k] = {'mean':np.mean(statTierDict[k]['value']),
                                                        'median':np.median(statTierDict[k]['value']),
                                                        'stdv':np.std(statTierDict[k]['value']),
@@ -520,6 +526,39 @@ def main():
                                 d['prevalence']['95%CI']])
             
     if opts.producetimeseries:
+        with open("{0}_prevalence_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Day']
+            abbrevsSorted = sorted([x for x in statsByAbbrev.keys()])
+            for abbrev in abbrevsSorted:
+                headRow.append("{0}".format(abbrev))
+                
+            csvWriter.writerow(headRow)
+            
+            for i in range(0,runDays):
+                entryRow = ['{0}'.format(i)]
+                for abbrev in abbrevsSorted:
+                    dayPrev = statsByAbbrev[abbrev]['colonizedDaysTS']['mean'][i]/statsByAbbrev[abbrev]['bedDaysTS']['mean'][i]
+                    entryRow.append('{0}'.format(dayPrev))
+                
+                csvWriter.writerow(entryRow)
+        
+        with open("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),"wb") as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Day','Prev within 13','Prev outside 13','Inc within 13','Inc outside 13']
+            csvWriter.writerow(headRow)
+            
+            for i in range(0,runDays):
+                colWithin = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                bedWithin = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                ncolsWithin = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                colWithout = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                bedWithout = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                ncolsWithout = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                entryRow = ['{0}'.format(i),colWithin/bedWithin,colWithout/bedWithout,ncolsWithin,ncolsWithout]
+                csvWriter.writerow(entryRow)
+                
+                   
         with open("{0}_colonized_patients_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
             csvWriter = csv.writer(f)
             headRow = ['Day']
@@ -625,7 +664,10 @@ def main():
                             entryRow.append("{0}".format(statsByAbbrev[abbrev]['{0}TS'.format(key)]['95%CI'][i]))
                         
                         csvWriter.writerow(entryRow)
-                        
+    
+    
+                
+                      
     with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
         headingRow = ['Facility Type','Prevalence Mean']
