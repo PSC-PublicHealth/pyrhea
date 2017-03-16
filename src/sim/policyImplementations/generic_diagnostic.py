@@ -108,6 +108,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             ### registry
             if facility is not None:
                 if diagnosedPthStatus == PthStatus.COLONIZED:
+                    patient.cpReason = 'passive'
                     sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
                     if random() <= sameFacProb:
                         facility.registry.registerPatient('knownCRECarrier',patient.name)          

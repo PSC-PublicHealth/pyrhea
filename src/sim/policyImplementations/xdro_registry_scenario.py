@@ -46,7 +46,10 @@ class XDRORegistryScenario(BaseScenarioPolicy):
                 if type(fac.diagnosticPolicy).__name__ == GenericDiagnosticPolicy.__name__:
                 #if isinstance(fac.diagnosticPolicy, GenericDiagnosticPolicy):
                     #print 'XDRO setting %s' % fac.abbrev
+                    
                     fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
+                    fac.registry.transferRegistry('knownCRECarrers','xdroRegistry')
+                    
 
 def getPolicyClasses():
     return [XDRORegistryScenario]

@@ -74,25 +74,30 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         # Layer our diagnosis on top of any done by the base class
         #oldDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(patientStatus, oldDiagnosis)
         patientStatus = patient._status
-        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patientStatus, oldDiagnosis)
+        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patient, oldDiagnosis, facility)
           
         if self.active:
             if patientStatus.justArrived:
-                
-                if patientStatus.pthStatus == PthStatus.COLONIZED:
-                    diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
-                                          else PthStatus.CLEAR)
-                else:
-                    diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
-                                          else PthStatus.CLEAR)
+                if oldDiagnosis.pthStatus != PthStatus.COLONIZED:
+                    if patientStatus.pthStatus == PthStatus.COLONIZED:
+                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                                              else PthStatus.CLEAR)
+                    else:
+                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                                              else PthStatus.CLEAR)
+                        
+                    ### need to add these folks to the registry... maybe
+                    if facility is not None:
+                        if diagnosedPthStatus == PthStatus.COLONIZED:
+                            patient.cpReason = "swab"
+                            sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
+                            if random() <= sameFacProb:
+                                facility.registry.registerPatient('knownCRECarrier',patient.name)     
+                                #facility.registry.registerPatient('bundleCatches',patient.name)
                     
-                ### need to add these folks to the registry... maybe
-                if facility is not None:
-                    if diagnosedPthStatus == PthStatus.COLONIZED:
-                        sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
-                        if random() <= sameFacProb:
-                            facility.registry.registerPatient('knownCRECarrier',patient.name)     
-    
+                    patient.ward.miscCounters['creSwabsPerformed'] += 1
+                else:
+                    diagnosedPthStatus = oldDiagnosis.pthStatus
             else:
                 diagnosedPthStatus = oldDiagnosis.pthStatus
         else:

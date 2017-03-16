@@ -76,6 +76,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
     def __init__(self, patch, categoryNameMapper):
         super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
         self.core = CPTPCore()
+        
 
     def initializePatientTreatment(self, ward, patient):
         """
@@ -132,14 +133,14 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         else:
             return 1.0
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patient, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
         and is not generally relevant to the decisions made by this method.
         """
         newTier, newTreatment = \
-            super(ContactPrecautionsTreatmentPolicy, self).prescribe(ward,
+            super(ContactPrecautionsTreatmentPolicy, self).prescribe(ward, patient,
                                                                      patientDiagnosis,
                                                                      patientTreatment,
                                                                      modifierList)
@@ -154,7 +155,25 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         # for accounting
         if newTreatment.contactPrecautions:
             #print "patient is on contact precautions"
+            ### Track all contact precaution days
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
+            
+            ### If this patient has just arrived, then this is a new contact precaution
+            if patient._status.justArrived:
+                ward.miscCounters['newPatientsOnCP'] += 1
+            
+            ### Need to track the reason they are on CP    
+            if hasattr(patient,'cpReason'):
+                if patient.cpReason == "swab":
+                    print "Reason for the cp = {0}".format(patient.cpReason)
+                if patient.cpReason == "passive":
+                    ward.miscCounters['passiveDaysOnCP'] += ward.checkInterval
+                elif patient.cpReason == "swab":
+                    ward.miscCounters['swabDaysOnCP'] += ward.checkInterval
+                else:
+                    ward.miscCounters['otherDaysOnCP'] += ward.checkInterval
+            else:
+                ward.miscCounters['otherDaysOnCP'] += ward.checkInterval
 
         return newTier, newTreatment
 

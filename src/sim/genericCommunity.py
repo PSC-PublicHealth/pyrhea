@@ -370,7 +370,7 @@ class Community(Facility):
             self.treeCache[key] = tree
             return tree
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patient, patientDiagnosis, patientTreatment):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:

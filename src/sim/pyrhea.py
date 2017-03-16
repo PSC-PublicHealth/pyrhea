@@ -180,6 +180,8 @@ def buildLocalTierPthDict(patch, timeNow):
 #     ### Need to figure out better way than to make sure that zeroing happens
 #     return facPPC
 
+
+### This is ridiculous, we need to make this consolidated
 def buildLocalTierNColDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
     if not _TRACKED_FACILITIES_SET:
@@ -288,6 +290,62 @@ def buildLocalTierCPDict(patch,timeNow):
             
     return facTrtDict
         
+def buildLocalTierPCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['passiveDaysOnCP']
+            ward.miscCounters['passiveDaysOnCP'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
+
+def buildLocalTierSCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['swabDaysOnCP']
+            ward.miscCounters['swabDaysOnCP'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
+
+def buildLocalTierOCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['otherDaysOnCP']
+            ward.miscCounters['otherDaysOnCP'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
 def buildLocalTierCREBundleDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
     if not _TRACKED_FACILITIES_SET:
@@ -307,6 +365,43 @@ def buildLocalTierCREBundleDict(patch,timeNow):
             
     return facTrtDict
 
+def buildLocalTierCRESwabsDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['creSwabsPerformed']
+            ward.miscCounters['creSwabsPerformed'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
+
+def buildLocalTierPatCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['newPatientsOnCP']
+            ward.miscCounters['newPatientsOnCP'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
 # def buildLocalTierCountersDict(patch, timeNow):
 #     global _TRACKED_FACILITIES_SET
 #     if not _TRACKED_FACILITIES_SET:
@@ -337,9 +432,14 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtiernewcolonized':buildLocalTierNColDict,
                           'localtierCP': buildLocalTierCPDict,
                           'localtierCREBundle': buildLocalTierCREBundleDict,
+                          'localtierCRESwabs': buildLocalTierCRESwabsDict,
                           'localtierarrivals': buildLocalTierArrivalsDict,
                           'localtierdepartures': buildLocalTierDeparturesDict,
                           'localtiercrearrivals': buildLocalTierCREArrivalsDict,
+                          'localtierpassiveCP': buildLocalTierPCPDict,
+                          'localtierswabCP': buildLocalTierSCPDict,
+                          'localtierotherCP': buildLocalTierOCPDict,
+                          'localtierpatientsOnCP': buildLocalTierPatCPDict,
                           #'localCounters': buildLocalTierCountersDict
                           }
 
@@ -535,6 +635,9 @@ def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
     def perDayCB(loop, timeNow):
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
+#         for fac in patch.allFacilities:
+#             if fac.category != "COMMUNITY":
+#                 print fac.registry
         noteHolder.addNote({key: [recFun(patch, timeNow)]
                             for key, recFun in recGenDict.items()})
         if timeNow > runDurationDays:

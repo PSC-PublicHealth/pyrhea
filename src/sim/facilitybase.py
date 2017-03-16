@@ -114,6 +114,10 @@ class Ward(pyrheabase.Ward):
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
+        ### Shawn Sucks
+        self.miscCounters['passiveDaysOnCP'] = 0
+        self.miscCounters['swabDaysOnCP'] = 0
+        self.miscCounters['otherDaysOnCP'] = 0
 
     def getPatientList(self):
         return self._lockingAgentList[:self._nLocks]
@@ -152,7 +156,7 @@ class ForcedStateWard(Ward):
         
         patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
         patientAgent._diagnosis = self.fac.diagnose(patientAgent, patientAgent._diagnosis)
-        newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent._diagnosis,
+        newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent, patientAgent._diagnosis,
                                                               patientAgent._treatment)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
                                       % (self._name, CareTier.names[careTier],
@@ -290,7 +294,7 @@ class TreatmentPolicy(Policy):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patient, patientDiagnosis, patientTreatment, modifierList):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -431,6 +435,16 @@ class FacilityRegistry(object):
         if patientName not in self.registryDict[key]:
             self.registryDict[key].append(patientName)
     
+    def transferRegistry(self, fromKey, toKey):
+        if fromKey not in self.registryDict.keys():
+            raise RuntimeError("In transferRegsitry: The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,fromKey))
+        if toKey not in self.registryDict.keys():
+            self.start(toKey)
+        
+        for name in self.registryDict[fromKey]:
+            if name not in self.registryDict[toKey]:
+                self.registryDict[toKey].append(name)
+    
     def isPatientInRegistry(self,key,patientName):
         if key not in self.registryDict.keys():
             raise RuntimeError("The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,key))
@@ -476,6 +490,7 @@ class Facility(pyrheabase.Facility):
         self.patientStats = PatientStats()
         self.registry = FacilityRegistry(self.abbrev)
         self.registry.startRegistry('knownCRECarrier')
+        #self.registry.startRegistry('bundleCatches')
         transferDestinationPolicyClass = TransferDestinationPolicy
         treatmentPolicyClasses = []
         diagnosticPolicyClass = DiagnosticPolicy
@@ -641,7 +656,7 @@ class Facility(pyrheabase.Facility):
         """
         return self.diagnosticPolicy.diagnose(patient, oldDiagnosis, self)
 
-    def prescribe(self, ward, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patient, patientDiagnosis, patientTreatment):
         """
         This returns a tuple of either form (careTier, patientTreatment) or
         (careTier, patientTreatment, modifierList)
@@ -652,7 +667,7 @@ class Facility(pyrheabase.Facility):
             modifierList = []
         careTier = None
         for tP in self.treatmentPolicies:
-            newTier, patientTreatment = tP.prescribe(ward, patientDiagnosis, patientTreatment,
+            newTier, patientTreatment = tP.prescribe(ward, patient, patientDiagnosis, patientTreatment,
                                                      modifierList)
             if careTier and (newTier != careTier):
                 raise RuntimeError(('Treatment policies at %s prescribe different careTiers'
@@ -720,12 +735,13 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      self._diagnosis.pthStatus, 0,
                                      False, True, True, None)
         newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
-                                                           self._diagnosis,
+                                                           self, self._diagnosis,
                                                            TREATMENT_DEFAULT)[0:2]
 
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
         self.prevFac = None
+        self.cpReason = None
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
@@ -800,7 +816,8 @@ class PatientAgent(pyrheabase.PatientAgent):
         if self._status.diagClassA == DiagClassA.DEATH:
             return None, []
         self._diagnosis = self.ward.fac.diagnose(self, self._diagnosis)
-        tpl = self.ward.fac.prescribe(self.ward, self._diagnosis, self._treatment)
+        #print "prescibing in fac = {0}".format(self.ward.fac.abbrev)
+        tpl = self.ward.fac.prescribe(self.ward, self, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
         if len(tpl) == 3:

@@ -289,6 +289,7 @@ class PatientAgent(peopleplaces.Person):
         self.tier = ward.tier
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
         self.prevFac = None
+        self.cpReason = None
 
     @property
     def ward(self):

@@ -44,7 +44,9 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
         tierAxisD = {}
         tAOffset = 0
         for dayVec, curves in tplList:
+            #print dayVec
             dayIndex = np.where(dayVec==burninDays)[0][0]
+            #print dayIndex
             tmpVecD = defaultdict(list)
             totVecD = {}
             for tpl, lVec in curves.items():
@@ -59,16 +61,17 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
                                                                 'colonizedDaysTS':lVec[dayIndex:],
-                                                                'bedDaysTS':lVec[dayIndex:]}
+                                                                'bedDaysTS':totVecD[tier][dayIndex:]}
                     
                     for key in translationDict.keys():
                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
                         
     for key,noteKey in translationDict.items():
+        print "key = {0}".format(key)
         for abbrev in abbrevList:
             tplList = print_counts.getTimeSeriesList(abbrev,specialDict,noteKey)
             for dayVec,curves in tplList:
-                dayIndex = np.where(dayVec==burninDays)[0][0]
+                dayIndex = np.where(dayVec==(burninDays+1))[0][0]
                 for tpl, curve in curves.items():
                     returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
                     returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
@@ -170,18 +173,32 @@ def main():
     print "runDays = {0}".format(runDays)
     
     ### Translation Dict
-    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 'creBundlesHandedOut']
+    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 
+                          'creBundlesHandedOut','creSwabsUsed','newPatientsOnCP','passiveCPDays',
+                          'swabCPDays','otherCPDays']
     valuesToGather = {'newColonized':'localtiernewcolonized',
                       'creArrivals':'localtiercrearrivals',
                       'arrivals':'localtierarrivals',
                       'contactPrecautionDays': 'localtierCP',
-                      'creBundlesHandedOut': 'localtierCREBundle'
+                      'creBundlesHandedOut': 'localtierCREBundle',
+                      'creSwabsUsed':'localtierCRESwabs',
+                      'newPatientsOnCP': 'localtierpatientsOnCP',
+                      'passiveCPDays':'localtierpassiveCP',
+                      'swabCPDays':'localtierswabCP',
+                      'otherCPDays':'localtierotherCP',
                       }
     tableHeadings = {'newColonized':'Newly Colonized',
                       'creArrivals':'CRE Colonized Patients Admissions',
                       'arrivals':'Patient Admissions',
                       'contactPrecautionDays': 'Contact Precaution Days',
-                      'creBundlesHandedOut': 'CRE Bundles Given Out'
+                      'creBundlesHandedOut': 'CRE Baths Given Out',
+                      'creSwabsUsed':'CRE Swabs Used',
+                      'newPatientsOnCP':'Number of Patients Put on CP',
+                      'passiveCPDays':'CRE CP Days due to passive surveillance',
+                      'swabCPDays':'CRE CP Days due to acitve surveillance',
+                      'otherCPDays':'CP Days for other reasons'
+                      
+                      
                       }
     notes = []
     if opts.glob:
@@ -341,6 +358,7 @@ def main():
                 statsByTier[abbrev][tier]['colonizedDaysTS'] = combineTimeSeries(cTs,runDays,1)
                 statsByTier[abbrev][tier]['bedDaysTS'] = combineTimeSeries(bTs,runDays,1)
             for k in valuesToGather.keys():
+                print "Key 2 = {0}".format(k)
                 statsByTier[abbrev][tier][k] = {'mean':np.mean(statTierDict[k]['value']),
                                                        'median':np.median(statTierDict[k]['value']),
                                                        'stdv':np.std(statTierDict[k]['value']),
