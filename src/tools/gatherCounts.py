@@ -3,7 +3,6 @@ import sys,os
 import glob
 import numpy as np
 import pandas as pd
-import statsmodels.stats.api as sms
 import scipy.stats as st
 import yaml
 from multiprocessing import Process,Manager,cpu_count,Pool
