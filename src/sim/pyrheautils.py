@@ -20,6 +20,7 @@ import logging
 import sys
 import os
 from imp import load_source
+from facilitybase import FacilityRegistry
 
 import schemautils
 
@@ -41,6 +42,17 @@ def pathTranslate(rawPath, lookupDict=None):
     return path
     
 
+def syncXDRORegistries(facilities):
+    syncRegistry = FacilityRegistry("sync reg") 
+     
+    for fac in facilities:
+        if fac.registry.hasRegistry("xdroRegistry"):
+            syncRegistry.transferFromOtherRegistry(fac.registry,"xdroRegistry","sync reg")
+    
+    for fac in facilities:
+        if fac.registry.hasRegistry("xdroRegistry"):
+            fac.registry.transferFromOtherRegistry(syncRegistry,"sync reg","xdroRegistry")
+            
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)

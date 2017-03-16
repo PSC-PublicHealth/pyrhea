@@ -60,6 +60,10 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
+        
+        ### adding these to differentiate XDRO with normal passive
+        self.increasedEffectivness = -1.0 #_constants['pathogenDiagnosticEffectiveness']['value']
+        self.increasedFalsePosRate = -1.0 #_constants['pathogenDiagnosticFalsePositiveRate']['value']
         self.core = GDPCore()
         
     def diagnose(self, patient, oldDiagnosis, facility = None):
@@ -83,36 +87,92 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 if facility is not None: 
                     if patient.prevFac == facility:
                         pass
-                        ### Patient being readmitted to the same facility
-                        #sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
-                        #if random() <= sameFacProb:
-                        #    facility.registry.registerPatient('knownCRECarrier',patient.name)     
                     else:
                         #print "Previous Facililty category = {0}".format(patient.prevFac.category)
                         commFacProb = self.core.communicateDiagnosisBetweenFacility[patient.prevFac.category]
                         if random() <= commFacProb:
                             facility.registry.registerPatient('knownCRECarrier',patient.name)
+                            if facility.registry.hasRegistry('xdroRegistry'):
+                                facility.registry.registerPatient('xdroRegistry',patient.name)
             
-                
-            if facility is not None and facility.registry.isPatientInRegistry('knownCRECarrier',patient.name):
-                diagnosedPthStatus = PthStatus.COLONIZED
-                
-            elif patientStatus.pthStatus == PthStatus.COLONIZED:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
-                                      else PthStatus.CLEAR)
-            else:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
-                                      else PthStatus.CLEAR)
-            
-            ### if they are known to be colonized at the facility, then we need ot see if they go on the 
-            ### registry
+            ### I know this is messy, but explicit keeps it straight for me - STB
+            caughtBy = None    
+            ### facility is not None, then we must run through the registry algorithm
             if facility is not None:
-                if diagnosedPthStatus == PthStatus.COLONIZED:
+                # first are they someone that would be captured as a known patient
+                if facility.registry.isPatientInRegistry('knownCRECarrier',patient.name):
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    caughtBy = "passive"
+                # if not caught by the known carrier, check the XDRO registry
+                elif facility.registry.hasRegistry('xdroRegistry') and facility.registry.isPatientInRegistry('xdroRegistry',patient.name):
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    caughtBy = "xdro"
+                # if not on either registry, check passive surv.
+                elif patientStatus.pthStatus == PthStatus.COLONIZED:
+                    randNum = random()
+                    ### First Normal awareness
+                    if randNum < self.effectiveness:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "passive"
+                    ### Increased awareness
+                    elif facility.registry.hasRegistry('xdroRegistry') and randNum < self.increasedEffectivness:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "xdro"
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR
+                else:
+                    randNum = random()
+                    if randNum < self.falsePosRate:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "passive"
+                    elif facility.registry.hasRegistry('xdroRegistry') and randNum < self.increasedFalsePosRate:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "xdro"
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR
+            else: # with no facility, there is no registry so just the normal diagnosis
+                if patientStatus.pthStatus == PthStatus.COLONIZED:
+                    randNum = random()
+                    ### First Normal awareness
+                    if randNum < self.effectiveness:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "passive"
+                    elif self.increasedEffectivness > 0.0 and randNum < self.increasedEffectivness:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "xdro"
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR
+                else:
+                    randNum = random()
+                    if randNum < self.falsePosRate:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "passive"
+                    elif self.increasedFalsePosRate > 0.0 and randNum < self.increasedFalsePosRate:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        caughtBy = "xdro"
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR
+            
+            
+            ### Now... the book keeping
+            if diagnosedPthStatus == PthStatus.COLONIZED:
+                if caughtBy == 'xdro':
+                    #print "Patient Caught by XDRO"
+                    patient.cpReason = 'xdro'
+                else:
+                    #print "Patient Caught by Passive"
                     patient.cpReason = 'passive'
+            
+                ### update Registries
+                if facility is not None:
+                    ### First take care of the knownCarrier Registry
                     sameFacProb = self.core.sameFacilityDiagnosisMemory[facility.category]
                     if random() <= sameFacProb:
-                        facility.registry.registerPatient('knownCRECarrier',patient.name)          
-                    
+                        facility.registry.registerPatient('knownCRECarrier',patient.name)
+                    ### We will assume that if there is an XDRO registry, the will definitely catalog this patient
+                    if facility.registry.hasRegistry('xdroRegistry'):
+                        facility.registry.registerPatient('xdroRegistry',patient.name)
+                                    
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
             
@@ -132,7 +192,8 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         """
         if key == 'pathogenDiagnosticEffectiveness':
             self.effectiveness = val
-            print 'effectiveness is now %s' % self.effectiveness
+        elif key == 'pathogenDiagnosticEffectivenessIncreasedAwareness':
+            self.increasedEffectivness = val
         else:
             super(GenericDiagnosticPolicy, self).setValue(key, val)
 

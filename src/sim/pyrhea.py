@@ -35,6 +35,7 @@ import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
 import ujson 
+#from policyImplementations.xdro_registry_scenario.py import syncXDRORegistries
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -346,6 +347,26 @@ def buildLocalTierOCPDict(patch,timeNow):
             facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
             
     return facTrtDict
+
+def buildLocalTierXCPDict(patch,timeNow):
+    global _TRACKED_FACILITIES_SET
+    if not _TRACKED_FACILITIES_SET:
+        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    facTrtDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            continue
+        facPPC = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            key = "{0}".format(ward.tier)
+            facPPC[key] += ward.miscCounters['xdroDaysOnCP']
+            ward.miscCounters['xdroDaysOnCP'] = 0.0
+        for key,v in facPPC.items():
+            facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+            
+    return facTrtDict
+
 def buildLocalTierCREBundleDict(patch,timeNow):
     global _TRACKED_FACILITIES_SET
     if not _TRACKED_FACILITIES_SET:
@@ -439,6 +460,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierpassiveCP': buildLocalTierPCPDict,
                           'localtierswabCP': buildLocalTierSCPDict,
                           'localtierotherCP': buildLocalTierOCPDict,
+                          'localtierxdroCP': buildLocalTierXCPDict,
                           'localtierpatientsOnCP': buildLocalTierPatCPDict,
                           #'localCounters': buildLocalTierCountersDict
                           }
@@ -635,9 +657,10 @@ def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
     def perDayCB(loop, timeNow):
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
-#         for fac in patch.allFacilities:
-#             if fac.category != "COMMUNITY":
-#                 print fac.registry
+        #for fac in patch.allFacilities:
+        #    if fac.category != "COMMUNITY":
+        #        print fac.registry
+        pyrheautils.syncXDRORegistries(patch.allFacilities)        
         noteHolder.addNote({key: [recFun(patch, timeNow)]
                             for key, recFun in recGenDict.items()})
         if timeNow > runDurationDays:

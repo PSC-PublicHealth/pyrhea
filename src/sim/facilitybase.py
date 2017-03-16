@@ -114,10 +114,11 @@ class Ward(pyrheabase.Ward):
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
-        ### Shawn Sucks
+        ### Shawn Sucks and is paranoid
         self.miscCounters['passiveDaysOnCP'] = 0
         self.miscCounters['swabDaysOnCP'] = 0
         self.miscCounters['otherDaysOnCP'] = 0
+        self.miscCounters['xdroDaysOnCP'] = 0
 
     def getPatientList(self):
         return self._lockingAgentList[:self._nLocks]
@@ -439,17 +440,31 @@ class FacilityRegistry(object):
         if fromKey not in self.registryDict.keys():
             raise RuntimeError("In transferRegsitry: The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,fromKey))
         if toKey not in self.registryDict.keys():
-            self.start(toKey)
+            self.startRegistry(toKey)
         
         for name in self.registryDict[fromKey]:
             if name not in self.registryDict[toKey]:
                 self.registryDict[toKey].append(name)
     
+    def hasRegistry(self,key):
+        return key in self.registryDict.keys()
+    
     def isPatientInRegistry(self,key,patientName):
         if key not in self.registryDict.keys():
             raise RuntimeError("The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,key))
         return patientName in self.registryDict[key]
-           
+    
+    def transferFromOtherRegistry(self,otherReg,fromKey,toKey):
+        if fromKey not in otherReg.registryDict.keys():
+            raise RuntimeError("In transferFromOtherRegsitry: The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,fromKey))
+        if toKey not in self.registryDict.keys():
+            self.startRegistry(toKey)
+            
+        for name in otherReg.registryDict[fromKey]:
+            if name not in self.registryDict[toKey]:
+                self.registryDict[toKey].append(name)
+    
+         
     def __str__(self):
         returnString = "<{0} Registry>\n".format(self.facilityAbbrev)
         for key,reg in self.registryDict.items():
@@ -740,8 +755,8 @@ class PatientAgent(pyrheabase.PatientAgent):
 
         self.lastUpdateTime = timeNow
         abbrev = self.ward.fac.abbrev
-        self.prevFac = None
-        self.cpReason = None
+        #self.prevFac = None
+        #self.cpReason = None
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
         self.logger = logging.getLogger(__name__ + '.PatientAgent')

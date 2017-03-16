@@ -20,6 +20,7 @@ import logging
 import pyrheautils
 from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
 from generic_diagnostic import GenericDiagnosticPolicy
+#from facilitybase import FacilityRegistry
 
 _validator = None
 _constants_values = '$(CONSTANTS)/xdro_registry_scenario_constants.yaml'
@@ -27,7 +28,7 @@ _constants_schema = 'xdro_registry_scenario_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
-
+            
 class XDRORegistryScenario(BaseScenarioPolicy):
     def __init__(self, name, patch):
         super(XDRORegistryScenario, self).__init__(name, patch)
@@ -47,8 +48,8 @@ class XDRORegistryScenario(BaseScenarioPolicy):
                 #if isinstance(fac.diagnosticPolicy, GenericDiagnosticPolicy):
                     #print 'XDRO setting %s' % fac.abbrev
                     
-                    fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', self.newEffectiveness)
-                    fac.registry.transferRegistry('knownCRECarrers','xdroRegistry')
+                    fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness', self.newEffectiveness)
+                    fac.registry.transferRegistry('knownCRECarrier','xdroRegistry')
                     
 
 def getPolicyClasses():

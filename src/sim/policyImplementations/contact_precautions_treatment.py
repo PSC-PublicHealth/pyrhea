@@ -160,16 +160,18 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             
             ### If this patient has just arrived, then this is a new contact precaution
             if patient._status.justArrived:
+                if CareTier.names[patient.ward.tier] == 'VENT':
+                    print "I AM A VENT PATIENT!!!!! at {0}".format(patient.ward.fac.abbrev)
                 ward.miscCounters['newPatientsOnCP'] += 1
             
             ### Need to track the reason they are on CP    
             if hasattr(patient,'cpReason'):
-                if patient.cpReason == "swab":
-                    print "Reason for the cp = {0}".format(patient.cpReason)
                 if patient.cpReason == "passive":
                     ward.miscCounters['passiveDaysOnCP'] += ward.checkInterval
                 elif patient.cpReason == "swab":
                     ward.miscCounters['swabDaysOnCP'] += ward.checkInterval
+                elif patient.cpReason == "xdro":
+                    ward.miscCounters['xdroDaysOnCP'] += ward.checkInterval
                 else:
                     ward.miscCounters['otherDaysOnCP'] += ward.checkInterval
             else:
