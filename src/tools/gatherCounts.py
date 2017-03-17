@@ -181,7 +181,7 @@ def main():
     ### Translation Dict
     valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 
                           'creBundlesHandedOut','creSwabsUsed','newPatientsOnCP','passiveCPDays',
-                          'swabCPDays','otherCPDays']
+                          'swabCPDays','xdroCPDays','otherCPDays']
     valuesToGather = {'newColonized':'localtiernewcolonized',
                       'creArrivals':'localtiercrearrivals',
                       'arrivals':'localtierarrivals',
@@ -191,6 +191,7 @@ def main():
                       'newPatientsOnCP': 'localtierpatientsOnCP',
                       'passiveCPDays':'localtierpassiveCP',
                       'swabCPDays':'localtierswabCP',
+                      'xdroCPDays':'localtierxdroCP',
                       'otherCPDays':'localtierotherCP',
                       }
     tableHeadings = {'newColonized':'Newly Colonized',
@@ -202,6 +203,7 @@ def main():
                       'newPatientsOnCP':'Number of Patients Put on CP',
                       'passiveCPDays':'CRE CP Days due to passive surveillance',
                       'swabCPDays':'CRE CP Days due to acitve surveillance',
+                      'xdroCPDays':'CRE CP Days due to xdro registry',
                       'otherCPDays':'CP Days for other reasons'
                       
                       
@@ -451,6 +453,8 @@ def main():
                                                             'stdv':[0.0 for x in range(0,runDays)],
                                                             '5%CI':[0.0 for x in range(0,runDays)],
                                                             '95%CI':[0.0 for x in range(0,runDays)]}
+    
+    
         
     print "time 1 = {0}".format(time1Counter)
     print "time 2 = {0}".format(time2Counter)
@@ -571,12 +575,32 @@ def main():
                 bedTotal = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
                 ncolsTotal = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys()])
                 
+                prevWithin = 0.0
+                if bedWithin > 0.0:
+                    prevWithin = colWithin/bedWithin
+                
+                prevWithout = 0.0
+                if bedWithin > 0.0:
+                    prevWithout = colWithout/bedWithout
+                    
+                prevTarget = 0.0
+                if bedTarget > 0.0:
+                    prevTarget = colTarget/bedTarget
+                    
+                prevNonTarget = 0.0
+                if bedNonTarget > 0.0:
+                    prevNonTarget = colNonTarget/bedNonTarget
+                    
+                prevTotal = 0.0
+                if bedTotal > 0.0:
+                    prevTotal = colWithin/bedTotal
+                    
                 entryRow = ['{0}'.format(i),
-                            colWithin/bedWithin,
-                            colWithout/bedWithout,
-                            colTarget/bedTarget,
-                            colNonTarget/bedNonTarget,
-                            colTotal/bedTotal,
+                            prevWithin,
+                            prevWithout,
+                            prevTarget,
+                            prevNonTarget,
+                            prevTotal,
                             ncolsWithin,
                             ncolsWithout,
                             ncolsTarget,
