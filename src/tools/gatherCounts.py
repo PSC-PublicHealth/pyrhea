@@ -147,6 +147,7 @@ def main():
                       help='number of cpus to run the costing model over')
     parser.add_option('-t','--producetimeseries',action='store_true',default=False)
     
+    
     opts, args = parser.parse_args()
     
     inputDict = checkInputFileSchema(args[0], os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -545,19 +546,50 @@ def main():
         
         with open("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),"wb") as f:
             csvWriter = csv.writer(f)
-            headRow = ['Day','Prev within 13','Prev outside 13','Inc within 13','Inc outside 13']
+            headRow = ['Day','Prev within 13','Prev outside 13','Prev target','Prev nonTarget','Prev regionWide',
+                       'Inc within 13','Inc outside 13','Inc target','Inc nonTarget','Inc regionWide']
             csvWriter.writerow(headRow)
             
             for i in range(0,runDays):
                 colWithin = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
                 bedWithin = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
                 ncolsWithin = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                
                 colWithout = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
                 bedWithout = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
                 ncolsWithout = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
-                entryRow = ['{0}'.format(i),colWithin/bedWithin,colWithout/bedWithout,ncolsWithin,ncolsWithout]
+                
+                colTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                bedTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                ncolsTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                
+                colNonTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                bedNonTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                ncolsNonTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                
+                colTotal = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
+                bedTotal = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
+                ncolsTotal = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys()])
+                
+                entryRow = ['{0}'.format(i),
+                            colWithin/bedWithin,
+                            colWithout/bedWithout,
+                            colTarget/bedTarget,
+                            colNonTarget/bedNonTarget,
+                            colTotal/bedTotal,
+                            ncolsWithin,
+                            ncolsWithout,
+                            ncolsTarget,
+                            ncolsNonTarget,
+                            ncolsTotal
+                            ]
                 csvWriter.writerow(entryRow)
                 
+#         with open("{0}_prevalence_and_incidence_per_day_target.csv".format(outFileName),"wb") as f:
+#             csvWriter = csv.writer(f)
+#             headRow = ['Day',,'Inc target','Inc nonTarget','Prev region']
+#             csvWriter.writerow(headRow)  
+            
                    
         with open("{0}_colonized_patients_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
             csvWriter = csv.writer(f)
