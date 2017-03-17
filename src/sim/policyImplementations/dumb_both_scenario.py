@@ -44,13 +44,16 @@ class DumbBothScenario(BaseScenarioPolicy):
         # the scenario.
         for fac in self.patch.allFacilities:
             if fac.abbrev in self.facSet:
-                print 'XDRO setting %s' % fac.abbrev
+                print 'XDRO setting {0}'.format(fac.abbrev)
+                fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness', self.newEffectiveness)
+                fac.registry.transferRegistry('knownCRECarrier','xdroRegistry')
                 for tP in fac.treatmentPolicies:
                     # Why does isinstance fail in this context!?
                     if type(tP).__name__ == CREBundleTreatmentPolicy.__name__:
-                        print 'CREBundle setting %s' % fac.abbrev
+                        print 'CREBundle setting {0}'.format(fac.abbrev)
                         tP.setValue('active', True)
-                if type(fac.diagnosticPolicy)._name == CREBundleDiagnosticPolicy.__name__:
+                if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                    print "Activeating Bundle Diagnostic to active at {0}".format(fac.abbrev)
                     fac.diagnosticPolicy.setValue('active',True)
                     
                     
