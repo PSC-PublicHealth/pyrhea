@@ -567,9 +567,9 @@ def main():
                 bedTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
                 ncolsTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
                 
-                colNonTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
-                bedNonTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
-                ncolsNonTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                colNonTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                bedNonTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                ncolsNonTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
                 
                 colTotal = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
                 bedTotal = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
