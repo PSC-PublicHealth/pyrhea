@@ -22,7 +22,8 @@ import yaml
 import glob
 import random
 from optparse import OptionParser
-from multiprocessing import Process,Manager
+from multiprocessing import Process,Manager,Pool
+from collections import defaultdict
 
 import numpy as np
 import scipy.stats as st
@@ -711,76 +712,128 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
     return outcomeCosts
     
     
-def extractNewColonized(abbrev,specialDict):
+def extractNewColonized(abbrev,specialDict,burninDays):
     ncList = getTimeSeriesList(abbrev,specialDict,'localtiernewcolonized')
     sums = {}
     for dayVec,curves in ncList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
         for tpl, curve in curves.items():
-            sums[CareTier.names[tpl]] = sum(curve)
+            sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
     
     return sums
 
-def extractContactPrecautionDays(abbrev,specialDict):
+def extractContactPrecautionDays(abbrev,specialDict,burninDays):
     cpList = getTimeSeriesList(abbrev,specialDict,'localtierCP')
-    sums = {}
-    for dayVec,curves in cpList:
+    pCPList = getTimeSeriesList(abbrev,specialDict,'localtierpassiveCP')
+    aCPList = getTimeSeriesList(abbrev,specialDict,'localtieractiveCP')
+    xCPList = getTimeSeriesList(abbrev,specialDict,'localtierxdroCP')
+    oCPList = getTimeSeriesList(abbrev,specialDict,'localtierotherCP')
+    
+    cpDaysForAbbrev = defaultdict(lambda: {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0})
+    for dayVec,curves in pCPList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
         for tpl,curve in curves.items():
-            sums[CareTier.names[tpl]] = sum(curve)
-    return sums
+            cpDaysForAbbrev[tpl]['pCP'] += sum(curve[dayIndex:])
+    for dayVec,curves in aCPList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
+        for tpl,curve in curves.items():
+            cpDaysForAbbrev[tpl]['aCP'] += sum(curve[dayIndex:])
+    for dayVec,curves in xCPList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
+        for tpl,curve in curves.items():
+            cpDaysForAbbrev[tpl]['xCP'] += sum(curve[dayIndex:])
+    for dayVec,curves in oCPList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
+        for tpl,curve in curves.items():
+            cpDaysForAbbrev[tpl]['oCP'] += sum(curve[dayIndex:])
+#     sums = {}
+#     for dayVec,curves in cpList:
+#         for tpl,curve in curves.items():
+#             sums[CareTier.names[tpl]] = sum(curve)
+#     return sums
+    return cpDaysForAbbrev
 
-def extractCREBundlesGiven(abbrev,specialDict):
+def extractCREBundlesGiven(abbrev,specialDict,burninDays):
     cpList = getTimeSeriesList(abbrev,specialDict,'localtierCREBundle')
-    sums = {}
+    sums = defaultdict(lambda:0.0)
     for dayVec,curves in cpList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
         for tpl,curve in curves.items():
-            sums[CareTier.names[tpl]] = sum(curve)
+            sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
     return sums   
 
-def extractXDROCounts(abbrev,specialDict):
+def extractXDROCounts(abbrev,specialDict,burninDays):
     cpList = print_xdro_counts.getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
     sumT = 0.0
     for dayVec,curves in cpList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
         for tpl,curve in curves.items():
-            sumT += sum(curve)
+            sumT += sum(curve[dayIndex:])
     return sumT
 
-def getNewCols(abbrevs,note,i,facDict,xdroabbrevs,newColsReturn):
+def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
     print note
     specialDict = mergeNotesFiles([note], False)
     specialXDRODict = print_xdro_counts.mergeNotesFiles([note], False)
-    newColL = {}
+    newColL = {}#defaultdict(lambda:0.0)
     newColAll = 0.0
     for abbrev in abbrevs:
-        
-        newColDict = extractNewColonized(abbrev,specialDict)
+        newColDict = extractNewColonized(abbrev,specialDict,burninDays)
+        newColL[abbrev] = 0.0
         for k,v in newColDict.items():
+            newColL[abbrev] += v
             newColAll += v
     
-    cpDaysByType = {}
+    #print "nColL = {0}".format(newColL)
+    cpDaysByAbbrev = {}#defaultdict(lambda: {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0})
     for abbrev in abbrevs:
-        cpForThisPlace = extractContactPrecautionDays(abbrev,specialDict)
-        facCat = facDict[abbrev]['category']
-        if facCat not in cpDaysByType.keys():
-            cpDaysByType[facCat] = 0.0
-        for k,v in cpForThisPlace.items():
-            cpDaysByType[facCat] += v 
- 
-   
-    creBundlesAll = 0.0
+        cpDaysByAbbrev[abbrev] = {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0}
+        cpForThisPlace = extractContactPrecautionDays(abbrev, specialDict,burninDays)
+        for tpl,values in cpForThisPlace.items():
+            for k,v in values.items():
+                #print k
+                cpDaysByAbbrev[abbrev][k] += v
     
+    
+    #print "cpDays = {0}".format(cpDaysByAbbrev)    
+#     cpDaysByType = {}
+#     for abbrev in abbrevs:
+#         cpForThisPlace = extractContactPrecautionDays(abbrev,specialDict)
+#         facCat = facDict[abbrev]['category']
+#         if facCat not in cpDaysByType.keys():
+#             cpDaysByType[facCat] = 0.0
+#         for k,v in cpForThisPlace.items():
+#             cpDaysByType[facCat] += v 
+#  
+   
+    #creBundlesAll = 0.0
+    creBundlesByAbbrev = {}#defaultdict(lambda:0.0)
     for abbrev in abbrevs:
-        creBundlesDict = extractCREBundlesGiven(abbrev, specialDict)
+        creBundlesByAbbrev[abbrev] = 0.0
+        creBundlesDict = extractCREBundlesGiven(abbrev, specialDict,burninDays)
         for k,v in creBundlesDict.items():
-            creBundlesAll += v
+            creBundlesByAbbrev[abbrev] += v
 
-    xdroAll = 0.0
+    xdroByAbbrev = {}#defaultdict(lambda: 0.0)
     for abbrev in abbrevs:
+        xdroByAbbrev[abbrev] = 0.0
         if abbrev in xdroabbrevs:
-            xdroAll += extractXDROCounts(abbrev,specialXDRODict)
-    newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
+            xdroByAbbrev[abbrev]  += extractXDROCounts(abbrev,specialXDRODict,burninDays)
+        else:
+            xdroByAbbrev[abbrev] = 0.0
+    
+    for abbrev,xdro in xdroByAbbrev.items():
+        print "{0}: {1}".format(abbrev,xdro)
+    #print "X = {0}".format(xdroByAbbrev)
+    return (newColAll,cpDaysByAbbrev,creBundlesByAbbrev,xdroByAbbrev)
 
-def determin_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, i, costsOfRealizationTmp): 
-    costsOfReal = {}
+    #newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
+
+def getNewCols_poolHelper(args):
+    return getNewCols(*args)
+    
+def determine_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbrevs, params, opts, fracAttribMort, notes): 
+    costsOfReal = {x:{} for x in abbrevs}
     randomInt = random.randint(0,len(notes)-1)
     newColAll = newColsArray[randomInt]
     cpDaysByType = cpDaysArray[randomInt]
@@ -813,47 +866,66 @@ def determin_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params
     rNurseWage = Cost(Distribution(rNurseWageDict['distribution']['type'],
                                    rNurseWageDict['distribution']['args']).draw(),
                       rNurseWageDict['year'])
-    if opts.xdroyamlfile: 
-        xdroCosts = computeCostOfXDROReg(xdroAll,opts.targetyear, params) # replace with RHEA
-    else:
-        xdroCosts = Cost(0.0,opts.targetyear)
-    contPrecCosts = Cost(0.0,opts.targetyear)
-    for fType,cpDays in cpDaysByType.items():
-        cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
-        contPrecCosts += cpst 
-    bundleCosts = computeCostsOfBundles(creBundlesAll, 0, opts.targetyear, params) # replace with RHEA
-    outcomesDict = determineOutcomes(newColAll,0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
-    #costsOfRealization[i]['outcomesDict'] = outcomesDict
     
-    totalSoc = 0.0
-    totalQALY = 0.0
-    totalHosp = 0.0
-    total3rd = 0.0
-    totalCases = 0.0
-    totalDead = 0.0
+    #xdroCosts = {}
+    contPrecCostsByAbbrev = {}#defaultdict(lambda: Cost(0.0,opts.targetYear))
+    bundleCostsByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
+    outcomesDictByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
+    xdroCostsByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
     
-    for oC,oCD in outcomesDict.items():
-        if oC not in ['pneumoniaAll']:
-            #print oC
-            totalCases += oCD['nCases']
-            totalDead += oCD['nDead']
-            totalQALY += oCD['QALYs Lost'].value
-            totalHosp += oCD['Hospitalization Cost'].value
-            total3rd += oCD['thirdParty Costs'].value
-            totalSoc += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
+    for abbrev in abbrevs:  
+        if opts.xdroyamlfile: 
+            xdroCostsByAbbrev[abbrev] = computeCostOfXDROReg(xdroAll[abbrev],opts.targetyear, params) # replace with RHEA
+        else:
+            xdroCostsByAbbrev[abbrev] = Cost(0.0,opts.targetyear)#computeCostOfXDROReg()
+        #contPrecCosts = Cost(0.0,opts.targetyear)
+        #for fType,cpDays in cpDaysByType.items():
+        #    cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
+        contPrecCostsByAbbrev[abbrev] = 0.0
+        bundleCostsByAbbrev[abbrev] = computeCostsOfBundles(creBundlesAll, 0, opts.targetyear, params) # replace with RHEA
+        outcomesDictByAbbrev[abbrev] = determineOutcomes(newColAll,0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
+        #costsOfRealization[i]['outcomesDict'] = outcomesDict
+    
+    totalSocByAbbrev = {}#defaultdict(lambda: 0.0)
+    totalQALYByAbbrev = {}#defaultdict(lambda: 0.0)
+    totalHospByAbbrev = {}#defaultdict(lambda: 0.0)
+    total3rdByAbbrev = {}#defaultdict(lambda: 0.0)
+    totalCasesByAbbrev = {}#defaultdict(lambda: 0.0)
+    totalDeadByAbbrev = {}#defaultdict(lambda: 0.0)
+    
+    for abbrev in abbrevs:
+        totalCasesByAbbrev[abbrev] = 0.0
+        totalDeadByAbbrev[abbrev] = 0.0
+        totalQALYByAbbrev[abbrev] = 0.0
+        totalHospByAbbrev[abbrev] = 0.0
+        total3rdByAbbrev[abbrev] = 0.0
+        totalSocByAbbrev[abbrev] = 0.0
+        for oC,oCD in outcomesDictByAbbrev[abbrev].items():
+            if oC not in ['pneumoniaAll']:
+                #print oC
+                totalCasesByAbbrev[abbrev] += oCD['nCases']
+                totalDeadByAbbrev[abbrev] += oCD['nDead']
+                totalQALYByAbbrev[abbrev] += oCD['QALYs Lost'].value
+                totalHospByAbbrev[abbrev] += oCD['Hospitalization Cost'].value
+                total3rdByAbbrev[abbrev] += oCD['thirdParty Costs'].value
+                totalSocByAbbrev[abbrev] += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
     
     
-    costsOfReal['NewColonizations'] = newColAll       
-    costsOfReal['Intervention Costs'] = Cost(xdroCosts.value + contPrecCosts.value + bundleCosts.value,opts.targetyear)
-    costsOfReal['QALYs Lost'] = Cost(totalQALY,opts.targetyear)
-    costsOfReal['Hospitalization Costs'] = Cost(totalHosp,opts.targetyear)
-    costsOfReal['thirdParty Costs'] = Cost(total3rd,opts.targetyear)
-    costsOfReal['Societal Costs'] = Cost(totalSoc,opts.targetyear)
-    costsOfReal['nCases'] = totalCases
-    costsOfReal['nDead'] = totalDead
-    costsOfReal['cpDays'] = sum([x for k,x in cpDaysByType.items()])
-    costsOfReal['creBundles'] = creBundlesAll
-    costsOfRealizationTmp[i] = costsOfReal
+    costsOfReal[abbrev]['NewColonizations'] = newColAll       
+    costsOfReal[abbrev]['Intervention Costs'] = Cost(xdroCostsByAbbrev[abbrev].value + contPrecCostsByAbbrev[abbrev].value + bundleCostsByAbbrev[abbrev].value,opts.targetyear)
+    costsOfReal[abbrev]['QALYs Lost'] = Cost(totalQALYByAbbrev[abbrev],opts.targetyear)
+    costsOfReal[abbrev]['Hospitalization Costs'] = Cost(totalHospByAbbrev[abbrev],opts.targetyear)
+    costsOfReal[abbrev]['thirdParty Costs'] = Cost(total3rdByAbbrev[abbrev],opts.targetyear)
+    costsOfReal[abbrev]['Societal Costs'] = Cost(totalSocByAbbrev[abbrev],opts.targetyear)
+    costsOfReal[abbrev]['nCases'] = totalCasesByAbbrev[abbrev]
+    costsOfReal[abbrev]['nDead'] = totalDeadByAbbrev[abbrev]
+    costsOfReal[abbrev]['cpDays'] =  0.0 #sum([x for k,x in cpDaysByType[abbrev].items()])
+    costsOfReal[abbrev]['creBundles'] = creBundlesAll
+    return costsOfReal
+    #costsOfRealizationTmp[i] = costsOfReal
+
+def determine_costs_helper(args):
+    return determine_costs(*args)
     
 def main():
     
@@ -896,6 +968,16 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    burninDays = int(inputDict['burnInDays'])
+    runDays = int(inputDict['runDurationDays'])
+    
+    paths = {}
+    for pT in inputDict['pathTranslations']:
+        paths[pT['key']] = pT['value']
+        
+    with open("{0}/costModel_ChicagoLand.yaml".format(paths['CONSTANTS']),"rb") as f:
+        params = yaml.load(f)
+        
     notes = []
     if opts.glob:
         notes = glob.glob('{0}'.format(opts.notes[0]))
@@ -905,7 +987,7 @@ def main():
     if opts.xdroyamlfile:
         with open(opts.xdroyamlfile,'rb') as f:
             xdroparams = yaml.load(f)
-    xdroabbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
+            xdroabbrevs = xdroparams['locationsImplementingScenario']['locAbbrevList']
 
     newColsArray = [0.0 for x in range(0,len(notes))]
     cpDaysArray = [0.0 for x in range(0,len(notes))]
@@ -919,34 +1001,42 @@ def main():
                 
     nprocs = opts.nprocs
     
-    ### This part is the parallel reading of input data into the array
-    for i in range(0,len(notes),nprocs):
-        manager = Manager()
-        newColsReturn = manager.dict()
-        jobs = []
-        end = i + nprocs
-        if end > len(notes):
-            end = len(notes)
-        
-        for j in range(i,end):
-            p = Process(target=getNewCols,args = (abbrevs,notes[j],j,facDict,xdroabbrevs,newColsReturn))
-            jobs.append(p)
-            p.start()
-        
-        for proc in jobs:
-            proc.join()
-        for k,v in newColsReturn.items():
-            newColsArray[k] = v[0]
-            cpDaysArray[k] = v[1]
-            creBundlesArray[k] = v[2] 
-            xdroArray[k] = v[3]
-        #print cpDaysArray   
-        #print xdroArray
-        
-        
-    with open("costModel_ChicagoLand.yaml","rb") as f:
-        params = yaml.load(f)
+    argsList = [(abbrevs, notes[i], facDict, xdroabbrevs, burninDays) for i in range(0,len(notes))]
     
+    p = Pool(nprocs)
+    nColsReturnTmp = p.map(getNewCols_poolHelper,argsList)
+    p.close()
+    
+    for i in range(0,len(nColsReturnTmp)):
+        newColsArray[i] = nColsReturnTmp[i][0]
+        cpDaysArray[i] = nColsReturnTmp[i][1]
+        creBundlesArray[i] = nColsReturnTmp[i][2] 
+        xdroArray[i] = nColsReturnTmp[i][3]
+    
+#     ### This part is the parallel reading of input data into the array
+#     for i in range(0,len(notes),nprocs):
+#         manager = Manager()
+#         newColsReturn = manager.dict()
+#         jobs = []
+#         end = i + nprocs
+#         if end > len(notes):
+#             end = len(notes)
+#         
+#         for j in range(i,end):
+#             p = Process(target=getNewCols,args = (abbrevs,notes[j],j,facDict,xdroabbrevs,newColsReturn))
+#             jobs.append(p)
+#             p.start()
+#         
+#         for proc in jobs:
+#             proc.join()
+#         for k,v in newColsReturn.items():
+#             newColsArray[k] = v[0]
+#             cpDaysArray[k] = v[1]
+#             creBundlesArray[k] = v[2] 
+#             xdroArray[k] = v[3]
+#         #print cpDaysArray   
+#         #print xdroArray
+        
     nReals = opts.nreals
     
     costs = {'Societal Costs': {x:{} for x in fractionAttribMorts}, 
@@ -960,8 +1050,19 @@ def main():
              'CRE Bundles': {x:{} for x in fractionAttribMorts}
              }
     
+    
+    
     costsOfRealization = [{} for x in range(0,nReals)]
     for fracAttribMort in fractionAttribMorts:
+        costArgList = [(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort,notes) for x in range(0,nReals)]
+        
+        pp = Pool(nprocs)
+        costOfRealByAbbrev = p.map(determine_costs_helper,costArgList)
+        p.close()
+        
+        print costOfRealByAbbrev
+        
+    '''
         for i in range(0,nReals,nprocs):
             manager = Manager()
             costsOfRealizationTmp = manager.dict()
@@ -982,7 +1083,9 @@ def main():
             
                 for h,w in v.items():
                     costsOfRealization[k][h] = w
-          
+        
+        
+        continue  
         a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
         costs['Societal Costs'][fracAttribMort]['mean'] = float(np.mean(a))
         costs['Societal Costs'][fracAttribMort]['median'] = float(np.median(a))
@@ -1051,6 +1154,6 @@ def main():
             
     with open(outFileName,'wb') as f:
         yaml.dump(costs,f,indent=4,encoding='utf-8',width=130,explicit_start=True)
-        
+    '''    
 if __name__ == "__main__":
     main()
