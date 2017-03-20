@@ -593,7 +593,7 @@ def main():
                     
                 prevTotal = 0.0
                 if bedTotal > 0.0:
-                    prevTotal = colWithin/bedTotal
+                    prevTotal = colTotal/bedTotal
                     
                 entryRow = ['{0}'.format(i),
                             prevWithin,
