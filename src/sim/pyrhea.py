@@ -493,7 +493,6 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
     else:
         myLogger = logger
     try:
-        print "HERE"
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
             if os.name != 'nt':
@@ -931,13 +930,16 @@ def main():
     #                 recs = nh['occupancy']
     #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
     #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
-            with open(outputNotesName, 'w') as f:
-                #pickle.dump(d, f)
-                f.write('{\n')
-                for k,v in d.items():
-                    f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
-                
-                f.write("}\n")
+            if outputNotesName.lower().endswith('.json'):
+                with open(outputNotesName, 'w') as f:
+                    f.write('{\n')
+                    for k,v in d.items():
+                        f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
+                    
+                    f.write("}\n")
+            else:    
+                with open(outputNotesName, 'w') as f:
+                    pickle.dump(d, f)
 
         logging.shutdown()
 
