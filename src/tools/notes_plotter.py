@@ -191,6 +191,7 @@ def importNotes(fname):
     except (KeyError, pickle.UnpicklingError):
         with open(fname, 'r') as f:
             stuff = ujson.load(f)
+        print stuff
     return stuff
 
 
@@ -702,9 +703,7 @@ def main():
     for category in categoryDict.keys():
         allOfCategoryDict[category] = noteHolderGroup.createNoteHolder()
         for abbrev, nhDict in categoryDict[category].items():
-            print '%s: %s' % (abbrev, [(k, type(v).__name__) for k,v in nhDict.items()])
             allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
-            if abbrev=='appl_21020_s': raise RuntimeError('done')
 
     catNames = allOfCategoryDict.keys()[:]
     
