@@ -143,11 +143,10 @@ def main():
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
-                if abbrev.find("LUTH_800_S") > -1:
-                    for time in sampTimes:
-                        print "abbrev: {0} time: {1}".format(abbrev,time)
-                        sampleL.append({'abbrev': abbrev, 'time': time,
-                                        'samples': extractSamples(abbrev, time, specialDict)})
+                for time in sampTimes:
+                    print "abbrev: {0} time: {1}".format(abbrev,time)
+                    sampleL.append({'abbrev': abbrev, 'time': time,
+                                    'samples': extractSamples(abbrev, time, specialDict)})
 
     with open(outFileName, 'w') as f:
         yaml.safe_dump(sampleL, f, indent=4,
