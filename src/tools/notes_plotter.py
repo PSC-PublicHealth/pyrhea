@@ -191,7 +191,6 @@ def importNotes(fname):
     except (KeyError, pickle.UnpicklingError):
         with open(fname, 'r') as f:
             stuff = ujson.load(f)
-        print stuff
     return stuff
 
 
