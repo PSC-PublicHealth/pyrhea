@@ -26,6 +26,8 @@
                     'description': 'fraction at the corresponding pathogen status'}
           'COLONIZED': {'$ref': '#/definitions/fracarray',
                         'description': 'fraction at the corresponding pathogen status'}
+          'NEW COLONIZED': {'$ref': '#/definitions/fracarray',
+                            'description': 'fraction at the corresponding pathogen status'}
           'CHRONIC': {'$ref': '#/definitions/fracarray',
                       'description': 'fraction at the corresponding pathogen status'}
           'INFECTED': {'$ref': '#/definitions/fracarray',
