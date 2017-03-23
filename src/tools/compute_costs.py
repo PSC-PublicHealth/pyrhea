@@ -24,6 +24,7 @@ import random
 from optparse import OptionParser
 from multiprocessing import Process,Manager,Pool
 from collections import defaultdict
+import csv
 
 import numpy as np
 import scipy.stats as st
@@ -179,17 +180,19 @@ def computeCostsOfContactPrecautions(contactPrecautionDays_, locationType_, rNur
     tContactPrecautionDict = params_['interventionParameters']['timeDonDoffMinutes']
     tCPMinutes = Distribution(tContactPrecautionDict['distribution']['type'],
                               tContactPrecautionDict['distribution']['args']).draw()
-    
-    value = (contactPrecautionDays_ \
+    cpDayCosts = {x:Cost(0.0,targetYear_) for x in contactPrecautionDays_.keys()} 
+    for t,cpd in contactPrecautionDays_.items():
+        cpDayCosts[t] =Cost((cpd \
           * contactRate) \
           * ((rNurseWage_.discountedValue(targetYear_).value/60.0) \
           * tCPMinutes \
           + cGloves_.discountedValue(targetYear_).value \
-          + cGowns_.discountedValue(targetYear_).value)
+          + cGowns_.discountedValue(targetYear_).value),targetYear_)
     
-    return Cost(value,targetYear_)
+    return cpDayCosts
+    #return Cost(value,targetYear_)
 
-def computeCostsOfBundles(numBundles_,numBaths_, targetYear_, params_):
+def computeCostsOfBundles(numBundles_,numSwabs_, targetYear_, params_):
     chgWipeDict = params_['interventionParameters']['chgWipesPerBath']['cost']
     cChgWipesPerBath = Cost(Distribution(chgWipeDict['distribution']['type'],
                                         chgWipeDict['distribution']['args']).draw(),
@@ -199,11 +202,10 @@ def computeCostsOfBundles(numBundles_,numBaths_, targetYear_, params_):
     cScreening = Cost(Distribution(screenDict['distribution']['type'],
                                    screenDict['distribution']['args']).draw(),
                            screenDict['year'])
-    
     #print cChgWipesPerBath.discountedValue(targetYear_)
     #print cScreening.discountedValue(targetYear_)
-    value = numBundles_ * cScreening.discountedValue(targetYear_).value \
-          + numBaths_ * cChgWipesPerBath.discountedValue(targetYear_).value
+    value = numSwabs_ * cScreening.discountedValue(targetYear_).value \
+          + numBundles_ * cChgWipesPerBath.discountedValue(targetYear_).value
     
     return Cost(value, targetYear_)      
         
@@ -253,8 +255,6 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
                                          dD['cost']['distribution']['args']).draw(),
                             dD['cost']['year'])
     
-                          
-        
     for k,v in outcomesDict.items():
         #if k != 'nonVentilatorAssociatedPneumonia':
         #    continue
@@ -762,6 +762,14 @@ def extractCREBundlesGiven(abbrev,specialDict,burninDays):
             sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
     return sums   
 
+def extractCRESwabsGiven(abbrev,specialDict,burninDays):
+    cpList = getTimeSeriesList(abbrev,specialDict,'localtierCRESwabs')
+    sums = defaultdict(lambda:0.0)
+    for dayVec,curves in cpList:
+        dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
+        for tpl,curve in curves.items():
+            sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
+    return sums   
 def extractXDROCounts(abbrev,specialDict,burninDays):
     cpList = print_xdro_counts.getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
     sumT = 0.0
@@ -814,6 +822,13 @@ def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
         for k,v in creBundlesDict.items():
             creBundlesByAbbrev[abbrev] += v
 
+    creSwabsByAbbrev = {}
+    for abbrev in abbrevs:
+        creSwabsByAbbrev[abbrev] = 0.0
+        creSwabsDict = extractCRESwabsGiven(abbrev, specialDict,burninDays)
+        for k,v in creBundlesDict.items():
+            creSwabsByAbbrev[abbrev] += v
+            
     xdroByAbbrev = {}#defaultdict(lambda: 0.0)
     for abbrev in abbrevs:
         xdroByAbbrev[abbrev] = 0.0
@@ -821,23 +836,25 @@ def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
             xdroByAbbrev[abbrev]  += extractXDROCounts(abbrev,specialXDRODict,burninDays)
         else:
             xdroByAbbrev[abbrev] = 0.0
-    
-    for abbrev,xdro in xdroByAbbrev.items():
-        print "{0}: {1}".format(abbrev,xdro)
+    print "leaving"
+    #for abbrev,xdro in xdroByAbbrev.items():
+    #    print "{0}: {1}".format(abbrev,xdro)
     #print "X = {0}".format(xdroByAbbrev)
-    return (newColAll,cpDaysByAbbrev,creBundlesByAbbrev,xdroByAbbrev)
+    return (newColL,cpDaysByAbbrev,creBundlesByAbbrev,creSwabsByAbbrev,xdroByAbbrev)
 
     #newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
 
 def getNewCols_poolHelper(args):
     return getNewCols(*args)
     
-def determine_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbrevs, params, opts, fracAttribMort, notes): 
+def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs, params, opts, facDict, fracAttribMort, notes): 
     costsOfReal = {x:{} for x in abbrevs}
     randomInt = random.randint(0,len(notes)-1)
     newColAll = newColsArray[randomInt]
     cpDaysByType = cpDaysArray[randomInt]
     creBundlesAll = creBundlesArray[randomInt]
+    creSwabsAll = creSwabsArray[randomInt]
+    
     xdroAll = xdroArray[randomInt] 
     personAge = int(round(Distribution('uniform',{'low':60.0,'high':80.0}).draw()))
     annualWage = Cost(Distribution(params['costs']['annualWage']['distribution']['type'],
@@ -872,20 +889,38 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbre
     bundleCostsByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
     outcomesDictByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
     xdroCostsByAbbrev = {}#defaultdict(lambda: Cost(0.0, opts.targetYear))
-    
+    print "going into abbrevs"
     for abbrev in abbrevs:  
-        if opts.xdroyamlfile: 
-            xdroCostsByAbbrev[abbrev] = computeCostOfXDROReg(xdroAll[abbrev],opts.targetyear, params) # replace with RHEA
-        else:
-            xdroCostsByAbbrev[abbrev] = Cost(0.0,opts.targetyear)#computeCostOfXDROReg()
+        print "Computing for {0}".format(abbrev)
+       
         #contPrecCosts = Cost(0.0,opts.targetyear)
         #for fType,cpDays in cpDaysByType.items():
+        print facDict[abbrev]['category']
+        cpCosts = computeCostsOfContactPrecautions(cpDaysByType[abbrev], facDict[abbrev]['category'], rNurseWage, cGloves, cGowns, opts.targetyear, params)
+        print "cpCosts = {0}".format(cpCosts)
+        contPrecCostsByAbbrev[abbrev] = Cost(cpCosts['pCP'].value + cpCosts['oCP'].value,opts.targetyear)
         #    cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
-        contPrecCostsByAbbrev[abbrev] = 0.0
-        bundleCostsByAbbrev[abbrev] = computeCostsOfBundles(creBundlesAll, 0, opts.targetyear, params) # replace with RHEA
-        outcomesDictByAbbrev[abbrev] = determineOutcomes(newColAll,0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
+        #print "shouldn't be doing this"
+        #contPrecCostsByAbbrev[abbrev] =Cost(0.0,2017)
+        #print "no CP yet"
+        print creSwabsAll[abbrev]
+        bundleCostsByAbbrev[abbrev] = Cost(computeCostsOfBundles(creBundlesAll[abbrev], creSwabsAll[abbrev], opts.targetyear, params).value + \
+                                                          cpCosts['aCP'].value,opts.targetyear) # replace with RHEA
+        print "Bundle done"
+        if opts.xdroyamlfile: 
+            xdroCostsByAbbrev[abbrev] = Cost(computeCostOfXDROReg(xdroAll[abbrev],opts.targetyear, params).value + cpCosts['xCP'].value,opts.targetyear) # replace with RHEA
+        else:
+            xdroCostsByAbbrev[abbrev] = Cost(0.0,opts.targetyear)#computeCostOfXDROReg()
+        print "not sure yet"
+        #sys.stdout.flush()
+        #print "NCOLALL = {0}".format(newColAll)
+        #sys.stdout.flush()
+        outcomesDictByAbbrev[abbrev] = determineOutcomes(newColAll[abbrev],0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
+        print "This is the granddady"
+        #sys.stdout.flush()
         #costsOfRealization[i]['outcomesDict'] = outcomesDict
     
+    #print "bUNLES = {0}".format(bundleCostsByAbbrev)
     totalSocByAbbrev = {}#defaultdict(lambda: 0.0)
     totalQALYByAbbrev = {}#defaultdict(lambda: 0.0)
     totalHospByAbbrev = {}#defaultdict(lambda: 0.0)
@@ -894,6 +929,7 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbre
     totalDeadByAbbrev = {}#defaultdict(lambda: 0.0)
     
     for abbrev in abbrevs:
+        print "collecting for abbrev = {0}".format(abbrev)
         totalCasesByAbbrev[abbrev] = 0.0
         totalDeadByAbbrev[abbrev] = 0.0
         totalQALYByAbbrev[abbrev] = 0.0
@@ -911,16 +947,24 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbre
                 totalSocByAbbrev[abbrev] += oCD['thirdParty Costs'].value + oCD['Productivity Lost'].value + oCD['Losses Due to Mortality'].value
     
     
-    costsOfReal[abbrev]['NewColonizations'] = newColAll       
-    costsOfReal[abbrev]['Intervention Costs'] = Cost(xdroCostsByAbbrev[abbrev].value + contPrecCostsByAbbrev[abbrev].value + bundleCostsByAbbrev[abbrev].value,opts.targetyear)
-    costsOfReal[abbrev]['QALYs Lost'] = Cost(totalQALYByAbbrev[abbrev],opts.targetyear)
-    costsOfReal[abbrev]['Hospitalization Costs'] = Cost(totalHospByAbbrev[abbrev],opts.targetyear)
-    costsOfReal[abbrev]['thirdParty Costs'] = Cost(total3rdByAbbrev[abbrev],opts.targetyear)
-    costsOfReal[abbrev]['Societal Costs'] = Cost(totalSocByAbbrev[abbrev],opts.targetyear)
-    costsOfReal[abbrev]['nCases'] = totalCasesByAbbrev[abbrev]
-    costsOfReal[abbrev]['nDead'] = totalDeadByAbbrev[abbrev]
-    costsOfReal[abbrev]['cpDays'] =  0.0 #sum([x for k,x in cpDaysByType[abbrev].items()])
-    costsOfReal[abbrev]['creBundles'] = creBundlesAll
+        costsOfReal[abbrev]['NewColonizations'] = newColAll
+        #print "yes"
+        costsOfReal[abbrev]['CRE Bundle Intervention Costs'] = bundleCostsByAbbrev[abbrev]
+        #print "yes yes"
+        costsOfReal[abbrev]['XDRO Intervention Costs'] = xdroCostsByAbbrev[abbrev]
+        #print "yes yes yes"
+        costsOfReal[abbrev]['Non Intervention CP Costs'] = contPrecCostsByAbbrev[abbrev]
+        #print "No"
+       # Cost(cpCosts['pCP'].value + cpCosts['oCP'].value,opts.targetyear)
+        costsOfReal[abbrev]['Intervention Costs'] = Cost(xdroCostsByAbbrev[abbrev].value + contPrecCostsByAbbrev[abbrev].value + bundleCostsByAbbrev[abbrev].value,opts.targetyear)
+        costsOfReal[abbrev]['QALYs Lost'] = Cost(totalQALYByAbbrev[abbrev],opts.targetyear)
+        costsOfReal[abbrev]['Hospitalization Costs'] = Cost(totalHospByAbbrev[abbrev],opts.targetyear)
+        costsOfReal[abbrev]['thirdParty Costs'] = Cost(total3rdByAbbrev[abbrev],opts.targetyear)
+        costsOfReal[abbrev]['Societal Costs'] = Cost(totalSocByAbbrev[abbrev],opts.targetyear)
+        costsOfReal[abbrev]['Cases'] = totalCasesByAbbrev[abbrev]
+        costsOfReal[abbrev]['Deaths'] = totalDeadByAbbrev[abbrev]
+        #costsOfReal[abbrev]['cpDays'] =  0.0 #sum([x for k,x in cpDaysByType[abbrev].items()])
+        costsOfReal[abbrev]['CRE Bundles'] = creBundlesAll[abbrev]
     return costsOfReal
     #costsOfRealizationTmp[i] = costsOfReal
 
@@ -968,6 +1012,14 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    ### get the abbreviations within a 13 mile radius
+    facilitiesWithin13Miles = []
+    with open("{0}/constants/facilities_in_13miles.yaml".format(modelDir),"rb") as f:
+        facilitiesWithin13Miles = yaml.load(f)['facilitiesWithin13Miles']['locAbbrevList']
+    
+    #for x,v in facDict.items():
+     #   print "{0}: {1}".format(x,v)
+    #sys.exit()
     burninDays = int(inputDict['burnInDays'])
     runDays = int(inputDict['runDurationDays'])
     
@@ -992,6 +1044,7 @@ def main():
     newColsArray = [0.0 for x in range(0,len(notes))]
     cpDaysArray = [0.0 for x in range(0,len(notes))]
     creBundlesArray = [0.0 for x in range(0,len(notes))]
+    creSwabsArray = [0.0 for x in range(0,len(notes))]
     xdroArray = [0.0 for x in range(0,len(notes))] 
     abbrevs = []
     if 'trackedFacilities' in inputDict:
@@ -1007,11 +1060,13 @@ def main():
     nColsReturnTmp = p.map(getNewCols_poolHelper,argsList)
     p.close()
     
+    #print "HERE!!!!"
     for i in range(0,len(nColsReturnTmp)):
         newColsArray[i] = nColsReturnTmp[i][0]
         cpDaysArray[i] = nColsReturnTmp[i][1]
         creBundlesArray[i] = nColsReturnTmp[i][2] 
-        xdroArray[i] = nColsReturnTmp[i][3]
+        creSwabsArray[i] = nColsReturnTmp[i][3]
+        xdroArray[i] = nColsReturnTmp[i][4]
     
 #     ### This part is the parallel reading of input data into the array
 #     for i in range(0,len(notes),nprocs):
@@ -1039,121 +1094,277 @@ def main():
         
     nReals = opts.nreals
     
-    costs = {'Societal Costs': {x:{} for x in fractionAttribMorts}, 
-             'Intervention Costs': {x:{} for x in fractionAttribMorts},
-             'thirdParty Costs':{x:{} for x in fractionAttribMorts},
-             'Hospitalization Costs':{x:{} for x in fractionAttribMorts},
-             'Colonizations':{x:{} for x in fractionAttribMorts}, 
-             'Deaths': {x:{} for x in fractionAttribMorts},
-             'CPDays': {x:{} for x in fractionAttribMorts}, 
-             'QALYs Lost': {x:{} for x in fractionAttribMorts},
-             'CRE Bundles': {x:{} for x in fractionAttribMorts}
-             }
+#     costs = {'Societal Costs': , 
+#              'CRE Bundle Intervention Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'XDRO Intervention Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'Non Intervention CP Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'Intervention Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'thirdParty Costs':{x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'Hospitalization Costs':{x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'Colonizations':{x:{y:{} for y in abbrevs} for x in fractionAttribMorts}, 
+#              'Deaths': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'CPDays': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts}, 
+#              'QALYs Lost': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
+#              'CRE Bundles': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts}
+#              }
+    
+    costCats= ['Societal Costs' , 
+                    'CRE Bundle Intervention Costs' ,
+                     'XDRO Intervention Costs',
+                     'Non Intervention CP Costs' ,
+                     'Intervention Costs' ,
+                     'thirdParty Costs',
+                     'Hospitalization Costs',
+                     'Cases', 
+                     'Deaths',
+                     #'CPDays' , 
+                     'QALYs Lost' ,
+                     #'CRE Bundles' 
+                     ]
+    
+    costs = {c:{x:{y:{} for y in abbrevs} for x in fractionAttribMorts} for c in costCats}
+    totalCosts = {c:{x:{} for x in fractionAttribMorts} for c in costCats}
+    
+    #newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbrevs, params, opts, fracAttribMort, notes): 
     
     
-    
-    costsOfRealization = [{} for x in range(0,nReals)]
     for fracAttribMort in fractionAttribMorts:
-        costArgList = [(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort,notes) for x in range(0,nReals)]
-        
+        costsOfRealization = [{} for x in range(0,nReals)]
+        costArgList = [(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs,params, opts, facDict, fracAttribMort,notes) for x in range(0,nReals)]
         pp = Pool(nprocs)
-        costOfRealByAbbrev = p.map(determine_costs_helper,costArgList)
-        p.close()
+        costOfRealByAbbrev = pp.map(determine_costs_helper,costArgList)
+        pp.close()
+    
+    for fracAttribMort in fractionAttribMorts:
+        for cat in costCats:
+            print "stuff for cat {0}".format(cat)
+            t = np.zeros(nReals)
+            for abbrev in abbrevs:
+                if isinstance(costOfRealByAbbrev[0][abbrev][cat],Cost):
+                    a = np.array([costOfRealByAbbrev[i][abbrev][cat].value for i in range(0,nReals)])
+                else:
+                    a = np.array([costOfRealByAbbrev[i][abbrev][cat] for i in range(0,nReals)])
+                t += a
+                costs[cat][fracAttribMort][abbrev]['mean'] = float(np.mean(a))
+                costs[cat][fracAttribMort][abbrev]['median'] = float(np.median(a))
+                costs[cat][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+                costs[cat][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+                costs[cat][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+            
+            totalCosts[cat][fracAttribMort]['mean'] = float(np.mean(t))
+            totalCosts[cat][fracAttribMort]['median'] = float(np.median(t))
+            totalCosts[cat][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+            totalCosts[cat][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+            totalCosts[cat][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+        '''
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['Intervention Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['Intervention Costs'][fracAttribMort][abbrev]['mean'] =  float( np.mean(a))
+            costs['Intervention Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['Intervention Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['Intervention Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['Intervention Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        totalCosts['Intervention Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['Intervention Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['Intervention Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['Intervention Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['Intervention Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:        
+            a = np.array([costOfRealByAbbrev[i][abbrev]['CRE Bundle Intervention Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['CRE Bundle Intervention Costs'][fracAttribMort][abbrev]['mean'] =  float( np.mean(a))
+            costs['CRE Bundle Intervention Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['CRE Bundle Intervention Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['CRE Bundle Intervention Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['CRE Bundle Intervention Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
         
-        print costOfRealByAbbrev
+        totalCosts['CRE Bundle Intervention Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['CRE Bundle Intervention Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['CRE Bundle Intervention Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['CRE Bundle Intervention Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['CRE Bundle Intervention Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['XDRO Intervention Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['XDRO Intervention Costs'][fracAttribMort][abbrev]['mean'] =  float( np.mean(a))
+            costs['XDRO Intervention Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['XDRO Intervention Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['XDRO Intervention Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['XDRO Intervention Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        totalCosts['XDRO Intervention Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['XDRO Intervention Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['XDRO Intervention Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['XDRO Intervention Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['XDRO Intervention Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:        
+            a = np.array([costOfRealByAbbrev[i][abbrev]['Non Intervention CP Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['Non Intervention CP Costs'][fracAttribMort][abbrev]['mean'] =  float( np.mean(a))
+            costs['Non Intervention CP Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['Non Intervention CP Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['Non Intervention CP Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['Non Intervention CP Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        totalCosts['Non Intervention CP Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['Non Intervention CP Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['Non Intervention CP Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['Non Intervention CP Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['Non Intervention CP Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['Hospitalization Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['Hospitalization Costs'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['Hospitalization Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['Hospitalization Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['Hospitalization Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['Hospitalization Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        totalCosts['Hospitalization Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['Hospitalization Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['Hospitalization Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['Hospitalization Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['Hospitalization Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['thirdParty Costs'].value for i in range(0,nReals)])
+            t+=a
+            costs['thirdParty Costs'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['thirdParty Costs'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['thirdParty Costs'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['thirdParty Costs'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['thirdParty Costs'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+            
+        totalCosts['thirdParty Costs'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['thirdParty Costs'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['thirdParty Costs'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['thirdParty Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['thirdParty Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['QALYs Lost'].value for i in range(0,nReals)])
+            t+=a
+            costs['QALYs Lost'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['QALYs Lost'][fracAttribMort][abbrev]['median'] =  float(np.median(a))
+            costs['QALYs Lost'][fracAttribMort][abbrev]['stdev'] =  float(np.std(a,ddof=1))
+            costs['QALYs Lost'][fracAttribMort][abbrev]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
+            costs['QALYs Lost'][fracAttribMort][abbrev]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
+    
+        totalCosts['QALYs Lost'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['QALYs Lost'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['QALYs Lost'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['QALYs Lost'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['QALYs Lost'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['nCases'] for i in range(0,nReals)])
+            t+=a
+            costs['Colonizations'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['Colonizations'][fracAttribMort][abbrev]['median'] = np.median(a)
+            costs['Colonizations'][fracAttribMort][abbrev]['stdev'] = np.std(a,ddof=1)
+            costs['Colonizations'][fracAttribMort][abbrev]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+            costs['Colonizations'][fracAttribMort][abbrev]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+            
+    
+        totalCosts['Colonizations'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['Colonizations'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['Colonizations'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['Colonizations'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['Colonizations'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['cpDays'] for i in range(0,nReals)])
+            t+= a
+            costs['CPDays'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['CPDays'][fracAttribMort][abbrev]['median'] = np.median(a)
+            costs['CPDays'][fracAttribMort][abbrev]['stdev'] = np.std(a,ddof=1)
+            costs['CPDays'][fracAttribMort][abbrev]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+            costs['CPDays'][fracAttribMort][abbrev]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+            
+        totalCosts['CPDays'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['CPDays'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['CPDays'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['CPDays'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['CPDays'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['creBundles'] for i in range(0,nReals)])
+            t+=a
+            costs['CRE Bundles'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['CRE Bundles'][fracAttribMort][abbrev]['median'] = np.median(a)
+            costs['CRE Bundles'][fracAttribMort][abbrev]['stdev'] = np.std(a,ddof=1)
+            costs['CRE Bundles'][fracAttribMort][abbrev]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+            costs['CRE Bundles'][fracAttribMort][abbrev]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+    
+        totalCosts['CRE Bundles'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['CRE Bundles'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['CRE Bundles'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['CRE Bundles'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['CRE Bundles'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
+            
+        t = np.zeros(nReals)
+        for abbrev in abbrevs:
+            a = np.array([costOfRealByAbbrev[i][abbrev]['nDead'] for i in range(0,nReals)])
+            t+=a
+            costs['Deaths'][fracAttribMort][abbrev]['mean'] =  float(np.mean(a))
+            costs['Deaths'][fracAttribMort][abbrev]['median'] = np.median(a)
+            costs['Deaths'][fracAttribMort][abbrev]['stdev'] = np.std(a,ddof=1)
+            costs['Deaths'][fracAttribMort][abbrev]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
+            costs['Deaths'][fracAttribMort][abbrev]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
+        totalCosts['Deaths'][fracAttribMort]['mean'] = float(np.mean(t))
+        totalCosts['Deaths'][fracAttribMort]['median'] = float(np.median(t))
+        totalCosts['Deaths'][fracAttribMort]['stdev'] = float(np.std(t,ddof=1))
+        totalCosts['Deaths'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[0])
+        totalCosts['Deaths'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(t)-1, loc=np.mean(t),scale=st.sem(t))[1])
         
     '''
-        for i in range(0,nReals,nprocs):
-            manager = Manager()
-            costsOfRealizationTmp = manager.dict()
-            jobs = []
-            end = i + nprocs
-            if end > nReals:
-                end = nReals
-                
-            for j in range(i,end):
-                p = Process(target=determin_costs, args=(newColsArray, cpDaysArray, creBundlesArray, xdroArray, params, opts, fracAttribMort, notes, j, costsOfRealizationTmp ))
-                jobs.append(p)
-                p.start()
-            for proc in jobs:
-                proc.join()
-        
-            for k,v in costsOfRealizationTmp.items():
-                costsOfRealization[k] = {}
-            
-                for h,w in v.items():
-                    costsOfRealization[k][h] = w
-        
-        
-        continue  
-        a = np.array([costsOfRealization[i]['Societal Costs'].value for i in range(0,nReals)])
-        costs['Societal Costs'][fracAttribMort]['mean'] = float(np.mean(a))
-        costs['Societal Costs'][fracAttribMort]['median'] = float(np.median(a))
-        costs['Societal Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
-        costs['Societal Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-        costs['Societal Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-        
-        a = np.array([costsOfRealization[i]['Intervention Costs'].value for i in range(0,nReals)])
-        costs['Intervention Costs'][fracAttribMort]['mean'] =  float( np.mean(a))
-        costs['Intervention Costs'][fracAttribMort]['median'] =  float(np.median(a))
-        costs['Intervention Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
-        costs['Intervention Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-        costs['Intervention Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-    
-        a = np.array([costsOfRealization[i]['Hospitalization Costs'].value for i in range(0,nReals)])
-        costs['Hospitalization Costs'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['Hospitalization Costs'][fracAttribMort]['median'] =  float(np.median(a))
-        costs['Hospitalization Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
-        costs['Hospitalization Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-        costs['Hospitalization Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-        
-        a = np.array([costsOfRealization[i]['thirdParty Costs'].value for i in range(0,nReals)])
-        costs['thirdParty Costs'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['thirdParty Costs'][fracAttribMort]['median'] =  float(np.median(a))
-        costs['thirdParty Costs'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
-        costs['thirdParty Costs'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-        costs['thirdParty Costs'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-        
-        a = np.array([costsOfRealization[i]['QALYs Lost'].value for i in range(0,nReals)])
-        costs['QALYs Lost'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['QALYs Lost'][fracAttribMort]['median'] =  float(np.median(a))
-        costs['QALYs Lost'][fracAttribMort]['stdev'] =  float(np.std(a,ddof=1))
-        costs['QALYs Lost'][fracAttribMort]['5%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0])
-        costs['QALYs Lost'][fracAttribMort]['95%CI'] =  float(st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1])
-        
-        a = np.array([costsOfRealization[i]['nCases'] for i in range(0,nReals)])
-        costs['Colonizations'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['Colonizations'][fracAttribMort]['median'] = np.median(a)
-        costs['Colonizations'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
-        costs['Colonizations'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-        costs['Colonizations'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-        a = np.array([costsOfRealization[i]['cpDays'] for i in range(0,nReals)])
-        costs['CPDays'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['CPDays'][fracAttribMort]['median'] = np.median(a)
-        costs['CPDays'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
-        costs['CPDays'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-        costs['CPDays'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-        
-        a = np.array([costsOfRealization[i]['creBundles'] for i in range(0,nReals)])
-        costs['CRE Bundles'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['CRE Bundles'][fracAttribMort]['median'] = np.median(a)
-        costs['CRE Bundles'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
-        costs['CRE Bundles'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-        costs['CRE Bundles'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-        
-        a = np.array([costsOfRealization[i]['nDead'] for i in range(0,nReals)])
-        costs['Deaths'][fracAttribMort]['mean'] =  float(np.mean(a))
-        costs['Deaths'][fracAttribMort]['median'] = np.median(a)
-        costs['Deaths'][fracAttribMort]['stdev'] = np.std(a,ddof=1)
-        costs['Deaths'][fracAttribMort]['5%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[0]
-        costs['Deaths'][fracAttribMort]['95%CI'] = st.t.interval(0.95,len(a)-1, loc=np.mean(a),scale=st.sem(a))[1]
-         
+    ''' 
     for f,g in costs.items():
         for k,d in g.items():
             print "{6},{0},{1},{2},{3},{4},{5}".format(k,d['mean'],d['median'],d['stdev'],d['5%CI'],d['95%CI'],f)
-            
+     '''       
     with open(outFileName,'wb') as f:
         yaml.dump(costs,f,indent=4,encoding='utf-8',width=130,explicit_start=True)
-    '''    
+    
+    for fracAttribMort in fractionAttribMorts:
+        with open("{0}_{1}_total_costs.csv".format(outFileName,fracAttribMort),'wb') as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Cost','mean','median','stdev','5%CI','95%CI']
+            csvWriter.writerow(headRow)
+            for cat in costCats:
+                entryRow = ['{0}'.format(cat)]
+                entryRow.append(totalCosts[cat][fracAttribMort]['mean'])
+                entryRow.append(totalCosts[cat][fracAttribMort]['median'])
+                entryRow.append(totalCosts[cat][fracAttribMort]['stdev'])
+                entryRow.append(totalCosts[cat][fracAttribMort]['5%CI'])
+                entryRow.append(totalCosts[cat][fracAttribMort]['95%CI'])
+                csvWriter.writerow(entryRow)
+            
+        with open("{0}_{1}_costsbyfcility.csv".format(outFileName,fracAttribMort),"wb") as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Facility','Category'] + ["{0} mean".format(c) for c in costCats]
+            csvWriter.writerow(headRow)
+            for abbrev in abbrevs:
+                entryRow = [abbrev, facDict[abbrev]['category']]
+                for c in costCats:
+                    entryRow.append(costs[c][fracAttribMort][abbrev]['mean'])
+                csvWriter.writerow(entryRow)
+     
 if __name__ == "__main__":
     main()
