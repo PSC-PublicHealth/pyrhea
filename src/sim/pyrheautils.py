@@ -43,15 +43,20 @@ def pathTranslate(rawPath, lookupDict=None):
     
 
 def syncXDRORegistries(facilities):
+    import time
     syncRegistry = FacilityRegistry("sync reg") 
-     
+    time1 = time.time()
     for fac in facilities:
         if fac.registry.hasRegistry("xdroRegistry"):
             syncRegistry.transferFromOtherRegistry(fac.registry,"xdroRegistry","sync reg")
-    
+    time2 = time.time()
+    print "time for to sync = {0}".format(time2-time1)
+    time1 - time.time()
     for fac in facilities:
         if fac.registry.hasRegistry("xdroRegistry"):
             fac.registry.transferFromOtherRegistry(syncRegistry,"sync reg","xdroRegistry")
+    time2 = time.time()
+    print 'time for from syn = {0}'.format(time2-time1)
             
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
