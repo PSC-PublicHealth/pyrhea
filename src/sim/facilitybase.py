@@ -154,7 +154,6 @@ class Ward(pyrheabase.Ward):
 
 class ForcedStateWard(Ward):
     def forceState(self, patientAgent, careTier, diagClassA):
-        
         patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
         patientAgent._diagnosis = self.fac.diagnose(patientAgent, patientAgent._diagnosis)
         newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent, patientAgent._diagnosis,
@@ -424,7 +423,7 @@ class FacilityRegistry(object):
     def startRegistry(self,key):
         ### Starting the registry with the same key will provide a no op
         if not self.isRegistryStarted(key):
-            self.registryDict[key] = []
+            self.registryDict[key] = set()
     
     def isRegistryStarted(self,key):
         return key in self.registryDict.keys()
@@ -434,7 +433,7 @@ class FacilityRegistry(object):
             raise RuntimeError("The Registry {1} at {0} has not been initialized".format(self.facilityAbbrev,key))
         
         if patientName not in self.registryDict[key]:
-            self.registryDict[key].append(patientName)
+            self.registryDict[key].add(patientName)
     
     def transferRegistry(self, fromKey, toKey):
         if fromKey not in self.registryDict.keys():
@@ -443,8 +442,7 @@ class FacilityRegistry(object):
             self.startRegistry(toKey)
         
         for name in self.registryDict[fromKey]:
-            if name not in self.registryDict[toKey]:
-                self.registryDict[toKey].append(name)
+            self.registryDict[toKey].add(name)
     
     def hasRegistry(self,key):
         return key in self.registryDict.keys()
@@ -461,8 +459,7 @@ class FacilityRegistry(object):
             self.startRegistry(toKey)
             
         for name in otherReg.registryDict[fromKey]:
-            if name not in self.registryDict[toKey]:
-                self.registryDict[toKey].append(name)
+            self.registryDict[toKey].add(name)
     
          
     def __str__(self):
@@ -743,6 +740,7 @@ class PatientAgent(pyrheabase.PatientAgent):
     idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
+        
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward, timeNow)
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
@@ -754,6 +752,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                            TREATMENT_DEFAULT)[0:2]
 
         self.lastUpdateTime = timeNow
+       
         abbrev = self.ward.fac.abbrev
         #self.prevFac = None
         #self.cpReason = None
@@ -775,6 +774,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         """Accessor for private diagnosis"""
         return self._diagnosis.pthStatus
     
+    def setXDRO(self):
+        self.onXDRO = True
+        
     def setTreatment(self, **kwargs):
         """
         keyword arguments are elements of PatientTreatment, for example 'rehab'.
