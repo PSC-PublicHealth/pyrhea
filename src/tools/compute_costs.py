@@ -22,7 +22,7 @@ import yaml
 import glob
 import random
 from optparse import OptionParser
-from multiprocessing import Process,Manager,Pool
+from multiprocessing import Process,Manager,Pool,cpu_count
 from collections import defaultdict
 import csv
 
@@ -39,6 +39,11 @@ from notes_plotter import readFacFiles, checkInputFileSchema
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA
 from time_series_plotter import mergeNotesFiles, getTimeSeriesList
 import print_xdro_counts
+import affinity
+
+if cpu_count() < 60:
+    affinity.set_process_affinity_mask(0,2**cpu_count()-1)
+
 
 DEFAULT_OUT_FILE = 'costs_output.yaml'
 
