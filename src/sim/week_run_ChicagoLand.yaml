@@ -39,8 +39,10 @@
     'policyClass': 'CREBundleDiagnosticPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
+
   - 'category': 'scenario'
-    'policyClass': 'CREBundleScenario'
+    'policyClass': 'XDROPlusCREBundleScenario'
+    #'policyClass': 'CREBundleScenario'
     #'policyClass': 'XDRORegistryScenario'
 
 'notesFileName': 'notes_week_ChicagoLand.pkl'
@@ -57,4 +59,4 @@ scenarioWaitDays: 2
   - 'GLEN_22660_V'
   - 'ADVO_836_H'
   - 'WASH_11308_S'
-  - 'THC_2544_L'
+  - 'PRES_100_L'

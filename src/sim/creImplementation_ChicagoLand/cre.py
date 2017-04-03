@@ -164,6 +164,8 @@ class CRE(Pathogen):
         
         self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory,
                                            overrideTbl=self.core.tauOverrideTbl)
+#         if 'PRES_100_L' in ward._name:
+#             print '########## tau is %s' % self.tau
         self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
                                                       'exposureCutoff',
                                                       ward, useWardCategory)
@@ -310,6 +312,8 @@ class CRE(Pathogen):
             # have the same infectivity constant(s)
             #
             key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT, self.tau)
+#             if 'THC_4058_L' in ward._name:
+#                 print '%s %s %s %s' % (ward._name, patientStatus.justArrived, pI, treatment)
             if key not in self.core.exposureTreeCache:
                 
                 patientKey = self.getPatientStateKey(patientStatus, treatment)
@@ -322,6 +326,9 @@ class CRE(Pathogen):
                     expScale = (self.exposureCutoff) / (totPop)
                 for k2, ct in pI.items():
                     logPSafe += math.log(1.0 - (tPMD[k2][0] * selfProt * self.tau)) * ct
+#                 if 'PRES_100_L' in ward._name:
+#                     print '%s %s %s %s %s %s' % (ward._name, patientKey, logPSafe, tPMD,
+#                                                  selfProt, self.tau)
                 pSafe = math.exp(dT * expScale * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
                                  PthStatusSetter(PthStatus.COLONIZED),                                 

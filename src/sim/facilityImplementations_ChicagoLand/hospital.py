@@ -145,7 +145,7 @@ class ICUWard(ForcedStateWard):
         Patient is arriving by triage, so force the patient's internal status and diagnosis
         to correspond to those of the ward.
         """
-        self.forceState(patientAgent, CareTier.ICU, DiagClassA.VERYSICK)
+        self.forceState(patientAgent, CareTier.ICU, DiagClassA.VERYSICK, timeNow=timeNow)
         super(ICUWard, self).handlePatientArrival(patientAgent, timeNow)
 
 
