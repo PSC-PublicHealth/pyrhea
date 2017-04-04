@@ -21,7 +21,7 @@ from random import random
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
 from facilitybase import CareTier
-from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
+from policybase import TreatmentPolicy as BaseTreatmentPolicy
 from pathogenbase import PthStatus
 
 _validator = None

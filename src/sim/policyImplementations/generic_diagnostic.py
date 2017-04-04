@@ -20,7 +20,7 @@ from random import random
 
 import pyrheautils
 from facilitybase import PatientDiagnosis
-from facilitybase import DiagnosticPolicy as BaseDiagnosticPolicy
+from policybase import DiagnosticPolicy as BaseDiagnosticPolicy
 from pathogenbase import PthStatus
 
 _validator = None

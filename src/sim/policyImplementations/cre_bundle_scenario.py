@@ -18,7 +18,7 @@
 import logging
 
 import pyrheautils
-from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from policybase import ScenarioPolicy as BaseScenarioPolicy
 from cre_bundle_treatment import CREBundleTreatmentPolicy
 from cre_bundle_diagnostic import CREBundleDiagnosticPolicy
 
@@ -536,19 +536,16 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                    if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
                         fac.diagnosticPolicy.setValue('active', True)
                     else:
                         raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy' % abbrev)
                     for tP in fac.treatmentPolicies:
-                        if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
-                        #if isinstance(tP, CREBundleTreatmentPolicy):
+                        if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', True)
                             for ward in fac.getWards():
                                 for patient in ward.getPatientList():
                                     tP.initializePatientTreatment(ward,patient)
-                            
-                            print ('Activated CREBundleScenario at %s' % abbrev)
                             logger.info('Activated CREBundleScenario at %s' % abbrev)
                             break
                     else:
@@ -571,13 +568,11 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                    if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
                         fac.diagnosticPolicy.setValue('active', True)
                     for tP in fac.treatmentPolicies:
-                        if (type(tP).__name__ == CREBundleTreatmentPolicy.__name__):
-                        #if isinstance(tP, CREBundleTreatmentPolicy):
+                        if isinstance(tP, CREBundleTreatmentPolicy):
                             tP.setValue('active', False)
-                            print ('Deactivated CREBundleScenario at %s' % abbrev)
                             logger.info('Deactivated CREBundleScenario at %s' % abbrev)
                             break
                     else:

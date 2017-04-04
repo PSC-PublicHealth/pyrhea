@@ -35,6 +35,8 @@ import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
 import ujson 
+from policybase import ScenarioPolicy
+
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -45,8 +47,6 @@ _TRACKED_FACILITIES = []
 _TRACKED_FACILITIES_SET = None
 
 logger = None
-
-from pyrheabase import ScenarioPolicy
 
 def buildFacOccupancyDict(patch, timeNow):
     facTypeDict = {'day': timeNow}

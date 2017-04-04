@@ -21,7 +21,7 @@ import logging
 
 import os.path
 import pyrheautils
-from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
+from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 
 _validator = None

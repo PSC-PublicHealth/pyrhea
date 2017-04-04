@@ -19,7 +19,7 @@ import logging
 
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
-from pyrheabase import ScenarioPolicy as BaseScenarioPolicy
+from policybase import ScenarioPolicy as BaseScenarioPolicy
 
 _validator = None
 _constants_values = '$(CONSTANTS)/scenario_constants.yaml'

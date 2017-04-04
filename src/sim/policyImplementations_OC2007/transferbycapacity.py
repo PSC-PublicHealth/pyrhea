@@ -23,7 +23,7 @@ import os.path
 import pyrheautils
 import random
 from collections import deque
-from facilitybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
+from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 
 _validator = None

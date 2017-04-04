@@ -15,59 +15,22 @@
 #                                                                                 #
 ###################################################################################
 
-from random import randint, shuffle, choice
+from random import randint, choice
 import pyrheabase
-from phacsl.utils.collections.phacollections import enum, namedtuple
 import logging
 from phacsl.utils.notes.statval import HistoVal
-from quilt.netinterface import GblAddr
+from typebase import CareTier, PatientOverallHealth, DiagClassA
+from typebase import TreatmentProtocol, TREATMENT_DEFAULT
+from typebase import PatientStatus, PatientDiagnosis
 from stats import BayesTree
-from pathogenbase import PthStatus, defaultPthStatus, Pathogen
+from pathogenbase import PthStatus
 from collections import defaultdict
 import cPickle as pickle
-from random import random
 
 logger = logging.getLogger(__name__)
 
-CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU', 'VENT', 'SKILNRS')
 
-PatientOverallHealth = enum('HEALTHY', 'FRAIL')
-
-DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH',
-                  'NEEDSVENT', 'NEEDSSKILNRS')
-
-TreatmentProtocol = namedtuple('TreatmentProtocol',
-                               ['rehab',
-                                'contactPrecautions',
-                                'creBundle'
-                                ],
-                               field_types=[bool, bool, bool])
-
-TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False, creBundle=False)
-
-PatientStatus = namedtuple('PatientStatus',
-                           ['overall',              # one of PatientOverallHealth
-                            'diagClassA',           # one of DiagClassA
-                            'startDateA',           # date diagClassA status was entered
-                            'pthStatus',            # one of PthStatus
-                            'startDatePth',         # date PthStatus status was entered
-                            'relocateFlag',         # true if patient needs relocation
-                            'justArrived',          # true on patient's first day in new location
-                            'canClear',             # true if patient can spontaneously clear infection
-                            'homeAddr'              # GblAddr of patient's home tract or NH
-                            ],
-                           field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,
-                                        bool, bool, bool, GblAddr])
-
-PatientDiagnosis = namedtuple('PatientDiagnosis',
-                              ['overall',              # one of PatientOverallHealth
-                               'diagClassA',           # one of DiagClassA
-                               'startDateA',           # Date diagClassA was entered
-                               'pthStatus',            # one of PthStatus
-                               'relocateFlag'          # true if patient needs relocation
-                               ],
-                              field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, bool])
-
+from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
 class PatientStatusSetter(object):
     def __init__(self):
@@ -217,174 +180,6 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.VENT: VENTQueue,
                   CareTier.SKILNRS: SKILNRSQueue}
 
-
-class Policy(object):
-    def __init__(self, patch, categoryNameMapper):
-        self.patch = patch
-        self.categoryNameMapper = categoryNameMapper
-
-
-class DiagnosticPolicy(Policy):
-    def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
-        """
-        This provides a way to introduce false positive or false negative diagnoses.  The
-        only way in which patient status affects treatment policy or ward is via diagnosis.
-        """
-        return PatientDiagnosis(patientStatus.overall,
-                                patientStatus.diagClassA,
-                                patientStatus.startDateA,
-                                PthStatus.CLEAR,
-                                patientStatus.relocateFlag)
-    
-    def initializePatientDiagnosis(self, careTier, timeNow):
-        if careTier == CareTier.HOME:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.NURSING:
-            return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.LTAC:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSLTAC, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.HOSP:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.SICK, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.ICU:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.VERYSICK, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.VENT:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSVENT, timeNow, defaultPthStatus, False)
-        elif careTier == CareTier.SKILNRS:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.NEEDSSKILNRS, timeNow, defaultPthStatus, False)
-        else:
-            raise RuntimeError('Unknown care tier %s' % careTier)
-
-    def setValue(self, key, val):
-        """
-        Setting values may be useful for changing phases in a scenario, for example. The
-        values that can be set are treatment-specific; attempting to set an incorrect value
-        is an error.
-        
-        The base class doesn't know how to set any values.
-        """
-        raise RuntimeError('Class %s does not know how to set the value %s'
-                           % (type(self).__name__, key))
-
-
-class TreatmentPolicy(Policy):
-    def initializePatientTreatment(self, ward, patient):
-        """
-        This is called on patients at time zero, when they are first assigned to the
-        ward in which they start the simulation.
-        """
-        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
-
-    def handlePatientArrival(self, ward, patient, timeNow):
-        """
-        This is called on patients when they arrive at a ward.
-        """
-        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
-
-    def handlePatientDeparture(self, ward, patient, timeNow):
-        """
-        This is called on patients when they depart from a ward.
-        """
-        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
-
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
-        """
-        This returns a tuple of form (careTier, patientTreatment).
-        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
-        and is not generally relevant to the decisions made by this method.
-        """
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
-                return (CareTier.HOME, patientTreatment._replace(rehab=False))
-            elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-                return (CareTier.NURSING, patientTreatment._replace(rehab=False))
-            else:
-                raise RuntimeError('Unknown overall health %s' % str(patientDiagnosis.overall))
-        if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
-            newTreatment = patientTreatment._replace(rehab=True)
-            return (CareTier.NURSING, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.SICK:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.HOSP, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.VERYSICK:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.ICU, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSLTAC:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.LTAC, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.DEATH:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (None, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSVENT:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.VENT, newTreatment)
-        elif patientDiagnosis.diagClassA == DiagClassA.NEEDSSKILNRS:
-            newTreatment = patientTreatment._replace(rehab=False)
-            return (CareTier.SKILNRS, newTreatment)
-        else:
-            raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
-
-    def getTransmissionFromMultiplier(self, careTier, **kwargs):
-        """
-        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
-        return the scale factor by which the transmission coefficient tau is multiplied when
-        the patient with this treatment is the source of the transmission.
-        """
-        raise RuntimeError('Base TreatmentPolicy was called.')        
-
-    def getTransmissionToMultiplier(self, careTier, **kwargs):
-        """
-        If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
-        return the scale factor by which the transmission coefficient tau is multiplied when
-        the patient with this treatment is the recipient of the transmission.
-        """
-        raise RuntimeError('Base TreatmentPolicy was called.')        
-
-    @classmethod
-    def getRelativeProb(cls, pthStatus, fromTier, toTier):
-        """
-        If the probability of transfer from fromTier to toTier of a patient at
-        PthStatus.CLEAR is P, and the probability for a patient at the given PthStatus
-        is kP, this routine returns the value of k.  Note that kP must still be less than 1.0,
-        so there is an implied upper bound of P of 1.0/k.
-        """
-        return 1.0
-
-    @classmethod
-    def getEstimatedPrevalence(cls, pthStatus, abbrev, category, tier):
-        """
-        The return value provides an estimate prevalence (0.0 <= return val <= 1.0)
-        of the pathogen for the given pathogen status at the facility named by abbrev,
-        of the given category, at the given care tier.  One use of this value is to
-        help keep patient flows in the correct range while rescaling the flow of a
-        particular category of patient in response to colonization, etc.
-        """
-        if pthStatus == PthStatus.CLEAR:
-            return 1.0
-        else:
-            return 0.0
-
-    def setValue(self, key, val):
-        """
-        Setting values may be useful for changing phases in a scenario, for example. The
-        values that can be set are treatment-specific; attempting to set an incorrect value
-        is an error.
-        
-        The base class doesn't know how to set any values.
-        """
-        raise RuntimeError('Class %s does not know how to set the value %s'
-                           % (type(self).__name__, key))
-
-
-class TransferDestinationPolicy(Policy):
-    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
-        raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 
 class PatientRecord(object):

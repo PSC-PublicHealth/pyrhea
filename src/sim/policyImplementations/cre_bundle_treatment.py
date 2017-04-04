@@ -16,13 +16,11 @@
 ###################################################################################
 
 import logging
-import random
 
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
-from collections import deque
 from facilitybase import CareTier, PthStatus
-from facilitybase import TreatmentPolicy as BaseTreatmentPolicy
+from policybase import TreatmentPolicy as BaseTreatmentPolicy
 
 _validator = None
 _constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'

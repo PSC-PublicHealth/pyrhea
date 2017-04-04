@@ -25,8 +25,8 @@ import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
-from facilitybase import PatientStatusSetter, Pathogen, PthStatus, defaultPthStatus
-from facilitybase import PthStatusSetter
+from pathogenbase import Pathogen, PthStatus, defaultPthStatus
+from facilitybase import PatientStatusSetter, PthStatusSetter
 
 pathogenName = 'CRE'
 _constants_values = '$(CONSTANTS)/cre_constants.yaml'
