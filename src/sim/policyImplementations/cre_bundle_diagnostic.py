@@ -58,8 +58,8 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
     def __init__(self,  patch, categoryNameMapper):
         #super(CREBundleDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
         GenericDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
-        self.effectiveness = _constants['swabDiagnosticSensitivity']['value']
-        self.falsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
+        self.swabeffectiveness = _constants['swabDiagnosticSensitivity']['value']
+        self.swabfalsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
         self.core = CBDPCore()
         self.active = False
         
@@ -74,16 +74,16 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         # Layer our diagnosis on top of any done by the base class
         #oldDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(patientStatus, oldDiagnosis)
         patientStatus = patient._status
-        oldDiagnosis = GenericDiagnosticPolicy.diagnose(self, patient, oldDiagnosis, facility)
+        oldDiagnosisHere = GenericDiagnosticPolicy.diagnose(self, patient, oldDiagnosis, facility)
           
         if self.active:
             if patientStatus.justArrived:
-                if oldDiagnosis.pthStatus != PthStatus.COLONIZED:
+                if oldDiagnosisHere.pthStatus != PthStatus.COLONIZED:
                     if patientStatus.pthStatus == PthStatus.COLONIZED:
-                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabeffectiveness)
                                               else PthStatus.CLEAR)
                     else:
-                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabfalsePosRate)
                                               else PthStatus.CLEAR)
                         
                     ### need to add these folks to the registry... maybe
@@ -97,11 +97,11 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                     
                     patient.ward.miscCounters['creSwabsPerformed'] += 1
                 else:
-                    diagnosedPthStatus = oldDiagnosis.pthStatus
+                    diagnosedPthStatus = oldDiagnosisHere.pthStatus
             else:
-                diagnosedPthStatus = oldDiagnosis.pthStatus
+                diagnosedPthStatus = oldDiagnosisHere.pthStatus
         else:
-            diagnosedPthStatus = oldDiagnosis.pthStatus
+            diagnosedPthStatus = oldDiagnosisHere.pthStatus
             
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
