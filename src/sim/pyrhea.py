@@ -28,13 +28,14 @@ import pika
 import cPickle as pickle
 import re
 import signal
+import ujson 
 
 import quilt.patches as patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
-import ujson 
+from registry import Registry
 from policybase import ScenarioPolicy
 
 
@@ -701,6 +702,15 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
     """Distribute facilities across patches and initialize them"""
     offset = 0
     tupleList = [(p, [], [], []) for p in patchList]
+
+    # Every patch gets one Registry instance
+    for patch, allIter, allAgents, allFacilities in tupleList:
+        registry = Registry(patch.name + '_Registry', patch)
+        registry.setNoteHolder(noteHolderGroup.createNoteHolder())
+        allIter.extend(registry.reqQueues)
+        allIter.append(registry.holdQueue)
+        allAgents.append(registry.manager)
+
     for facDescription in myFacList:
         
         patch, allIter, allAgents, allFacilities = tupleList[offset]
@@ -911,7 +921,7 @@ def main():
                                      inputDict['burnInDays'] + inputDict['scenarioWaitDays'],
                                      scenarioPolicies)
             patchList[0].addAgents([ssA])
-    
+
         initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                              policyClassList, policyRules,
                              PthClass, noteHolderGroup, comm, totalRunDays)

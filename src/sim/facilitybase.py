@@ -16,21 +16,22 @@
 ###################################################################################
 
 from random import randint, choice
-import pyrheabase
 import logging
+from collections import defaultdict
+import cPickle as pickle
+
 from phacsl.utils.notes.statval import HistoVal
+import pyrheabase
 from typebase import CareTier, PatientOverallHealth, DiagClassA
 from typebase import TreatmentProtocol, TREATMENT_DEFAULT
 from typebase import PatientStatus, PatientDiagnosis
 from stats import BayesTree
 from pathogenbase import PthStatus
-from collections import defaultdict
-import cPickle as pickle
-
-logger = logging.getLogger(__name__)
-
+from registry import Registry
 
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
+
+logger = logging.getLogger(__name__)
 
 class PatientStatusSetter(object):
     def __init__(self):
@@ -598,6 +599,8 @@ class PatientAgent(pyrheabase.PatientAgent):
             return None, []
         self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self._status, self._diagnosis,
                                                  timeNow=timeNow)
+        if self.getPthDiagnosis() != PthStatus.CLEAR:
+            Registry.registerPatientStatus(self, str(self.ward.iA), timeNow)
         tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment)
         newTier, self._treatment = tpl[0:2]
         self._status = self._status._replace(justArrived=False)
