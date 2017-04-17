@@ -47,7 +47,7 @@ class RegistryManager(peopleplaces.Manager):
         """
         if self.newRegList:
             facAddrL = [tpl[1] for tpl in self.patch.serviceLookup('RegistryUpdateQueue')
-                        if not self.patch.isLocal(tpl[1])]
+                        if not self.patch.group.isLocal(tpl[1])]
             payload = self.newRegList[:]
             for fA in facAddrL:
                 msg = RegistryGroupUpdateMsg(self.name + '_groupUpdateMsg',
@@ -111,11 +111,11 @@ class Registry(peopleplaces.ManagementBase):
             return super(Registry, self).getMsgPayload(msgType, patientAgent)
 
     @classmethod
-    def buildMsgPayload(cls, msgType, patientAgent, condition):
+    def buildMsgPayload(cls, msgType, patientId, condition, patientDiagnosis):
         """So that registry clients can build a payload without a Registry instance"""
         if issubclass(msgType, RegistryUpdateMsg):
-            return (patientAgent.id, condition,
-                    patientAgent.getPthDiagnosis() != PthStatus.CLEAR)
+            return (patientId, condition,
+                    (patientDiagnosis.pthStatus != PthStatus.CLEAR))
         else:
             raise RuntimeError('Cannot build payload for a %s' % msgType.__name__)
 
@@ -146,10 +146,12 @@ class Registry(peopleplaces.ManagementBase):
         return cls.getCore().getPatientStatus(condition, patientId)
 
     @classmethod
-    def registerPatientStatus(cls, patientAgent, condition, timeNow):
-        facAddr = choice([tpl[1] for tpl in patientAgent.patch.serviceLookup('RegistryUpdateQueue')
-                          if patientAgent.patch.group.isLocal(tpl[1])])
-        payload = cls.buildMsgPayload(RegistryUpdateMsg, patientAgent, condition)
-        patientAgent.patch.launch(RegistryUpdateMsg(patientAgent.name + '_registryUpdateMsg',
-                                                    patientAgent.patch, payload, facAddr),
-                                  timeNow)
+    def registerPatientStatus(cls, patientId, condition, patientDiagnosis,
+                              patch, timeNow):
+        facAddr = choice([tpl[1] for tpl in patch.serviceLookup('RegistryUpdateQueue')
+                          if patch.isLocal(tpl[1])])
+        payload = cls.buildMsgPayload(RegistryUpdateMsg, patientId, condition,
+                                      patientDiagnosis)
+        patch.launch(RegistryUpdateMsg('patient_%s_%s_registryUpdateMsg' % patientId,
+                                       patch, payload, facAddr),
+                     timeNow)

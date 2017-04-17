@@ -102,10 +102,16 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             logger.fatal(msg)
             raise RuntimeError(msg)
 
-    def handlePatientArrival(self, ward, patient, timeNow):
+    def sendPatientTransferInfo(self, facility, patient, transferInfoDict):
+        transferInfoDict.update({'note': 'HUGE Hello from %s' % facility.name})
+        return transferInfoDict        
+
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
+        if 'note' in transferInfoDict:
+            print '%s: %s' % (ward._name, transferInfoDict['note'])
         self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
     def handlePatientDeparture(self, ward, patient, timeNow):
@@ -113,7 +119,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        
+
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
@@ -136,7 +142,8 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         else:
             return 1.0
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
+                  timeNow=None):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -157,7 +164,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             
         # Apparently no one stays on CP for more than 10 days in Nursing care tier
         if ward.tier == CareTier.NURSING:
-            if ward.patch.loop.sequencer.getTimeNow() - patientDiagnosis.startDateA > 10:
+            if timeNow and (timeNow - patientDiagnosis.startDateA > 10):
                 newTreatment = newTreatment._replace(contactPrecautions=False)
             
         # for accounting

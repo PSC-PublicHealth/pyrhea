@@ -39,6 +39,18 @@ class DiagnosticPolicy(Policy):
                                 patientStatus.startDateA,
                                 PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
+        
+    def checkRecords(self, ward, patientId, timeNow=None):
+        """
+        This provides an opportunity to import and merge patient records before diagnosis.
+        """
+        pass
+    
+    def updateRecords(self, ward, patientId, patientDiagnosis, patch, timeNow=None):
+        """
+        This provides an opportunity to export patient record updates after diagnosis.
+        """
+        pass
     
     def initializePatientDiagnosis(self, careTier, timeNow):
         if careTier == CareTier.HOME:
@@ -85,7 +97,7 @@ class TreatmentPolicy(Policy):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def handlePatientArrival(self, ward, patient, timeNow):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
@@ -97,7 +109,19 @@ class TreatmentPolicy(Policy):
         """
         raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
+    def sendPatientTransferInfo(self, facility, patient, transferInfoDict):
+        """
+        The information in the TransferInfo dictionary travels with the patient
+        (actually with the BedRequest) from one facility to the next.  It may or may
+        not contain useful information, for example whether or not the patient is contagious.
+        This method provides an opportunity for the TreatmentPolicy to add info to
+        the transferInfoDict.
+        """
+        transferInfoDict.update({'note': 'Hello from %s' % facility.name})
+        return transferInfoDict
+    
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
+                  timeNow=None):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,

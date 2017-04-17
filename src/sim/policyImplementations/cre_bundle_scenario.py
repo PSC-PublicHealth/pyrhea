@@ -558,7 +558,7 @@ class CREBundleScenario(BaseScenarioPolicy):
             abbrev = facImp['abbrev']
             startDate = facImp['times']['startDate']
             endDate = facImp['times']['endDate']
-            print "{0}: {1} {2}".format(abbrev,startDate,endDate)
+            #print "{0}: {1} {2}".format(abbrev,startDate,endDate)
             
             if timeNow != endDate:
                 assert(timeNow < endDate), 'It is too late to start intervention at %s' % abbrev

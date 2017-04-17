@@ -22,6 +22,7 @@ import pyrheautils
 from facilitybase import PatientDiagnosis
 from policybase import DiagnosticPolicy as BaseDiagnosticPolicy
 from pathogenbase import PthStatus
+from registry import Registry
 
 _validator = None
 _constants_values = '$(CONSTANTS)/generic_diagnosis_constants.yaml'
@@ -37,7 +38,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         
-    def diagnose(self, ward, patientID, patientStatus, oldDiagnosis, timeNow=None):
+    def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
@@ -54,12 +55,25 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                                       else PthStatus.CLEAR)
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
-            
+
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
                                 patientStatus.startDateA,
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
+
+    def checkRecords(self, ward, patientId, timeNow=None):
+        # This should happen only on arrival, and only if they are diligent
+        pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
+        if Registry.getPatientStatus(str(ward.iA), patientId):
+            pRec.isCongagious = True
+            ward.fac.mergePatientRecord(patientId, pRec, timeNow=timeNow)
+
+    def updateRecords(self, ward, patientId, patientDiagnosis, patch, timeNow=None):
+        # This should happen only if they are diligent, and only on change
+        if patientDiagnosis != PthStatus.CLEAR:
+            Registry.registerPatientStatus(patientId, str(ward.iA),
+                                           patientDiagnosis, patch, timeNow=timeNow)
 
     def setValue(self, key, val):
         """

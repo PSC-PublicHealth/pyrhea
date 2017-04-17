@@ -65,7 +65,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
             logger.fatal(msg)
             raise RuntimeError(msg)
     
-    def handlePatientArrival(self, ward, patient, timeNow):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
