@@ -17,6 +17,7 @@
 
 import logging
 from random import random
+import types
 
 import pyrheautils
 from facilitybase import PatientDiagnosis
@@ -32,11 +33,15 @@ _constants = None
 logger = logging.getLogger(__name__)
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
-    def __init__(self,  patch, categoryNameMapper):
+    def __init__(self, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
         BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
+        self.sameFacilityDiagnosisMemory = _constants['notYetImplemented']['value']
+        self.increasedEffectivness = -1.0
+        self.increasedFalsePosRate = -1.0
+        self.useCentralRegistry = False
         
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
@@ -47,12 +52,39 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         """
         
         if patientStatus.justArrived:
-            if patientStatus.pthStatus == PthStatus.COLONIZED:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
-                                      else PthStatus.CLEAR)
+            pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
+
+            if pRec.carriesPth:
+                diagnosedPthStatus = PthStatus.COLONIZED
+                pRec.noteD['cpReason'] = 'passive'
+            elif patientStatus.pthStatus == PthStatus.COLONIZED:
+                randVal = random()  # re-use this to get proper passive/xdro split
+                if randVal <= self.effectiveness:
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    pRec.noteD['cpReason'] = 'passive'
+                elif (self.useCentralRegistry and
+                      (Registry.getPatientStatus(str(self.iA), patientId)
+                       or randVal <= self.increasedEffectiveness)):
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    pRec.noteD['cpReason'] = 'xdro'
+                else:
+                    diagnosedPthStatus = PthStatus.CLEAR  # Missed the diagnosis
+                    pRec.noteD['cpReason'] = None
             else:
-                diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
-                                      else PthStatus.CLEAR)
+                randVal = random()  # re-use this to get proper passive/xdro split
+                if randVal <= self.falsePosRate:
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    pRec.noteD['cpReason'] = 'passive'
+                elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
+                    diagnosedPthStatus = PthStatus.COLONIZED
+                    pRec.noteD['cpReason'] = 'xdro'
+
+            # Do we remember to record the diagnosis in the patient record?
+            if (diagnosedPthStatus == PthStatus.COLONIZED and
+                    random() <= self.sameFacilityDiagnosisMemory[ward.fac.category]):
+                pRec.carriesPth = True
+
+            ward.fac.mergePatientRecord(patientId, pRec, timeNow=timeNow)
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 
@@ -62,19 +94,6 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
 
-    def checkRecords(self, ward, patientId, timeNow=None):
-        # This should happen only on arrival, and only if they are diligent
-        pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
-        if Registry.getPatientStatus(str(ward.iA), patientId):
-            pRec.isCongagious = True
-            ward.fac.mergePatientRecord(patientId, pRec, timeNow=timeNow)
-
-    def updateRecords(self, ward, patientId, patientDiagnosis, patch, timeNow=None):
-        # This should happen only if they are diligent, and only on change
-        if patientDiagnosis != PthStatus.CLEAR:
-            Registry.registerPatientStatus(patientId, str(ward.iA),
-                                           patientDiagnosis, patch, timeNow=timeNow)
-
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
@@ -83,13 +102,31 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         
         This class supports setting pathogenDiagnosticEffectiveness, a fraction.
         """
+        logger.info('%s setting %s to %s', type(self).__name__, key, val)
         if key == 'pathogenDiagnosticEffectiveness':
             if val:
                 self.effectiveness = val
             else:
                 # None means reset to default
                 self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
-            print 'effectiveness is now %s' % self.effectiveness
+            logger.info('effectiveness is now %s', self.effectiveness)
+        elif key == 'pathogenDiagnosticEffectivenessIncreasedAwareness':
+            if val:
+                self.increasedEffectivness = val
+            else:
+                # None means reset to initial setting
+                self.increasedEffectiveness = -1.0
+            logger.info('increasedEffectiveness is now %s', self.increasedEffectiveness)
+        elif key == 'pathogenDiagnosticEffectivenessIncreasedFalsePositiveRate':
+            if val:
+                self.increasedFalsePosRate = val
+            else:
+                # None means reset to initial setting
+                self.increasedFalsePosRate = -1.0
+            logger.info('increasedFalsePosRate is now %s', self.increasedFalsePosRate)
+        elif key == 'useCentralRegistry':
+            assert type(val) == types.BooleanType, 'useCentralRegistry val should be boolean'
+            self.useCentralRegistry = val
         else:
             super(GenericDiagnosticPolicy, self).setValue(key, val)
 

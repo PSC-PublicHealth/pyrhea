@@ -186,27 +186,41 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
 
 
 class PatientRecord(object):
-    def __init__(self, patientId, arrivalDate, isFrail, isContagious=False):
+    _boolProps = ['isFrail',
+                  'carriesPth',  # Carries the pathogen being simulated
+                  'carriesOther' # Carries some other contagious pathogen
+                  ]
+
+    def __init__(self, patientId, arrivalDate, isFrail, carriesPth=False, carriesOther=False):
         self.patientId = patientId
         self.arrivalDate = arrivalDate
         self.departureDate = None
         self.prevVisits = 0
-        self.isFrail = isFrail
-        self.isContagious = isContagious
-        
+        for propN in PatientRecord._boolProps:
+            setattr(self, propN, locals()[propN])
+        self.noteD = {}
+
+    @property
+    def isContagious(self):
+        return (self.carriesPth or self.carriesOther)
+
     def merge(self, otherRec):
         assert self.patientId == otherRec.patientId, 'Cannot merge records for different patients'
         if otherRec.arrivalDate > self.arrivalDate:     # newer visit
-            self.arrivalDate = otherRec.arrivalDate
-            self.departureDate = otherRec.departureDate
-            self.prevVisits = otherRec.prevVisits       # new record overrides
-            self.isContagious = otherRec.isContagious   # new record overrides
-            self.isFrail = otherRec.isFrail             # new record overrides
+            for propN in PatientRecord._boolProps + ['arrivalDate', 'departureDate',
+                                                     'prevVisits']:
+                setattr(self, propN, getattr(otherRec, propN)) # new rec overrides
+            self.noteD.update(otherRec.noteD)  # new rec overrides
         elif otherRec.arrivalDate < self.arrivalDate: # earlier visit
             assert (otherRec.departureDate is not None
                     and (self.departureDate is None
                          or otherRec.departureDate <= self.arrivalDate)), 'record-keeping inconsistency'
-            # Fields are more recent and thus stay the same
+            # Bool fields are more recent and thus stay the same
+            # merge notes, keeping more recent
+            newD = otherRec.noteD
+            newD.update(self.noteD)
+            self.noteD = newD
+
         else:  # same visit
             if self.departureDate is None:
                 self.departureDate = otherRec.departureDate
@@ -214,9 +228,14 @@ class PatientRecord(object):
                 if (otherRec.departureDate is not None
                         and otherRec.departureDate > self.departureDate):
                     self.departureDate = otherRec.departureDate
-            self.isContagious = (self.isContagious or otherRec.isContagious)
             self.prevVisits = max(self.prevVisits, otherRec.prevVisits)
-            self.isFrail = (self.isFrail or otherRec.isFrail)
+            for propN in PatientRecord._boolProps:
+                setattr(self, propN, (getattr(self, propN) or getattr(otherRec, propN)))
+            self.noteD.update(otherRec.noteD)  # new rec overrides
+
+        for key, val in self.noteD.items():
+            if val is None:
+                del self.noteD[key]
 
     def __str__(self):
         return '<patient %s, %s -> %s, %s, %s>' % (self.patientId,
@@ -457,12 +476,8 @@ class Facility(pyrheabase.Facility):
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
         """
-        self.diagnosticPolicy.checkRecords(ward, patientId, timeNow=timeNow)
-        newDiagnosis = self.diagnosticPolicy.diagnose(ward, patientId, patientStatus,
-                                                      oldDiagnosis, timeNow=timeNow)
-        self.diagnosticPolicy.updateRecords(ward, patientId, newDiagnosis,
-                                            self.manager.patch, timeNow=timeNow)
-        return newDiagnosis
+        return self.diagnosticPolicy.diagnose(ward, patientId, patientStatus,
+                                              oldDiagnosis, timeNow=timeNow)
 
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, timeNow=None):
         """

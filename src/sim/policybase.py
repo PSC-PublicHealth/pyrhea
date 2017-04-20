@@ -40,18 +40,6 @@ class DiagnosticPolicy(Policy):
                                 PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
         
-    def checkRecords(self, ward, patientId, timeNow=None):
-        """
-        This provides an opportunity to import and merge patient records before diagnosis.
-        """
-        pass
-    
-    def updateRecords(self, ward, patientId, patientDiagnosis, patch, timeNow=None):
-        """
-        This provides an opportunity to export patient record updates after diagnosis.
-        """
-        pass
-    
     def initializePatientDiagnosis(self, careTier, timeNow):
         if careTier == CareTier.HOME:
             return PatientDiagnosis(PatientOverallHealth.HEALTHY,

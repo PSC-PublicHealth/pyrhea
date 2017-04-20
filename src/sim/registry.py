@@ -146,12 +146,12 @@ class Registry(peopleplaces.ManagementBase):
         return cls.getCore().getPatientStatus(condition, patientId)
 
     @classmethod
-    def registerPatientStatus(cls, patientId, condition, patientDiagnosis,
-                              patch, timeNow):
+    def registerPatientStatus(cls, patientId, condition, patientDiagnosis, patch):
+        """Sends message to the registry using the current time implicitly"""
         facAddr = choice([tpl[1] for tpl in patch.serviceLookup('RegistryUpdateQueue')
                           if patch.isLocal(tpl[1])])
         payload = cls.buildMsgPayload(RegistryUpdateMsg, patientId, condition,
                                       patientDiagnosis)
         patch.launch(RegistryUpdateMsg('patient_%s_%s_registryUpdateMsg' % patientId,
                                        patch, payload, facAddr),
-                     timeNow)
+                     patch.loop.sequencer.getTimeNow())
