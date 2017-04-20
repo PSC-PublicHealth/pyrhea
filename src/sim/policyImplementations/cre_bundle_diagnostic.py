@@ -69,13 +69,15 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                     else:
                         diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
                                               else PthStatus.CLEAR)
-                    ward.miscCounters['swabDiagnostics'] += 1
 
-                if diagnosedPthStatus == PthStatus.COLONIZED:
-                    sameFacProb = self.core.sameFacilityDiagnosisMemory[ward.fac.category]
-                    if random() <= sameFacProb:
-                        # We remember to add it to the patient's in-house record!
-                        pRec.carriesPth = True
+                    if diagnosedPthStatus == PthStatus.COLONIZED:
+                        pRec.noteD['cpReason'] = 'swab'
+                        sameFacProb = self.core.sameFacilityDiagnosisMemory[ward.fac.category]
+                        if random() <= sameFacProb:
+                            # We remember to add it to the patient's in-house record!
+                            pRec.carriesPth = True
+
+                    ward.miscCounters['creSwabsPerformed'] += 1
             else:
                 diagnosedPthStatus = parentDiagnosis.pthStatus
         else:
