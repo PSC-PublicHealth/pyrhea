@@ -77,43 +77,43 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         
         This version provides some awareness of pathogen status
         """
-        
         if patientStatus.justArrived:
             pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
-
-            if pRec.carriesPth:
-                diagnosedPthStatus = PthStatus.COLONIZED
-                pRec.noteD['cpReason'] = 'passive'
-            elif patientStatus.pthStatus == PthStatus.COLONIZED:
-                randVal = random()  # re-use this to get proper passive/xdro split
-                if randVal <= self.effectiveness:
+            if True:
+            #with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
+                
+                if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
                     pRec.noteD['cpReason'] = 'passive'
-                elif (self.useCentralRegistry and
-                      (Registry.getPatientStatus(str(self.iA), patientId)
-                       or randVal <= self.increasedEffectiveness)):
-                    diagnosedPthStatus = PthStatus.COLONIZED
-                    pRec.noteD['cpReason'] = 'xdro'
+                elif patientStatus.pthStatus == PthStatus.COLONIZED:
+                    randVal = random()  # re-use this to get proper passive/xdro split
+                    if randVal <= self.effectiveness:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        pRec.noteD['cpReason'] = 'passive'
+                    elif (self.useCentralRegistry and
+                          (Registry.getPatientStatus(str(self.iA), patientId)
+                           or randVal <= self.increasedEffectiveness)):
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        pRec.noteD['cpReason'] = 'xdro'
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR  # Missed the diagnosis
+                        pRec.noteD['cpReason'] = None
                 else:
-                    diagnosedPthStatus = PthStatus.CLEAR  # Missed the diagnosis
-                    pRec.noteD['cpReason'] = None
-            else:
-                randVal = random()  # re-use this to get proper passive/xdro split
-                if randVal <= self.falsePosRate:
-                    diagnosedPthStatus = PthStatus.COLONIZED
-                    pRec.noteD['cpReason'] = 'passive'
-                elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
-                    diagnosedPthStatus = PthStatus.COLONIZED
-                    pRec.noteD['cpReason'] = 'xdro'
-                else:
-                    diagnosedPthStatus = PthStatus.CLEAR
-
-            # Do we remember to record the diagnosis in the patient record?
-            if (diagnosedPthStatus == PthStatus.COLONIZED and
-                    random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
-                pRec.carriesPth = True
-
-            ward.fac.mergePatientRecord(patientId, pRec, timeNow=timeNow)
+                    randVal = random()  # re-use this to get proper passive/xdro split
+                    if randVal <= self.falsePosRate:
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        pRec.noteD['cpReason'] = 'passive'
+                    elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
+                        diagnosedPthStatus = PthStatus.COLONIZED
+                        pRec.noteD['cpReason'] = 'xdro'
+                    else:
+                        diagnosedPthStatus = PthStatus.CLEAR
+    
+                # Do we remember to record the diagnosis in the patient record?
+                if (diagnosedPthStatus == PthStatus.COLONIZED and
+                        random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
+                    pRec.carriesPth = True
+            ward.fac.mergePatientRecord(patientId, pRec)
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 
@@ -155,7 +155,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             logger.info('effectiveness is now %s', self.effectiveness)
         elif key == 'pathogenDiagnosticEffectivenessIncreasedAwareness':
             if val:
-                self.increasedEffectivness = val
+                self.increasedEffectiveness = val
             else:
                 # None means reset to initial setting
                 self.increasedEffectiveness = -1.0

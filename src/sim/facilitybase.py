@@ -191,14 +191,22 @@ class PatientRecord(object):
                   'carriesOther' # Carries some other contagious pathogen
                   ]
 
-    def __init__(self, patientId, arrivalDate, isFrail, carriesPth=False, carriesOther=False):
+    def __init__(self, patientId, arrivalDate, #owningFacility,
+                 isFrail, carriesPth=False, carriesOther=False):
         self.patientId = patientId
         self.arrivalDate = arrivalDate
+        #self.fac = owningFacility
         self.departureDate = None
         self.prevVisits = 0
         for propN in PatientRecord._boolProps:
             setattr(self, propN, locals()[propN])
         self.noteD = {}
+
+#     def __enter__(self):
+#         return self
+#     
+#     def __exit__(self, *args):
+#         self.fac.mergePatientRecord(self.patientId, self, None)
 
     @property
     def isContagious(self):
@@ -323,7 +331,8 @@ class Facility(pyrheabase.Facility):
         else:
             # Create a new blank record
             assert timeNow is not None, 'Record not found and cannot create a new one'
-            rec = PatientRecord(patientId, timeNow, isFrail=False)
+            rec = PatientRecord(patientId, timeNow, # self,
+                                isFrail=False)
             self.patientDataDict[patientId] = pickle.dumps(rec, 2)  # keep a copy
             return rec
 
