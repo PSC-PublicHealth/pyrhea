@@ -205,6 +205,7 @@ class PatientRecord(object):
         return (self.carriesPth or self.carriesOther)
 
     def merge(self, otherRec):
+        # print 'merge %s and %s %s' % (str(self), otherRec, dir(otherRec))
         assert self.patientId == otherRec.patientId, 'Cannot merge records for different patients'
         if otherRec.arrivalDate > self.arrivalDate:     # newer visit
             for propN in PatientRecord._boolProps + ['arrivalDate', 'departureDate',
@@ -423,6 +424,8 @@ class Facility(pyrheabase.Facility):
         transferInfo dictionary).
         """
         transferInfoDict = {'patientId': patientAgent.id}
+        transferInfoDict = self.diagnosticPolicy.sendPatientTransferInfo(self, patientAgent,
+                                                                         transferInfoDict)
         for tP in self.treatmentPolicies:
             transferInfoDict = tP.sendPatientTransferInfo(self, patientAgent, transferInfoDict)
         return (0, desiredTier, self.abbrev, transferInfoDict)  # number of bounces, tier, originating fac

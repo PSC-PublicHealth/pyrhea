@@ -20,6 +20,7 @@ from random import random
 import types
 
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import PatientDiagnosis
 from policybase import DiagnosticPolicy as BaseDiagnosticPolicy
 from pathogenbase import PthStatus
@@ -32,13 +33,39 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
+
+def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['category']
+        topD[cat] = float(elt['frac']['value'])
+    
+    return topD
+
+
+def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt['categoryFrom']
+        topD[cat] = float(elt['frac']['value'])
+    return topD    
+
+class GDPCore(object):
+    """This is where we put things that are best shared across all instances"""
+    __metaclass__ = SingletonMetaClass
+    
+    def __init__(self):
+        self.sameFacilityDiagnosisMemory = _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
+        self.communicateDiagnosisBetweenFacility = _parseCommunicateDiagnosisBetweenFacility('communitcateDiagnosisBetweenFacility')
+
+
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
     def __init__(self, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
         BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
-        self.sameFacilityDiagnosisMemory = _constants['notYetImplemented']['value']
+        self.core = GDPCore()
         self.increasedEffectivness = -1.0
         self.increasedFalsePosRate = -1.0
         self.useCentralRegistry = False
@@ -78,10 +105,12 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
                     diagnosedPthStatus = PthStatus.COLONIZED
                     pRec.noteD['cpReason'] = 'xdro'
+                else:
+                    diagnosedPthStatus = PthStatus.CLEAR
 
             # Do we remember to record the diagnosis in the patient record?
             if (diagnosedPthStatus == PthStatus.COLONIZED and
-                    random() <= self.sameFacilityDiagnosisMemory[ward.fac.category]):
+                    random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
                 pRec.carriesPth = True
 
             ward.fac.mergePatientRecord(patientId, pRec, timeNow=timeNow)
@@ -93,6 +122,20 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                                 patientStatus.startDateA,
                                 diagnosedPthStatus,
                                 patientStatus.relocateFlag)
+
+    def sendPatientTransferInfo(self, facility, patient, transferInfoDict):
+        #transferInfoDict.update({'note': 'HUGE Hello from %s' % facility.name})
+        # Maybe we remember to send known-carrier status with the patient
+        pRec = facility.getPatientRecord(patient.id)
+        if pRec.carriesPth:
+            commFacProb = self.core.communicateDiagnosisBetweenFacility[facility.category]
+            if random() <= commFacProb:
+                transferInfoDict['carriesPth'] = True
+                # It's awkward to put this here, but the logic chain requires it to co-occur
+                # with the transferInfoDict value.
+                Registry.registerPatientStatus(patient.id, str(patient.ward.iA), patient._diagnosis,
+                                               facility.manager.patch)
+        return transferInfoDict        
 
     def setValue(self, key, val):
         """

@@ -63,7 +63,6 @@ class CPTPCore(object):
     def __init__(self):
         self.baseFracTbl = _parseFracByStatusByTierByCategory('baseFractionUnderContactPrecautions')
         self.effectiveness = _constants['transmissibilityMultiplier']['value']
-        self.communicateDiagnosisBetweenFacility = _constants['notImplementedYet']['value']
 
 
 class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
@@ -90,7 +89,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         try:
             frac = self.core.baseFracTbl[ward.fac.category][ward.tier][pthStatus]
             if random() <= frac:
-                if not patient.getTreatment().contactPrecautions:
+                if not patient.getTreatment('contactPrecautions'):
                     ward.miscCounters['newPatientsOnCP'] += 1
                 patient.setTreatment(contactPrecautions=True)
                 pRec = ward.fac.getPatientRecord(patient.id, timeNow)
@@ -106,18 +105,6 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
                    % (cat, tier, pthStatus))
             logger.fatal(msg)
             raise RuntimeError(msg)
-
-    def sendPatientTransferInfo(self, facility, patient, transferInfoDict):
-        #transferInfoDict.update({'note': 'HUGE Hello from %s' % facility.name})
-        # Maybe we remember to send known-carrier status with the patient
-        pRec = facility.getPatientRecord(patient.id)
-        if pRec.carriesPth:
-            commFacProb = self.core.communicateDiagnosisBetweenFacility[patient.prevFac.category]
-            if random() <= commFacProb:
-                transferInfoDict['carriesPth'] = True
-                Registry.registerPatientStatus(patient.id, str(facility.iA), patient.getDiagnosis(),
-                                               facility.manager.patch)
-                return transferInfoDict        
 
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """

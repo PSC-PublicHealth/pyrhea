@@ -65,6 +65,16 @@ class DiagnosticPolicy(Policy):
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
 
+    def sendPatientTransferInfo(self, facility, patient, transferInfoDict):
+        """
+        The information in the TransferInfo dictionary travels with the patient
+        (actually with the BedRequest) from one facility to the next.  It may or may
+        not contain useful information, for example whether or not the patient is contagious.
+        This method provides an opportunity for the TreatmentPolicy to add info to
+        the transferInfoDict.
+        """
+        return transferInfoDict
+    
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
@@ -105,7 +115,6 @@ class TreatmentPolicy(Policy):
         This method provides an opportunity for the TreatmentPolicy to add info to
         the transferInfoDict.
         """
-        transferInfoDict.update({'note': 'Hello from %s' % facility.name})
         return transferInfoDict
     
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
