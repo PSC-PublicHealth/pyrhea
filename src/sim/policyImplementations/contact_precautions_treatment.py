@@ -92,10 +92,9 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
                 if not patient.getTreatment('contactPrecautions'):
                     ward.miscCounters['newPatientsOnCP'] += 1
                 patient.setTreatment(contactPrecautions=True)
-                pRec = ward.fac.getPatientRecord(patient.id, timeNow)
-                pRec.noteD['cpReason'] = 'other'
-                pRec.carriesOther = True  # they must think there's a reason for the CP
-                ward.fac.mergePatientRecord(patient.id, pRec, timeNow)
+                with ward.fac.getPatientRecord(patient.id, timeNow) as pRec:
+                    pRec.noteD['cpReason'] = 'other'
+                    pRec.carriesOther = True  # they must think there's a reason for the CP
         except KeyError:
             if tier in CareTier.names:
                 tier = CareTier.names[tier]
@@ -113,9 +112,8 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         # Check for any info delivered with the transfer
         if 'carriesPth' in transferInfoDict:
             # Transfer probability was checked on the sending end
-            pRec = ward.fac.getPatientRecord(patient.id, timeNow=timeNow)
-            pRec.carriesPth = True
-            ward.fac.mergePatientRecord(patient.id, pRec, timeNow)
+            with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
+                pRec.carriesPth = True
 
         self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
@@ -124,9 +122,8 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        pRec = ward.fac.getPatientRecord(patient.id)
-        pRec.noteD['cpReason'] = None
-        ward.fac.mergePatientRecord(patient.id, pRec, timeNow=timeNow)
+        with ward.fac.getPatientRecord(patient.id) as pRec:
+            pRec.noteD['cpReason'] = None
 
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
         """

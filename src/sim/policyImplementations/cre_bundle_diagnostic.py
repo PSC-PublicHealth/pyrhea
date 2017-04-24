@@ -52,39 +52,37 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                                                                           patientStatus,
                                                                           oldDiagnosis,
                                                                           timeNow=timeNow)
-        pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
-        
-        if self.active:
-            if patientStatus.justArrived:
-                if pRec.isContagious or parentDiagnosis.pthStatus not in (PthStatus.CLEAR,
-                                                                        PthStatus.RECOVERED):
-                    # Only test patients not already known to need isolation. Trust
-                    # whatever method marked pRec to have set appropriate counters.
-                    diagnosedPthStatus = parentDiagnosis.pthStatus
-                else:
-                    # This patient gets tested
-                    if patientStatus.pthStatus == PthStatus.COLONIZED:
-                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
-                                              else PthStatus.CLEAR)
+
+        with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
+            if self.active:
+                if patientStatus.justArrived:
+                    if pRec.isContagious or parentDiagnosis.pthStatus not in (PthStatus.CLEAR,
+                                                                            PthStatus.RECOVERED):
+                        # Only test patients not already known to need isolation. Trust
+                        # whatever method marked pRec to have set appropriate counters.
+                        diagnosedPthStatus = parentDiagnosis.pthStatus
                     else:
-                        diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
-                                              else PthStatus.CLEAR)
+                        # This patient gets tested
+                        if patientStatus.pthStatus == PthStatus.COLONIZED:
+                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                                                  else PthStatus.CLEAR)
+                        else:
+                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                                                  else PthStatus.CLEAR)
 
-                    if diagnosedPthStatus == PthStatus.COLONIZED:
-                        pRec.noteD['cpReason'] = 'swab'
-                        sameFacProb = self.core.sameFacilityDiagnosisMemory[ward.fac.category]
-                        if random() <= sameFacProb:
-                            # We remember to add it to the patient's in-house record!
-                            pRec.carriesPth = True
+                        if diagnosedPthStatus == PthStatus.COLONIZED:
+                            pRec.noteD['cpReason'] = 'swab'
+                            sameFacProb = self.core.sameFacilityDiagnosisMemory[ward.fac.category]
+                            if random() <= sameFacProb:
+                                # We remember to add it to the patient's in-house record!
+                                pRec.carriesPth = True
 
-                    ward.miscCounters['creSwabsPerformed'] += 1
+                        ward.miscCounters['creSwabsPerformed'] += 1
+                else:
+                    diagnosedPthStatus = parentDiagnosis.pthStatus
             else:
                 diagnosedPthStatus = parentDiagnosis.pthStatus
-        else:
-            diagnosedPthStatus = parentDiagnosis.pthStatus
-            
-        ward.fac.mergePatientRecord(patientId, pRec, timeNow) # Update the official record
-            
+
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
                                 patientStatus.startDateA,

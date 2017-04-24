@@ -78,9 +78,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         This version provides some awareness of pathogen status
         """
         if patientStatus.justArrived:
-            pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
-            if True:
-            #with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
+            with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
                 
                 if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
@@ -113,7 +111,6 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 if (diagnosedPthStatus == PthStatus.COLONIZED and
                         random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
                     pRec.carriesPth = True
-            ward.fac.mergePatientRecord(patientId, pRec)
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 

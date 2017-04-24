@@ -202,11 +202,13 @@ class PatientRecord(object):
             setattr(self, propN, locals()[propN])
         self.noteD = {}
 
-#     def __enter__(self):
-#         return self
-#     
-#     def __exit__(self, *args):
-#         self.fac.mergePatientRecord(self.patientId, self, None)
+    def __enter__(self):
+        assert hasattr(self, '_owningFac'), ('PatientRecord can only be a context if'
+                                             ' created via Facility.getPatientRecord')
+        return self
+     
+    def __exit__(self, *args):
+        self._owningFac.mergePatientRecord(self.patientId, self, None)
 
     @property
     def isContagious(self):
@@ -327,18 +329,21 @@ class Facility(pyrheabase.Facility):
     
     def getPatientRecord(self, patientId, timeNow=None):
         if patientId in self.patientDataDict:
-            return pickle.loads(self.patientDataDict[patientId])
+            pR = pickle.loads(self.patientDataDict[patientId])
+            pR._owningFac = self
+            return pR
         else:
             # Create a new blank record
             assert timeNow is not None, 'Record not found and cannot create a new one'
-            rec = PatientRecord(patientId, timeNow, # self,
-                                isFrail=False)
-            self.patientDataDict[patientId] = pickle.dumps(rec, 2)  # keep a copy
-            return rec
+            pR = PatientRecord(patientId, timeNow, isFrail=False)
+            self.patientDataDict[patientId] = pickle.dumps(pR, 2)  # keep a copy
+            pR._owningFac = self
+            return pR
 
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
         patientRec.merge(newPatientRec)
+        delattr(patientRec, '_owningFac')
         self.patientDataDict[patientId] = pickle.dumps(patientRec, 2)
 
     def flushCaches(self):
