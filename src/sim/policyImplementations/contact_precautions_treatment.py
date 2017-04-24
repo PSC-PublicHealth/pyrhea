@@ -160,25 +160,25 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
                                                                      patientDiagnosis,
                                                                      patientTreatment,
                                                                      modifierList)
-        
-        pRec = ward.fac.getPatientRecord(patientId)
+
+        pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
 
         if (patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED)
                 or pRec.isContagious):
             if not patientTreatment.contactPrecautions:
                 ward.miscCounters['newPatientsOnCP'] += 1
             newTreatment = newTreatment._replace(contactPrecautions=True)
-            
+
         # Apparently no one stays on CP for more than 10 days in Nursing care tier
         if ward.tier == CareTier.NURSING:
             if timeNow and (timeNow - patientDiagnosis.startDateA > 10):
                 newTreatment = newTreatment._replace(contactPrecautions=False)
-            
+
         # for accounting
         if newTreatment.contactPrecautions:
             ### Track all contact precaution days
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
-            
+
             ### Need to track the reason they are on CP 
             if 'cpReason' in pRec.noteD:
                 cpReason = pRec.noteD['cpReason']
