@@ -100,6 +100,10 @@ class Ward(pyrheabase.Ward):
         self.miscCounters['arrivals'] += 1
         if patientAgent._status.pthStatus == PthStatus.COLONIZED:
             self.miscCounters['creArrivals'] += 1
+	if patientAgent.id not in self.fac.arrivingPatientTransferInfoDict.keys():
+	    tmpNum, tempTeir, tempAbbrev, transferInfoDict = self.getBedRequestPayload(patientAgent,"COMMUNITY")
+            #self.fac.arrivingPatientTransferInfoDict[patientAgent.id] = {'patientId':patientAgent.id}
+
         transferInfo = self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
         del self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
         for tP in self.fac.treatmentPolicies:
