@@ -271,7 +271,11 @@ class PatientStats(object):
     def remPatient(self):
         self.currentOccupancy -=1
 
-        
+
+class MissingPatientRecordError(RuntimeError):
+    pass
+
+
 class Facility(pyrheabase.Facility):
     def __init__(self, name, descr, patch, reqQueueClasses=None, policyClasses=None,
                  managerClass=FacilityManager, categoryNameMapper=None):
@@ -338,7 +342,8 @@ class Facility(pyrheabase.Facility):
             return pR
         else:
             # Create a new blank record
-            assert timeNow is not None, 'Record not found and cannot create a new one'
+            if timeNow is None:
+                raise MissingPatientRecordError('Record not found and cannot create a new one')
             pR = PatientRecord(patientId, timeNow, isFrail=False)
             self.patientDataDict[patientId] = pickle.dumps(pR, 2)  # keep a copy
             pR._owningFac = self
@@ -442,10 +447,18 @@ class Facility(pyrheabase.Facility):
         transferInfo dictionary).
         """
         transferInfoDict = {'patientId': patientAgent.id}
-        transferInfoDict = self.diagnosticPolicy.sendPatientTransferInfo(self, patientAgent,
-                                                                         transferInfoDict)
+        try:
+            transferInfoDict = self.diagnosticPolicy.sendPatientTransferInfo(self,
+                                                                             patientAgent,
+                                                                             transferInfoDict)
+        except MissingPatientRecordError:
+            pass
         for tP in self.treatmentPolicies:
-            transferInfoDict = tP.sendPatientTransferInfo(self, patientAgent, transferInfoDict)
+            try:
+                transferInfoDict = tP.sendPatientTransferInfo(self, patientAgent,
+                                                              transferInfoDict)
+            except MissingPatientRecordError:
+                pass
         return (0, desiredTier, self.abbrev, transferInfoDict)  # number of bounces, tier, originating fac
 
     def handleBedRequestResponse(self, ward, payload, timeNow):
