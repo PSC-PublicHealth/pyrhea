@@ -89,7 +89,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
                     elif (self.useCentralRegistry and
-                          (Registry.getPatientStatus(str(self.iA), patientId)
+                          (Registry.getPatientStatus(str(ward.iA), patientId)
                            or randVal <= self.increasedEffectiveness)):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
