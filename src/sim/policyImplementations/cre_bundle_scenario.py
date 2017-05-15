@@ -536,12 +536,14 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
+                    #if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
+                    if type(fac.diagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
                         fac.diagnosticPolicy.setValue('active', True)
                     else:
                         raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy' % abbrev)
                     for tP in fac.treatmentPolicies:
-                        if isinstance(tP, CREBundleTreatmentPolicy):
+                        #if isinstance(tP, CREBundleTreatmentPolicy):
+                        if type(tP).__name__ == CREBundleTreatmentPolicy.__name__:
                             tP.setValue('active', True)
                             for ward in fac.getWards():
                                 for patient in ward.getPatientList():
@@ -568,10 +570,12 @@ class CREBundleScenario(BaseScenarioPolicy):
                     fac.flushCaches()
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
-                    if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
-                        fac.diagnosticPolicy.setValue('active', True)
+                    #if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
+                    if type(facDiagnosticPolicy).__name__ == CREBundleDiagnosticPolicy.__name__:
+                        fac.diagnosticPolicy.setValue('active', False)
                     for tP in fac.treatmentPolicies:
-                        if isinstance(tP, CREBundleTreatmentPolicy):
+                        #if isinstance(tP, CREBundleTreatmentPolicy):
+                        if type(tP).__name__ == CREBundleTreatmentPolicy.__name__:
                             tP.setValue('active', False)
                             logger.info('Deactivated CREBundleScenario at %s' % abbrev)
                             break
