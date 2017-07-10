@@ -34,8 +34,8 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
     def __init__(self,  patch, categoryNameMapper):
         #super(CREBundleDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
         GenericDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
-        self.effectiveness = _constants['swabDiagnosticSensitivity']['value']
-        self.falsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
+        self.swabEffectiveness = _constants['swabDiagnosticSensitivity']['value']
+        self.swabFalsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
         self.active = False
         
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
@@ -64,10 +64,10 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                     else:
                         # This patient gets tested
                         if patientStatus.pthStatus == PthStatus.COLONIZED:
-                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.effectiveness)
+                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabEffectiveness)
                                                   else PthStatus.CLEAR)
                         else:
-                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.falsePosRate)
+                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabFalsePosRate)
                                                   else PthStatus.CLEAR)
 
                         if diagnosedPthStatus == PthStatus.COLONIZED:

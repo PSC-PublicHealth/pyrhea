@@ -186,9 +186,11 @@ def loadFacilityTypeConstants(category, implementationDir):
 
 def importNotes(fname):
     try:
+	print "loading pkl"
         with open(fname, 'r') as f:
             stuff = pickle.load(f)
     except (KeyError, pickle.UnpicklingError):
+	print "loading json"
         with open(fname, 'r') as f:
             stuff = ujson.load(f)
     return stuff
