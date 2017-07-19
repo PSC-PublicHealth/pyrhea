@@ -1,0 +1,9 @@
+[submodule "models/ChicagoLand"]
+	path = models/ChicagoLand
+	url = https://github.com/PSC-PublicHealth/pyrhea-ChicagoLand.git
+[submodule "models/OrangeCounty2013"]
+	path = models/OrangeCounty2013
+	url = https://github.com/PSC-PublicHealth/pyrhea-OrangeCounty2013.git
+[submodule "models/OrangeCounty"]
+	path = models/OrangeCounty
+	url = https://github.com/PSC-PublicHealth/pyrhea-OrangeCounty.git
