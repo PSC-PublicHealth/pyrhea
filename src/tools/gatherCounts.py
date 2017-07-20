@@ -21,12 +21,12 @@ from pyrhea import getLoggerConfig
 import print_counts
 from collections import defaultdict
 import time
-import affinity
+#import affinity
 
 #print "Cpu_Count = {0}".format(cpu_count())
 #sys.stdout.flush()
-if cpu_count() < 60:
-    affinity.set_process_affinity_mask(0,2**cpu_count()-1)
+#if cpu_count() < 60:
+ #   affinity.set_process_affinity_mask(0,2**cpu_count()-1)
 
 #os.system("taskset -p 0xff %d"%os.getpid())
 
