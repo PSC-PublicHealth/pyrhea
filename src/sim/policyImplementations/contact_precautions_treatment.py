@@ -23,6 +23,7 @@ import pyrheautils
 from facilitybase import CareTier
 from policybase import TreatmentPolicy as BaseTreatmentPolicy
 from pathogenbase import PthStatus
+from registry import Registry
 
 _validator = None
 _constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'
@@ -88,10 +89,12 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         try:
             frac = self.core.baseFracTbl[ward.fac.category][ward.tier][pthStatus]
             if random() <= frac:
+                if not patient.getTreatment('contactPrecautions'):
+                    ward.miscCounters['newPatientsOnCP'] += 1
                 patient.setTreatment(contactPrecautions=True)
-                pRec = ward.fac.getPatientRecord(patient.id, timeNow)
-                pRec.isContagious = True
-                ward.fac.mergePatientRecord(patient.id, pRec, timeNow)
+                with ward.fac.getPatientRecord(patient.id, timeNow) as pRec:
+                    pRec.noteD['cpReason'] = 'other'
+                    pRec.carriesOther = True  # they must think there's a reason for the CP
         except KeyError:
             if tier in CareTier.names:
                 tier = CareTier.names[tier]
@@ -102,10 +105,16 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             logger.fatal(msg)
             raise RuntimeError(msg)
 
-    def handlePatientArrival(self, ward, patient, timeNow):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
         """
+        # Check for any info delivered with the transfer
+        if 'carriesPth' in transferInfoDict:
+            # Transfer probability was checked on the sending end
+            with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
+                pRec.carriesPth = True
+
         self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
     def handlePatientDeparture(self, ward, patient, timeNow):
@@ -113,7 +122,9 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        
+        with ward.fac.getPatientRecord(patient.id) as pRec:
+            pRec.noteD['cpReason'] = None
+
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
         """
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
@@ -136,7 +147,8 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         else:
             return 1.0
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
+                  timeNow=None):
         """
         This returns a tuple of form (careTier, patientTreatment).
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
@@ -148,21 +160,38 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
                                                                      patientDiagnosis,
                                                                      patientTreatment,
                                                                      modifierList)
-        
-        pRec = ward.fac.getPatientRecord(patientId)
+
+        pRec = ward.fac.getPatientRecord(patientId, timeNow=timeNow)
 
         if (patientDiagnosis.pthStatus not in (PthStatus.CLEAR, PthStatus.RECOVERED)
-            or pRec.isContagious):
+                or pRec.isContagious):
+            if not patientTreatment.contactPrecautions:
+                ward.miscCounters['newPatientsOnCP'] += 1
             newTreatment = newTreatment._replace(contactPrecautions=True)
-            
+
         # Apparently no one stays on CP for more than 10 days in Nursing care tier
         if ward.tier == CareTier.NURSING:
-            if ward.patch.loop.sequencer.getTimeNow() - patientDiagnosis.startDateA > 10:
+            if timeNow and (timeNow - patientDiagnosis.startDateA > 10):
                 newTreatment = newTreatment._replace(contactPrecautions=False)
-            
+
         # for accounting
         if newTreatment.contactPrecautions:
+            ### Track all contact precaution days
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
+
+            ### Need to track the reason they are on CP 
+            if 'cpReason' in pRec.noteD:
+                cpReason = pRec.noteD['cpReason']
+                if cpReason == "passive":
+                    ward.miscCounters['passiveDaysOnCP'] += ward.checkInterval
+                elif cpReason == "swab":
+                    ward.miscCounters['swabDaysOnCP'] += ward.checkInterval
+                elif cpReason == "xdro":
+                    ward.miscCounters['xdroDaysOnCP'] += ward.checkInterval
+                else:
+                    ward.miscCounters['otherDaysOnCP'] += ward.checkInterval
+            else:
+                ward.miscCounters['otherDaysOnCP'] += ward.checkInterval
 
         return newTier, newTreatment
 

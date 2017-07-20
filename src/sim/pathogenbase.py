@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 from phacsl.utils.collections.phacollections import enum, namedtuple
 
 PthStatus = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED')

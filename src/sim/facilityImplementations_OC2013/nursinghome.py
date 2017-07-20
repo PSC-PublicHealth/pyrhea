@@ -182,7 +182,8 @@ class NursingHome(Facility):
                 raise RuntimeError('Nursing homes do not provide treatment %s'
                                    % treatment)
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
+                  timeNow=None):
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:

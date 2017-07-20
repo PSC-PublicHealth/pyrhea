@@ -3,7 +3,6 @@ import sys,os
 import glob
 import numpy as np
 import pandas as pd
-#import statsmodels.stats.api as sms
 import scipy.stats as st
 import yaml
 from multiprocessing import Process,Manager,cpu_count,Pool
@@ -26,7 +25,8 @@ import time
 
 #print "Cpu_Count = {0}".format(cpu_count())
 #sys.stdout.flush()
-#affinity.set_process_affinity_mask(0,2**50-1)
+#if cpu_count() < 60:
+ #   affinity.set_process_affinity_mask(0,2**cpu_count()-1)
 
 #os.system("taskset -p 0xff %d"%os.getpid())
 
@@ -37,14 +37,21 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
     print "note = {0}".format(note)
     returnDict = {}
     ### totalStats is assumed to be a Manager
-    specialDict = print_counts.mergeNotesFiles([note],False)
+    try:
+        specialDict = print_counts.mergeNotesFiles([note],False)
+    except Exception as e:
+	print "for file {0} there is an exception {1}".format(note,e)
+	return {}
+    print "here {0}".format(note)
     for abbrev in abbrevList:
         returnDict[abbrev] = {}
         tplList = print_counts.getTimeSeriesList(abbrev,specialDict,'localtierpathogen')
         tierAxisD = {}
         tAOffset = 0
         for dayVec, curves in tplList:
+            #print dayVec
             dayIndex = np.where(dayVec==burninDays)[0][0]
+            print dayIndex
             tmpVecD = defaultdict(list)
             totVecD = {}
             for tpl, lVec in curves.items():
@@ -56,6 +63,7 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
             for tpl, lVec in curves.items():
                 tier, pthStatus = tpl
                 if pthStatus == PthStatus.COLONIZED:
+		    print len(lVec[dayIndex:])
                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
                                                                 'colonizedDaysTS':lVec[dayIndex:],
@@ -65,7 +73,7 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
                         
     for key,noteKey in translationDict.items():
-	print "Key = {0}".format(key)
+        print "key = {0}".format(key)
         for abbrev in abbrevList:
             tplList = print_counts.getTimeSeriesList(abbrev,specialDict,noteKey)
             for dayVec,curves in tplList:
@@ -146,6 +154,7 @@ def main():
                       help='number of cpus to run the costing model over')
     parser.add_option('-t','--producetimeseries',action='store_true',default=False)
     
+    
     opts, args = parser.parse_args()
     
     inputDict = checkInputFileSchema(args[0], os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -165,24 +174,49 @@ def main():
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
     
+    ### get the abbreviations within a 13 mile radius
+    facilitiesWithin13Miles = []
+    with open("{0}/constants/facilities_in_13miles.yaml".format(modelDir),"rb") as f:
+        facilitiesWithin13Miles = yaml.load(f)['facilitiesWithin13Miles']['locAbbrevList']
+    
+    facilitiesWithinCookCounty = []
+    with open("{0}/constants/facilities_in_CookCounty.yaml".format(modelDir),"rb") as f:
+        facilitiesWithinCookCounty = yaml.load(f)['facilitiesWithinCookCounty']['locAbbrevList']
+
     burninDays = int(inputDict['burnInDays'])
     print "burninDays = {0}".format(burninDays)
     runDays = int(inputDict['runDurationDays'])
     print "runDays = {0}".format(runDays)
     
     ### Translation Dict
-    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 'creBundlesHandedOut']
+    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays', 
+                          'creBundlesHandedOut','creSwabsUsed','newPatientsOnCP','passiveCPDays',
+                          'swabCPDays','xdroCPDays','otherCPDays']
     valuesToGather = {'newColonized':'localtiernewcolonized',
                       'creArrivals':'localtiercrearrivals',
                       'arrivals':'localtierarrivals',
                       'contactPrecautionDays': 'localtierCP',
-                      'creBundlesHandedOut': 'localtierCREBundle'
+                      'creBundlesHandedOut': 'localtierCREBundle',
+                      'creSwabsUsed':'localtierCRESwabs',
+                      'newPatientsOnCP': 'localtierpatientsOnCP',
+                      'passiveCPDays':'localtierpassiveCP',
+                      'swabCPDays':'localtierswabCP',
+                      'xdroCPDays':'localtierxdroCP',
+                      'otherCPDays':'localtierotherCP',
                       }
     tableHeadings = {'newColonized':'Newly Colonized',
                       'creArrivals':'CRE Colonized Patients Admissions',
                       'arrivals':'Patient Admissions',
                       'contactPrecautionDays': 'Contact Precaution Days',
-                      'creBundlesHandedOut': 'CRE Bundles Given Out'
+                      'creBundlesHandedOut': 'CRE Baths Given Out',
+                      'creSwabsUsed':'CRE Swabs Used',
+                      'newPatientsOnCP':'Number of Patients Put on CP',
+                      'passiveCPDays':'CRE CP Days due to passive surveillance',
+                      'swabCPDays':'CRE CP Days due to acitve surveillance',
+                      'xdroCPDays':'CRE CP Days due to xdro registry',
+                      'otherCPDays':'CP Days for other reasons'
+                      
+                      
                       }
     notes = []
     if opts.glob:
@@ -342,6 +376,7 @@ def main():
                 statsByTier[abbrev][tier]['colonizedDaysTS'] = combineTimeSeries(cTs,runDays,1)
                 statsByTier[abbrev][tier]['bedDaysTS'] = combineTimeSeries(bTs,runDays,1)
             for k in valuesToGather.keys():
+                #print "Key 2 = {0}".format(k)
                 statsByTier[abbrev][tier][k] = {'mean':np.mean(statTierDict[k]['value']),
                                                        'median':np.median(statTierDict[k]['value']),
                                                        'stdv':np.std(statTierDict[k]['value']),
@@ -428,6 +463,8 @@ def main():
                                                             'stdv':[0.0 for x in range(0,runDays)],
                                                             '5%CI':[0.0 for x in range(0,runDays)],
                                                             '95%CI':[0.0 for x in range(0,runDays)]}
+    
+    
         
     print "time 1 = {0}".format(time1Counter)
     print "time 2 = {0}".format(time2Counter)
@@ -504,6 +541,111 @@ def main():
                                 d['prevalence']['95%CI']])
             
     if opts.producetimeseries:
+        with open("{0}_prevalence_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Day']
+            abbrevsSorted = sorted([x for x in statsByAbbrev.keys()])
+            for abbrev in abbrevsSorted:
+                headRow.append("{0}".format(abbrev))
+                
+            csvWriter.writerow(headRow)
+            
+            for i in range(0,runDays):
+                entryRow = ['{0}'.format(i)]
+                for abbrev in abbrevsSorted:
+                    dayPrev = statsByAbbrev[abbrev]['colonizedDaysTS']['mean'][i]/statsByAbbrev[abbrev]['bedDaysTS']['mean'][i]
+                    entryRow.append('{0}'.format(dayPrev))
+                
+                csvWriter.writerow(entryRow)
+        
+        with open("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),"wb") as f:
+            csvWriter = csv.writer(f)
+            headRow = ['Day','Prev within 13','Prev outside 13','Prev within Cook','Prev outside Cook',
+                       'Prev target','Prev nonTarget','Prev regionWide',
+                       'Inc within 13','Inc outside 13','Inc within Cook','Inc outside Cook','Inc target','Inc nonTarget','Inc regionWide']
+            csvWriter.writerow(headRow)
+            
+            for i in range(0,runDays):
+                colWithin = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                bedWithin = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                ncolsWithin = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
+                
+                colWithout = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                bedWithout = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                ncolsWithout = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
+                
+                colWithinC = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
+                bedWithinC = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
+                ncolsWithinC = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
+
+                colWithoutC = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
+                bedWithoutC = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
+                ncolsWithoutC = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
+
+                colTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                bedTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                ncolsTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
+                
+                colNonTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                bedNonTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                ncolsNonTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
+                
+                colTotal = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
+                bedTotal = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
+                ncolsTotal = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys()])
+                
+                prevWithin = 0.0
+                if bedWithin > 0.0:
+                    prevWithin = colWithin/bedWithin
+                
+                prevWithout = 0.0
+                if bedWithin > 0.0:
+                    prevWithout = colWithout/bedWithout
+                
+                prevWithinC = 0.0
+                if bedWithinC > 0.0:
+                    prevWithinC = colWithinC/bedWithinC
+
+                prevWithoutC = 0.0
+                if bedWithoutC > 0.0:
+                    prevWithoutC = colWithoutC/bedWithoutC
+
+                prevTarget = 0.0
+                if bedTarget > 0.0:
+                    prevTarget = colTarget/bedTarget
+                    
+                prevNonTarget = 0.0
+                if bedNonTarget > 0.0:
+                    prevNonTarget = colNonTarget/bedNonTarget
+                    
+                prevTotal = 0.0
+                if bedTotal > 0.0:
+                    prevTotal = colTotal/bedTotal
+                    
+                entryRow = ['{0}'.format(i),
+                            prevWithin,
+                            prevWithout,
+                            prevWithinC,
+                            prevWithoutC,
+                            prevTarget,
+                            prevNonTarget,
+                            prevTotal,
+                            ncolsWithin,
+                            ncolsWithout,
+                            ncolsWithinC,
+                            ncolsWithoutC,
+                            ncolsTarget,
+                            ncolsNonTarget,
+                            ncolsTotal
+                            ]
+                csvWriter.writerow(entryRow)
+                
+#         with open("{0}_prevalence_and_incidence_per_day_target.csv".format(outFileName),"wb") as f:
+#             csvWriter = csv.writer(f)
+#             headRow = ['Day',,'Inc target','Inc nonTarget','Prev region']
+#             csvWriter.writerow(headRow)  
+            
+                   
         with open("{0}_colonized_patients_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
             csvWriter = csv.writer(f)
             headRow = ['Day']
@@ -609,7 +751,10 @@ def main():
                             entryRow.append("{0}".format(statsByAbbrev[abbrev]['{0}TS'.format(key)]['95%CI'][i]))
                         
                         csvWriter.writerow(entryRow)
-                        
+    
+    
+                
+                      
     with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
         csvWriter = csv.writer(f)
         headingRow = ['Facility Type','Prevalence Mean']

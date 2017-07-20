@@ -59,7 +59,8 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                     if action == 'START':
                         if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
                             fac.diagnosticPolicy.setValue('active', True)
-                            fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness',
+                            fac.diagnosticPolicy.setValue('useCentralRegistry', True)
+                            fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',
                                                           self.newEffectiveness)
                             logger.info('Activated XDROScenario at %s' % abbrev)
                         else:
@@ -79,7 +80,9 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                     elif action == 'END':
                         if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
                             fac.diagnosticPolicy.setValue('active', False)
-                            fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectiveness', None)
+                            fac.diagnosticPolicy.setValue('useCentralRegistry', False)
+                            fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',
+                                                          None)
                             logger.info('Deactivated XDROScenario at %s' % abbrev)
                         else:
                             raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy'
