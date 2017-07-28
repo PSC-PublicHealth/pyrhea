@@ -32,5 +32,11 @@
       'communicateDiagnosisBetweenFacility':
         '$ref': '#/definitions/fracByCategoryFrom'
         'description': "Probability that a diagnosis will be communicated between facilities, based on the sending facility's category."
+    'required':
+      - 'pathogenDiagnosticEffectiveness'
+      - 'pathogenDiagnosticFalsePostiveRate'
+      - 'sameFacilityDiagnosisMemory'
+      - 'cummunicateDiagnosisBetweenFacility'
+ 
       
      
