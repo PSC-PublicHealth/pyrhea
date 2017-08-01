@@ -39,7 +39,7 @@ def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
     for elt in _constants[fieldStr]:
         cat = elt['category']
         topD[cat] = float(elt['frac']['value'])
-    
+
     return topD
 
 
@@ -48,15 +48,17 @@ def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
     for elt in _constants[fieldStr]:
         cat = elt['categoryFrom']
         topD[cat] = float(elt['frac']['value'])
-    return topD    
+    return topD
 
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
-    
+
     def __init__(self):
-        self.sameFacilityDiagnosisMemory = _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
-        self.communicateDiagnosisBetweenFacility = _parseCommunicateDiagnosisBetweenFacility('communitcateDiagnosisBetweenFacility')
+        self.sameFacilityDiagnosisMemory = \
+            _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
+        self.communicateDiagnosisBetweenFacility = \
+            _parseCommunicateDiagnosisBetweenFacility('communicateDiagnosisBetweenFacility')
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):

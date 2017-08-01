@@ -15,11 +15,11 @@
 #                                                                                 #
 ###################################################################################
 
-import yaml
-import logging
 import sys
 import os
+import logging
 from imp import load_source
+import yaml
 
 import schemautils
 
@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 PATH_STRING_MAP = {}
 
 def pathTranslate(rawPath, lookupDict=None):
+    """
+    Do recursive string substitution on a path based on a dict.
+    """
     if lookupDict is None:
         lookupDict = PATH_STRING_MAP
     path = rawPath
@@ -39,19 +42,23 @@ def pathTranslate(rawPath, lookupDict=None):
                 path = path.replace('$(%s)' % key, val)
                 changed = True
     return path
-    
+
 
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
+    """
+    Import a set of constants in YAML format, checking against its schema.
+    """
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)
         if os.name != 'nt':
             validator = schemautils.getValidator(pathTranslate(schemaPath, pathLookupDict))
             try:
-                nErrors = sum([1 for e in validator.iter_errors(cJSON)])  # @UnusedVariable
+                nErrors = 0
+                for e in validator.iter_errors(cJSON):
+                    logger.error('Schema violation: %s: %s',
+                                 ' '.join([str(word) for word in e.path]), e.message)
+                    nErrors += 1
                 if nErrors:
-                    for e in validator.iter_errors(cJSON):
-                        logger.error('Schema violation: %s: %s' %
-                                     (' '.join([str(word) for word in e.path]), e.message))
                     raise RuntimeError('%s does not satisfy the schema %s' %
                                        (valuePath, schemaPath))
             except AttributeError:
@@ -65,10 +72,12 @@ def importConstants(valuePath, schemaPath, pathLookupDict=None):
 
 
 def loadModulesFromDir(implementationDir,
-                       requiredAttrList=[]):
+                       requiredAttrList=None):
     """
     Scan the given directory for .py files and import them as modules one by one.
     """
+    if requiredAttrList is None:
+        requiredAttrList = []
     sys.path.append(implementationDir)
     for fname in os.listdir(implementationDir):
         name, ext = os.path.splitext(fname)

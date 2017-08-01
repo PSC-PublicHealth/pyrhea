@@ -14,7 +14,7 @@
         'categoryFrom': {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
         'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'required':
-        - 'category'
+        - 'categoryFrom'
         - 'frac'
 
   'generic_diagnosis_constants':
@@ -34,9 +34,9 @@
         'description': "Probability that a diagnosis will be communicated between facilities, based on the sending facility's category."
     'required':
       - 'pathogenDiagnosticEffectiveness'
-      - 'pathogenDiagnosticFalsePostiveRate'
+      - 'pathogenDiagnosticFalsePositiveRate'
       - 'sameFacilityDiagnosisMemory'
-      - 'cummunicateDiagnosisBetweenFacility'
+      - 'communicateDiagnosisBetweenFacility'
  
       
      

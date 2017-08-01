@@ -48,6 +48,8 @@ loggers:
     level: INFO
   netinterface:
     level: WARNING
+  pyrheautils:
+    level: WARNING
 root:
   level: WARNING
   handlers: [console]
