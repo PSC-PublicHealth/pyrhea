@@ -1,0 +1,20 @@
+First, the dmtcp suite of tools needs to be installed on the machine.
+
+dmtcp runs a coordinator which you tie processes to that you wish to checkpoint.  You need to have a separate coordinator for each separate group of processes you wish to checkpoint or restart.
+
+
+To create a checkpointed image at a given timestep run pyrhea with the following command line:
+dmtcp_launch --new-coordinator python pyrhea.py -k<time_step> <base_yaml_file>
+
+for example:
+dmtcp_launch --new-coordinator python pyrhea.py -k100 year_run_2013.yaml
+
+After the checkpointing time step has passed, dmtcp will create a bunch of files and directories in the current directory.  This includes directories with open file descriptors for each process and a .dmtcp file with all of the state information.  In addition it creates a restart script of the form: dmtcp_restart_script_*-*-*.sh (and also a shorter dmtcp_restart_script.sh which is a symlink to the most recent restart script).
+
+To run multiple instances of the restart script do the following:
+
+mkdir new_directory
+cd new_directory
+# create a new coordinator, listening on a random port and save the port information in port_file
+dmtcp_coordinator --port 0 --port-file port_file  
+../dmtcp_restart_script.sh --hostfile port_file
