@@ -1,5 +1,9 @@
 'modelDir': '../../../pyrhea/models/OrangeCounty2013'
 
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
 'facilityDirs':
   - '$(MODELDIR)/facilityfactsCurrent2013'
   - '$(MODELDIR)/synthCommunities'
@@ -11,10 +15,16 @@
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(NURSINGHOME)|(LTAC))'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicyOC2013'
-#    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
+#    'policyClass': 'DrawWithReplacementTransferDestinationPolicyOC2013'
+    'policyClass': 'MinTravelTimeTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'MinDistanceTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'DummyTreatmentPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+#  - 'category': 'scenario'
+#    'policyClass': 'FirstExperimentalScenario'
 
 #'runDurationDays': 1095
 'runDurationDays': 365

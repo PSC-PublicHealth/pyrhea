@@ -37,7 +37,7 @@ import schemautils
 import pyrheautils
 from registry import Registry
 from policybase import ScenarioPolicy
-
+import checkpoint
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -643,6 +643,8 @@ def main():
                                 " (no default)"))
         parser.add_option("--seed", action="store", type="int",
                           help="Use this value as the random seed")
+        parser.add_option("-k", "--checkpoint", action="store", type="int", default=-1,
+                          help="save the state and stop after n ticks")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -662,7 +664,8 @@ def main():
                   'logCfgDict': getLoggerConfig(),
                   'loggingExtra': numLogLevel,
                   'partitionFile': opts.partition,
-                  'randomSeed': opts.seed
+                  'randomSeed': opts.seed,
+                  'checkpoint': opts.checkpoint,
                   }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -739,8 +742,15 @@ def main():
         patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
                                         printCensus=clData['printCensus'])
         noteHolderGroup = noteholder.NoteHolderGroup()
-        patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
-                     for i in xrange(clData['patches'])]  # @UnusedVariable
+
+        if comm.rank == 0 and clData['checkpoint'] != -1:
+            checkpointer = checkpoint.checkpoint(clData['checkpoint'])
+            patchList = [patchGroup.addPatch(patches.Patch(patchGroup, checkpointer=checkpointer))]
+            for i in xrange(clData['patches'] - 1):
+                patchList.append(patchGroup.addPatch(patches.Patch(patchGroup)))
+        else:
+            patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
+                         for i in xrange(clData['patches'])]  # @UnusedVariable
         totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
     
         # Add some things for which we need only one instance

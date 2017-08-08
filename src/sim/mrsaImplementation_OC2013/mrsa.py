@@ -24,7 +24,8 @@ import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
-from facilitybase import PatientStatusSetter, Pathogen, PthStatus, PthStatusSetter
+from facilitybase import PatientStatusSetter, PthStatus, PthStatusSetter
+from pathogenbase import Pathogen, defaultPthStatus
 
 pathogenName = 'MRSA'
 _constants_values = 'mrsa_constants.yaml'
