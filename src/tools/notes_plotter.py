@@ -447,68 +447,72 @@ def occupancyTimeFig(specialDict, meanPopByCat=None):
 
 
 def pathogenTimeFig(specialDict):
-    patchList = specialDict.keys()[:]
-    patchList.sort()
-    catList = []
-    for patchName, data in specialDict.items():
-        pthDataList = data['pathogen']
-        assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
-        for d in pthDataList:
-            for k in d.keys():
-                if k != 'day':
-                    cat = k.split('_')[0]
-                    if cat not in catList:
-                        catList.append(cat)
-    catList.sort()
-    figs6, axes6 = plt.subplots(nrows=len(catList), ncols=len(patchList))
-    axes6.reshape((len(catList), len(patchList)))
-    if len(catList) == 1:
-        axes6 = axes6[np.newaxis, :]
-    if len(patchList) == 1:
-        axes6 = axes6[:, np.newaxis]
-    for colOff, patchName in enumerate(patchList):
-        try:
-            pthDataList = specialDict[patchName]['pathogen']
-            assert isinstance(pthDataList, types.ListType), \
-                'Special data %s is not a list' % patchName
-            fields = {}
+    try:
+        patchList = specialDict.keys()[:]
+        patchList.sort()
+        catList = []
+        for patchName, data in specialDict.items():
+            pthDataList = data['pathogen']
+            assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
             for d in pthDataList:
-                for k, v in d.items():
-                    if k not in fields:
-                        fields[k] = []
-                    fields[k].append(v)
-            assert 'day' in fields, 'Date field is missing for special data %s' % patchName
-            dayList = fields['day']
-            dayVec = np.array(dayList)
-            del fields['day']
+                for k in d.keys():
+                    if k != 'day':
+                        cat = k.split('_')[0]
+                        if cat not in catList:
+                            catList.append(cat)
+        catList.sort()
+        figs6, axes6 = plt.subplots(nrows=len(catList), ncols=len(patchList))
+        axes6.reshape((len(catList), len(patchList)))
+        if len(catList) == 1:
+            axes6 = axes6[np.newaxis, :]
+        if len(patchList) == 1:
+            axes6 = axes6[:, np.newaxis]
+        for colOff, patchName in enumerate(patchList):
+            try:
+                pthDataList = specialDict[patchName]['pathogen']
+                assert isinstance(pthDataList, types.ListType), \
+                    'Special data %s is not a list' % patchName
+                fields = {}
+                for d in pthDataList:
+                    for k, v in d.items():
+                        if k not in fields:
+                            fields[k] = []
+                        fields[k].append(v)
+                assert 'day' in fields, 'Date field is missing for special data %s' % patchName
+                dayList = fields['day']
+                dayVec = np.array(dayList)
+                del fields['day']
 
-            for rowOff, cat in enumerate(catList):
-                curvesThisCat = {}
-                for pthLvl in xrange(len(pth.PthStatus.names)):
-                    key = '%s_%d' % (cat, pthLvl)
-                    if key in fields:
-                        l = fields[key]
-                        assert len(l) == len(dayList), (('field %s is the wrong length in special'
-                                                         ' data %s (%d vs. %d)')
-                                                        % (k, patchName, len(l), len(dayList)))
-                        curvesThisCat[pthLvl] = np.array(l)
-                totsThisCat = sum(curvesThisCat.values())
-                for pthLvl, lVec in curvesThisCat.items():
-                    lbl = '%s' % pth.PthStatus.names[pthLvl]
-                    if np.count_nonzero(lVec):
-                        with np.errstate(divide='ignore', invalid='ignore'):
-                            scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totsThisCat))
-                            scaleV[scaleV == np.inf] = 0.0
-                            scaleV = np.nan_to_num(scaleV)
-                            axes6[rowOff, colOff].plot(dayVec, scaleV, label=lbl)
-                axes6[rowOff, colOff].set_xlabel('Days')
-                axes6[rowOff, colOff].set_ylabel('Pathogen Prevalence')
-                axes6[rowOff, colOff].legend()
-                axes6[rowOff, colOff].set_title(cat)
-        except Exception, e:
-            print e
-    figs6.tight_layout()
-    figs6.canvas.set_window_title("Time History of Infection Status")
+                for rowOff, cat in enumerate(catList):
+                    curvesThisCat = {}
+                    for pthLvl in xrange(len(pth.PthStatus.names)):
+                        key = '%s_%d' % (cat, pthLvl)
+                        if key in fields:
+                            l = fields[key]
+                            assert len(l) == len(dayList), (('field %s is the wrong length in special'
+                                                             ' data %s (%d vs. %d)')
+                                                            % (k, patchName, len(l), len(dayList)))
+                            curvesThisCat[pthLvl] = np.array(l)
+                    totsThisCat = sum(curvesThisCat.values())
+                    for pthLvl, lVec in curvesThisCat.items():
+                        lbl = '%s' % pth.PthStatus.names[pthLvl]
+                        if np.count_nonzero(lVec):
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totsThisCat))
+                                scaleV[scaleV == np.inf] = 0.0
+                                scaleV = np.nan_to_num(scaleV)
+                                axes6[rowOff, colOff].plot(dayVec, scaleV, label=lbl)
+                    axes6[rowOff, colOff].set_xlabel('Days')
+                    axes6[rowOff, colOff].set_ylabel('Pathogen Prevalence')
+                    axes6[rowOff, colOff].legend()
+                    axes6[rowOff, colOff].set_title(cat)
+            except Exception, e:
+                print e
+        figs6.tight_layout()
+        figs6.canvas.set_window_title("Time History of Infection Status")
+    except KeyError as e:
+        if e.message == 'pathogen':
+            print('pathogen data not available; skipping time history of infection status')
 
 
 def countBirthsDeaths(catNames, allOfCategoryDict):
