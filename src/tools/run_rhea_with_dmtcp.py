@@ -63,16 +63,37 @@ def createRunPBSFile(fileName,condaEnv,nreals,nbreals,queue,
 
              f.write("cd $PBS_O_WORKDIR\n")
              f.write("mkdir run_$PBS_ARRAYID; cd run_$PBS_ARRAYID\n")
+             f.write("mkdir tmp\n")
+             f.write("mkdir tmp2\n")
              f.write("x=$(( ( RANDOM % {0}) + 1 ))\n".format(int(nbreals)))
 	     f.write("echo Using $x\n")
 	     f.write("p=$(( 50000 + $PBS_ARRAYID ))\n")
              f.write('pwd\n')
-             f.write("dmtcp_coordinator --daemon --exit-on-last --port $p \n")
-             f.write("{0}/{1}/checkpoints/burnin_$x/dmtcp_restart_script.sh -p $p -h `hostname` > out.log\n".format(mainDir,workDir))
+             f.write("dmtcp_coordinator --daemon --exit-on-last --tmpdir ./tmp2 --port $p \n")
+             f.write("{0}/{1}/checkpoints/burnin_$x/dmtcp_restart_script.sh -p $p -h `hostname` --tmpdir ./tmp > out.log\n".format(mainDir,workDir))
              f.write("ln -sf `pwd`/{0}.pkl {2}/{1}/{0}_$PBS_ARRAYID.pkl\n".format(outprefix,resultsDir,mainDir))
              f.write("checkjob $PBS_JOBID[$PBS_ARRAYID]\n")
 
+def createCountsPBSFile(fileName,condaEnv,queue,inputfile,outprefix,
+                        rheadir, jobName, mainDir,
+                        pbsIdToHold,memGB="200gb",walltime="96:00:00"):
+     with open(fileName,"wb") as f:
+             f.write("#!/bin/bash\n")
+             f.write("#PBS -l walltime={0}\n".format(walltime))
+             f.write("#PBS -l nodes=1:ppn=56\n")
+             f.write("#PBS -q {0}\n".format(queue))
+             f.write("#PBS -l mem={0}gb\n".format(memGB))
+             f.write("#PBS -N {0}_run\n".format(jobName))
+             f.write("#PBS -W depend=afterokarray:{0}\n".format(pbsIdToHold))
 
+             f.write("module load io\n")
+             f.write("module load anaconda/4.3.1\n")
+             f.write("module load dmtcp/trunk\n")
+             f.write("source activate {0}\n".format(condaEnv))
+
+             f.write("cd {0}\n".format(mainDir))
+             f.write("python {0}/src/tools/gatherCounts.py -o $PBS_O_WORDIR/{1} -g -n $PBS_O_WORKDIR/'*.pkl' -t -m 50 {2} > $PBS_O_WORKDIR/out.count".format(rheadir,outprefix,inputfile)
+)
 def main():  
  
     parser = OptionParser(usage="""
@@ -103,6 +124,7 @@ def main():
 
     burninRunFileName = "run_rhea_burnin_{0}.pbs".format(opts.input)
     runFileName = "run_rhea_{0}.pbs".format(opts.input)
+    countsFileName = "run_rhea_counts_{0}.pbs".format(opts.input)
     
     randomMon = "{0}".format(random.random())
 
@@ -152,7 +174,16 @@ def main():
 
     cmd = 'qsub {0}'.format(runFileName)
     rPBSId = subprocess.check_output([cmd],shell=True)
+
+    os.chdir("{0}/{1}".format(mainDir,finalOutsDir))
+    createCountsPBSFile(countsFileName,opts.condaenv,opts.queue,opts.input,
+                        opts.outprefix,
+                        opts.rheadir, opts.jobname, mainDir,
+                        rPBSId)
     
+    cmd = 'qsub {0}'.format(countsFileName)
+    cPBSId = subprocess.check_output([cmd],shell=True)
+
     
     
 
