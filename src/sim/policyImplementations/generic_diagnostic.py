@@ -33,22 +33,24 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
+def _parseConstantByFacilityCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        if 'category' in elt:
+            cat = elt['category']
+        else:
+            cat = elt['categoryFrom']
+        topD[cat] = float(elt['frac']['value'])
+    return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        topD[cat] = float(elt['frac']['value'])
-
-    return topD
-
+    return _parseConstantByFacilityCategory(fieldStr)
 
 def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['categoryFrom']
-        topD[cat] = float(elt['frac']['value'])
-    return topD
+    return _parseConstantByFacilityCategory(fieldStr)
+
+def _parseRegistryAddCompliance(fieldStr):
+    return _parseConstantByFacilityCategory(fieldStr)
 
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
@@ -59,6 +61,9 @@ class GDPCore(object):
             _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
         self.communicateDiagnosisBetweenFacility = \
             _parseCommunicateDiagnosisBetweenFacility('communicateDiagnosisBetweenFacility')
+        self.registryAddCompliance = \
+            _parseRegistryAddCompliance('registryAddCompliance')
+
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
@@ -132,6 +137,8 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 transferInfoDict['carriesPth'] = True
                 # It's awkward to put this here, but the logic chain requires it to co-occur
                 # with the transferInfoDict value.
+            if random() <= self.core.registryAddCompliance[facility.category]:
+                print('here we are %s' % facility.category)
                 Registry.registerPatientStatus(patient.id, str(patient.ward.iA), patient._diagnosis,
                                                facility.manager.patch)
         return transferInfoDict        
