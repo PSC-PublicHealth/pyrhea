@@ -65,7 +65,6 @@ class GDPCore(object):
             _parseRegistryAddCompliance('registryAddCompliance')
 
 
-
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
     def __init__(self, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
@@ -138,7 +137,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 # It's awkward to put this here, but the logic chain requires it to co-occur
                 # with the transferInfoDict value.
             if random() <= self.core.registryAddCompliance[facility.category]:
-                print('here we are %s' % facility.category)
+                #print('here we are %s' % facility.category)
                 Registry.registerPatientStatus(patient.id, str(patient.ward.iA), patient._diagnosis,
                                                facility.manager.patch)
         return transferInfoDict        
