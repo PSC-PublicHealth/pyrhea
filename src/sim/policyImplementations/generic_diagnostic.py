@@ -52,6 +52,9 @@ def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
 def _parseRegistryAddCompliance(fieldStr):
     return _parseConstantByFacilityCategory(fieldStr)
 
+def _parseRegistrySearchCompliance(fieldStr):
+    return _parseConstantByFacilityCategory(fieldStr)
+
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
@@ -63,6 +66,8 @@ class GDPCore(object):
             _parseCommunicateDiagnosisBetweenFacility('communicateDiagnosisBetweenFacility')
         self.registryAddCompliance = \
             _parseRegistryAddCompliance('registryAddCompliance')
+        self.registrySearchCompliance = \
+            _parseRegistrySearchCompliance('registrySearchCompliance')
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
@@ -94,9 +99,10 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     if randVal <= self.effectiveness:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
-                    elif (self.useCentralRegistry and
-                          (Registry.getPatientStatus(str(ward.iA), patientId)
-                           or randVal <= self.increasedEffectiveness)):
+                    elif (self.useCentralRegistry and 
+                          (randVal <= self.increasedEffectiveness or
+                           (random() <= self.core.registrySearchCompliance[facility.category] and
+                            Registry.getPatientStatus(str(ward.iA), patientId)))):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
                     else:
@@ -134,12 +140,14 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             commFacProb = self.core.communicateDiagnosisBetweenFacility[facility.category]
             if random() <= commFacProb:
                 transferInfoDict['carriesPth'] = True
-                # It's awkward to put this here, but the logic chain requires it to co-occur
-                # with the transferInfoDict value.
-            if random() <= self.core.registryAddCompliance[facility.category]:
-                #print('here we are %s' % facility.category)
-                Registry.registerPatientStatus(patient.id, str(patient.ward.iA), patient._diagnosis,
-                                               facility.manager.patch)
+                
+            if (self.useCentralRegistry):
+                if random() <= self.core.registryAddCompliance[facility.category]:
+                    #print('here we are %s' % facility.category)
+                    Registry.registerPatientStatus(patient.id, 
+                                                   str(patient.ward.iA), 
+                                                   patient._diagnosis,
+                                                   facility.manager.patch)
         return transferInfoDict        
 
     def setValue(self, key, val):
