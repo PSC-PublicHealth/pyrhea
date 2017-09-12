@@ -74,7 +74,7 @@ def main():
                               'multiyear_allfac_ChicagoLand_xdro.yaml', replPairs,
                               pyrheaOpts="-k 730", pyrheaPrefix="dmtcp_launch --new-coordinator ")
     else:
-        rEnv = RunEnvironment('ChicagoLand', 'exp_xdro', expNum, instNum,
+        rEnv = RunEnvironment('ChicagoLand', 'exp_xdro_v2', expNum, instNum,
                               'multiyear_allfac_ChicagoLand_xdro.yaml', replPairs)
     rEnv.buildEverything()
     rEnv.runSim(reallyRun=True)
