@@ -20,20 +20,79 @@
   'mrsaconstants':
     'type': 'object'
     'properties':
-      'initialFractionColonized': {'$ref': '#/definitions/fracByCategory'}
-      'initialFractionInfected': {'$ref': '#/definitions/fracByCategory'}
+      'initialFractionColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
+        'description': 'initial fraction colonized'
+      'categoryInitialFractionColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'Initial fraction colonized when no facility-specific value is available'
+      'initialFractionInfected':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
+        'description': 'initial fraction infected'
+      'categoryInitialFractionInfected':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'Initial fraction infected when no facility-specific value is available'
+      'initialFractionUndetectablyColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
+        'description': 'initial fraction infected'
+      'categoryInitialFractionUndetectablyColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'Initial fraction infected when no facility-specific value is available'
+      'initialFractionChronicallyColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
+        'description': 'initial fraction infected'
+      'categoryInitialFractionChronicallyColonized':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'Initial fraction infected when no facility-specific value is available'
+      'tau':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'transmission constants'
+      'facilityTau':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
+        'descriptions': 'override transmission constants by facility and tier'
+      'exposureCutoff':
+        '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierByCategory'
+        'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'        
+      'colonizedDischargeDelayTime':
+        '$ref': 'cre_constants_schema.yaml#/definitions/nonnegfloatByTier'
+        'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+      'infectedDischargeDelayTime':
+        '$ref': 'cre_constants_schema.yaml#/definitions/nonnegfloatByTier'
+        'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+      'colonizedTransferProbScale':
+        '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierPair'
+        'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
+      'infectedTransferProbScale':
+        '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierPair'
+        'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
+      'probNewExposuresAreUndetectable': 
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'When a patient is newly colonized, this is the probability that the colonization is undetectable'
       'colonizationDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'reboundPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'spontaneousLossPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'colonizationToInfectionFrac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'fractionColonizedChronic': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'beta': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
     'required':
       - 'initialFractionColonized'
+      - 'categoryInitialFractionColonized'
       - 'initialFractionInfected'
+      - 'categoryInitialFractionInfected'
+      - 'initialFractionUndetectablyColonized'
+      - 'categoryInitialFractionUndetectablyColonized'
+      - 'initialFractionChronicallyColonized'
+      - 'categoryInitialFractionChronicallyColonized'
+      - 'tau'
+      - 'facilityTau'
+      - 'exposureCutoff'
+      - 'colonizedDischargeDelayTime'
+      - 'infectedDischargeDelayTime'
+      - 'colonizedTransferProbScale'
+      - 'infectedTransferProbScale'
+      - 'probNewExposuresAreUndetectable'
       - 'colonizationDurationPDF'
       - 'infectionDurationPDF'
       - 'colonizationToInfectionFrac'
       - 'fractionColonizedChronic'
-      - 'beta'
       
       

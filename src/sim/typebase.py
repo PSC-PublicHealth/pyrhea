@@ -29,11 +29,14 @@ DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEA
 TreatmentProtocol = namedtuple('TreatmentProtocol',
                                ['rehab',
                                 'contactPrecautions',
-                                'creBundle'
+                                'creBundle',
+                                'chlorhexBath',
+                                'chhxBathPlusNasal'
                                 ],
-                               field_types=[bool, bool, bool])
+                               field_types=[bool, bool, bool, bool, bool])
 
-TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False, creBundle=False)
+TREATMENT_DEFAULT = TreatmentProtocol(rehab=False, contactPrecautions=False, creBundle=False,
+                                      chlorhexBath=False, chhxBathPlusNasal=False)
 
 PatientStatus = namedtuple('PatientStatus',
                            ['overall',              # one of PatientOverallHealth
@@ -43,7 +46,7 @@ PatientStatus = namedtuple('PatientStatus',
                             'startDatePth',         # date PthStatus status was entered
                             'relocateFlag',         # true if patient needs relocation
                             'justArrived',          # true on patient's first day in new location
-                            'canClear',             # true if patient can spontaneously clear infection
+                            'canClear',             # true if can spontaneously clear infection
                             'homeAddr'              # GblAddr of patient's home tract or NH
                             ],
                            field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,

@@ -28,16 +28,16 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-class FirstExperimentalScenario(BaseScenarioPolicy):
+class DemoScenario(BaseScenarioPolicy):
     def __init__(self, name, patch):
-        super(FirstExperimentalScenario, self).__init__(name, patch)
+        super(DemoScenario, self).__init__(name, patch)
         self.logThisString = _constants['stringToLogWhenStarting']
-        
+
     def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
 
 def getPolicyClasses():
-    return [FirstExperimentalScenario]
+    return [DemoScenario]
 
 
 ###########

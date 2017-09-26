@@ -493,20 +493,23 @@ class ScenarioStartAgent(patches.Agent):
 
 
 def findPolicies(policyClassList,
-                 policyRules,
+                 policyRulesDict,
                  category,
                  abbrev = None):
     l = []
     abbrevFlag = False
     for pCl in policyClassList:
-        for categoryRegex, classRegex in policyRules:
+        for ruleKey in policyRulesDict.keys():
+            categoryRegex, classRegex = ruleKey[0:2]
             if abbrev is not None and categoryRegex.match(abbrev) and classRegex.match(pCl.__name__):
                 l.append(pCl)
                 abbrevFlag = True
+                policyRulesDict[ruleKey] = True  # rule has been used
             else:
                 if not abbrevFlag:
                     if categoryRegex.match(category) and classRegex.match(pCl.__name__):
                         l.append(pCl)
+                        policyRulesDict[ruleKey] = True  # rule has been used
          
     return l
 
@@ -536,7 +539,7 @@ def createFacImplMap(facImplDict, facImplRules):
 
 
 def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
-                         policyClassList, policyRules,
+                         policyClassList, policyRulesDict,
                          PthClass, noteHolderGroup, comm, totalRunDays):
     """Distribute facilities across patches and initialize them"""
     offset = 0
@@ -561,13 +564,13 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
             facilities, wards, patients = \
                 facImpl.generateFull(facDescription, patch,
                                      policyClasses=findPolicies(policyClassList,
-                                                                policyRules,
+                                                                policyRulesDict,
                                                                 facImpl.category,
                                                                 facDescription['abbrev']),
                                      categoryNameMapper=facImplMapFun)
             
             for w in wards:
-                w.setInfectiousAgent(PthClass(w, useWardCategory=facImplCategory))
+                w.setInfectiousAgent(PthClass(w, implCategory=facImplCategory))
                 w.initializePatientPthState()
                 w.initializePatientTreatment()
             for fac in facilities:
@@ -727,18 +730,23 @@ def main():
         else:
             facImplRules = [(re.compile(category), category)
                             for category in facImplDict.keys()]  # an identity map
-    
+
         policyClassList = loadPolicyImplementations(inputDict['policyImplementationDir'])
-        policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']))
+        policyRules = [(re.compile(rule['category']), re.compile(rule['policyClass']),
+                        rule['category'], rule['policyClass'])
                        for rule in inputDict['policySelectors'] if 'category' in rule.keys() ]
-        policyRules += [(re.compile(rule['locationAbbrev']),re.compile(rule['policyClass']))
-                           for rule in inputDict['policySelectors'] if 'locationAbbrev' in rule.keys() ]
-        
+        policyRules += [(re.compile(rule['locationAbbrev']),re.compile(rule['policyClass']),
+                         rule['locationAbbrev'], rule['policyClass'])
+                           for rule in inputDict['policySelectors']
+                           if 'locationAbbrev' in rule.keys() ]
+        # Add a data structure to track whether rules get used
+        policyRulesDict = {pR: False for pR in policyRules}
+
         myFacList = distributeFacilities(comm, inputDict['facilityDirs'],
                                          facImplDict, facImplRules,
                                          clData['partitionFile'])
         logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
-    
+
         patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
                                         printCensus=clData['printCensus'])
         noteHolderGroup = noteholder.NoteHolderGroup()
@@ -758,7 +766,7 @@ def main():
                                             inputDict['burnInDays'], noteHolderGroup)])
         if 'scenarioWaitDays' in inputDict:
             scenarioPolicyClasses = []
-            policyClasses = (findPolicies(policyClassList, policyRules, 'scenario')
+            policyClasses = (findPolicies(policyClassList, policyRulesDict, 'scenario')
                              or [])
             scenarioPolicyClasses = [pC for pC in policyClasses
                                      if issubclass(pC, ScenarioPolicy)]
@@ -772,8 +780,19 @@ def main():
             patchList[0].addAgents([ssA])
 
         initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
-                             policyClassList, policyRules,
+                             policyClassList, policyRulesDict,
                              PthClass, noteHolderGroup, comm, totalRunDays)
+
+        # Check that all policy rules have been used, to avoid a common user typo problem
+        quitNow = False
+        for ruleKey, usedFlag in policyRulesDict.items():
+            if not usedFlag:
+                logger.error('The policy rule associating %s with %s was never used- typo?',
+                             ruleKey[2], ruleKey[3])
+                quitNow = True
+        if quitNow:
+            raise RuntimeError('Probable typos found in the policy section of the input file')
+
     except Exception, e:
         if patchGroup:
             logger.error('%s exception during initialization: %s; traceback follows' %

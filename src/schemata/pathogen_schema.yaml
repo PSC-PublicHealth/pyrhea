@@ -7,6 +7,6 @@
 
   'pathogenstatus':
     'type': 'string'
-    'enum': ['CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED']
+    'enum': ['CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED', 'UNDETCOLONIZED']
     
 

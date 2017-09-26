@@ -80,17 +80,17 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         self.increasedEffectivness = -1.0
         self.increasedFalsePosRate = -1.0
         self.useCentralRegistry = False
-        
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
-        
+
         This version provides some awareness of pathogen status
         """
         if patientStatus.justArrived:
             with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
-                
+
                 if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
                     pRec.noteD['cpReason'] = 'passive'
@@ -99,9 +99,9 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     if randVal <= self.effectiveness:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
-                    elif (self.useCentralRegistry and 
+                    elif (self.useCentralRegistry and
                           (randVal <= self.increasedEffectiveness or
-                           (random() <= self.core.registrySearchCompliance[facility.category] and
+                           (random() <= self.core.registrySearchCompliance[ward.fac.category] and
                             Registry.getPatientStatus(str(ward.iA), patientId)))):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
@@ -113,12 +113,12 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     if randVal <= self.falsePosRate:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
-                    elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
+                    elif self.useCentralRegistry and randVal <= self.increasedFalsePosRate:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
                     else:
                         diagnosedPthStatus = PthStatus.CLEAR
-    
+
                 # Do we remember to record the diagnosis in the patient record?
                 if (diagnosedPthStatus == PthStatus.COLONIZED and
                         random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
@@ -140,22 +140,22 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             commFacProb = self.core.communicateDiagnosisBetweenFacility[facility.category]
             if random() <= commFacProb:
                 transferInfoDict['carriesPth'] = True
-                
-            if (self.useCentralRegistry):
+
+            if self.useCentralRegistry:
                 if random() <= self.core.registryAddCompliance[facility.category]:
                     #print('here we are %s' % facility.category)
-                    Registry.registerPatientStatus(patient.id, 
-                                                   str(patient.ward.iA), 
+                    Registry.registerPatientStatus(patient.id,
+                                                   str(patient.ward.iA),
                                                    patient._diagnosis,
                                                    facility.manager.patch)
-        return transferInfoDict        
+        return transferInfoDict
 
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         This class supports setting pathogenDiagnosticEffectiveness, a fraction.
         """
         logger.info('%s setting %s to %s', type(self).__name__, key, val)

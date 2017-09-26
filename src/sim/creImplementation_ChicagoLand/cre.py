@@ -83,7 +83,7 @@ def _parseTierTierScaleList(fieldStr):
         result[(fmTier, toTier)] = value
     return result
 
-def _getValByTierByCategory(tbl, tblNameForErr, ward, useWardCategory, overrideTbl=None):
+def _getValByTierByCategory(tbl, tblNameForErr, ward, implCategory, overrideTbl=None):
     wardCat = ward.fac.category
     tierStr = CareTier.names[ward.tier]
     if overrideTbl:
@@ -140,16 +140,16 @@ class CRECore(object):
         self.exposureTreeCache = {}
 
 class CRE(Pathogen):
-    def __init__(self, ward, useWardCategory):
+    def __init__(self, ward, implCategory):
         """
-        useWardCategory will typically be the same as that listed in the facility
+        implCategory will typically be the same as that listed in the facility
         description file for the ward, but it may differ if category mapping has
-        occurred.  For example, ward.fac.category might be 'SNF' while useWardCategory
+        occurred.  For example, ward.fac.category might be 'SNF' while implCategory
         is 'NURSINGHOME' because that is the category definition in the class which
         actually implements 'SNF'.  This is intended to support category name mapping
         between facility descriptions and implementations.
         """
-        super(CRE, self).__init__(ward, useWardCategory)
+        super(CRE, self).__init__(ward, implCategory)
         self.core = CRECore()
         self.patientPth = self._emptyPatientPth()
         self.patientPthTime = None
@@ -161,15 +161,15 @@ class CRE(Pathogen):
         self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
                                                                   ward.fac.category,
                                                                   ward.tier)
-        
-        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, useWardCategory,
+
+        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, implCategory,
                                            overrideTbl=self.core.tauOverrideTbl)
 #         if 'PRES_100_L' in ward._name:
 #             print '########## tau is %s' % self.tau
         self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
                                                       'exposureCutoff',
-                                                      ward, useWardCategory)
-        
+                                                      ward, implCategory)
+
         tierName = CareTier.names[self.ward.tier]
         self.colDischDelayTime = 0.0  # the default
         for ent in _constants['colonizedDischargeDelayTime']:
@@ -272,19 +272,22 @@ class CRE(Pathogen):
         return ''.join(stateL)
 
     def getPropogationInfo(self, timeNow):
+        """Maintain and return a cached table of patient counts by status and treatment"""
         if self.propogationInfoTime != timeNow:
             pI = defaultdict(lambda: 0)
-            for p in self.ward.getPatientList():
-                pI[self.getPatientStateKey(p._status, p._treatment)] += 1
-            pI = {k: v for k, v in pI.items() if not k.startswith('-')} # because only sick people spread
+            for pt in self.ward.getPatientList():
+                pI[self.getPatientStateKey(pt._status, pt._treatment)] += 1
+            pI = {key: val for key, val in pI.items()
+                  if not key.startswith('-')} # only sick people spread
             lst = pI.items()[:]
             lst.sort()
             self.propogationInfo = pI
             self.propogationInfoKey = tuple(lst)
             self.propogationInfoTime = timeNow
         return self.propogationInfo, self.propogationInfoKey
-    
+
     def getTreatmentProbModifierDict(self):
+        """Maintain and return a cached table of efficacies of combinations of treatments"""
         if not self.treatmentProbModifierDict:
             dct = {'+': (1.0, 1.0),
                    '-': (0.0, 1.0)}  # Store the two coefficients in from-to order
@@ -315,7 +318,7 @@ class CRE(Pathogen):
 #             if 'THC_4058_L' in ward._name:
 #                 print '%s %s %s %s' % (ward._name, patientStatus.justArrived, pI, treatment)
             if key not in self.core.exposureTreeCache:
-                
+
                 patientKey = self.getPatientStateKey(patientStatus, treatment)
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = tPMD[patientKey][1]
