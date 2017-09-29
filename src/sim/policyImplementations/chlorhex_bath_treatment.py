@@ -59,7 +59,7 @@ def _parseFracByStatusByTierByCategory(fieldStr):
 class CBTPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
-    
+
     def __init__(self):
         self.baseFracTbl = _parseFracByStatusByTierByCategory('baseFractionUnderContactPrecautions')
         self.effectiveness = _constants['transmissibilityMultiplier']['value']
@@ -67,7 +67,7 @@ class CBTPCore(object):
 
 class ChlorhexBathTreatmentPolicy(BaseTreatmentPolicy):
     """This policy implements contact precautions"""
-    
+
     """
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
@@ -197,7 +197,7 @@ class ChlorhexBathTreatmentPolicy(BaseTreatmentPolicy):
 
 
 def getPolicyClasses():
-    return [ContactPrecautionsTreatmentPolicy]
+    return [ChlorhexBathTreatmentPolicy]
 
 
 ###########
