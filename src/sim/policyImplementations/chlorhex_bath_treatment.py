@@ -26,8 +26,8 @@ from pathogenbase import PthStatus
 from registry import Registry
 
 _validator = None
-_constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'
-_constants_schema = 'contact_precautions_constants_schema.yaml'
+_constants_values = '$(CONSTANTS)/chlorhex_bath_constants.yaml'
+_constants_schema = 'chlorhex_bath_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def _parseFracByStatusByTierByCategory(fieldStr):
     return topD
 
 
-class CPTPCore(object):
+class CBTPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
     
@@ -65,18 +65,18 @@ class CPTPCore(object):
         self.effectiveness = _constants['transmissibilityMultiplier']['value']
 
 
-class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
+class ChlorhexBathTreatmentPolicy(BaseTreatmentPolicy):
     """This policy implements contact precautions"""
     
     """
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
     """
-    treatmentKey = 'contactPrecautions'
+    treatmentKey = 'chlorhexBath'
 
     def __init__(self, patch, categoryNameMapper):
-        super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
-        self.core = CPTPCore()
+        super(ChlorhexBathTreatmentPolicy, self).__init__(patch, categoryNameMapper)
+        self.core = CBTPCore()
 
     def initializePatientTreatment(self, ward, patient, timeNow=0):
         """
@@ -179,7 +179,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             ### Track all contact precaution days
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
 
-            ### Need to track the reason they are on CP
+            ### Need to track the reason they are on CP 
             if 'cpReason' in pRec.noteD:
                 cpReason = pRec.noteD['cpReason']
                 if cpReason == "passive":

@@ -33,22 +33,27 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
+def _parseConstantByFacilityCategory(fieldStr):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        if 'category' in elt:
+            cat = elt['category']
+        else:
+            cat = elt['categoryFrom']
+        topD[cat] = float(elt['frac']['value'])
+    return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        topD[cat] = float(elt['frac']['value'])
-
-    return topD
-
+    return _parseConstantByFacilityCategory(fieldStr)
 
 def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['categoryFrom']
-        topD[cat] = float(elt['frac']['value'])
-    return topD
+    return _parseConstantByFacilityCategory(fieldStr)
+
+def _parseRegistryAddCompliance(fieldStr):
+    return _parseConstantByFacilityCategory(fieldStr)
+
+def _parseRegistrySearchCompliance(fieldStr):
+    return _parseConstantByFacilityCategory(fieldStr)
 
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
@@ -59,6 +64,10 @@ class GDPCore(object):
             _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
         self.communicateDiagnosisBetweenFacility = \
             _parseCommunicateDiagnosisBetweenFacility('communicateDiagnosisBetweenFacility')
+        self.registryAddCompliance = \
+            _parseRegistryAddCompliance('registryAddCompliance')
+        self.registrySearchCompliance = \
+            _parseRegistrySearchCompliance('registrySearchCompliance')
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
@@ -71,17 +80,17 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         self.increasedEffectivness = -1.0
         self.increasedFalsePosRate = -1.0
         self.useCentralRegistry = False
-        
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
-        
+
         This version provides some awareness of pathogen status
         """
         if patientStatus.justArrived:
             with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
-                
+
                 if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
                     pRec.noteD['cpReason'] = 'passive'
@@ -91,8 +100,9 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
                     elif (self.useCentralRegistry and
-                          (Registry.getPatientStatus(str(ward.iA), patientId)
-                           or randVal <= self.increasedEffectiveness)):
+                          (randVal <= self.increasedEffectiveness or
+                           (random() <= self.core.registrySearchCompliance[ward.fac.category] and
+                            Registry.getPatientStatus(str(ward.iA), patientId)))):
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
                     else:
@@ -103,12 +113,12 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     if randVal <= self.falsePosRate:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'passive'
-                    elif (self.useCentralRegistry and randVal <= self.increasedFalsePosRate):
+                    elif self.useCentralRegistry and randVal <= self.increasedFalsePosRate:
                         diagnosedPthStatus = PthStatus.COLONIZED
                         pRec.noteD['cpReason'] = 'xdro'
                     else:
                         diagnosedPthStatus = PthStatus.CLEAR
-    
+
                 # Do we remember to record the diagnosis in the patient record?
                 if (diagnosedPthStatus == PthStatus.COLONIZED and
                         random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
@@ -130,18 +140,22 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
             commFacProb = self.core.communicateDiagnosisBetweenFacility[facility.category]
             if random() <= commFacProb:
                 transferInfoDict['carriesPth'] = True
-                # It's awkward to put this here, but the logic chain requires it to co-occur
-                # with the transferInfoDict value.
-                Registry.registerPatientStatus(patient.id, str(patient.ward.iA), patient._diagnosis,
-                                               facility.manager.patch)
-        return transferInfoDict        
+
+            if self.useCentralRegistry:
+                if random() <= self.core.registryAddCompliance[facility.category]:
+                    #print('here we are %s' % facility.category)
+                    Registry.registerPatientStatus(patient.id,
+                                                   str(patient.ward.iA),
+                                                   patient._diagnosis,
+                                                   facility.manager.patch)
+        return transferInfoDict
 
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         This class supports setting pathogenDiagnosticEffectiveness, a fraction.
         """
         logger.info('%s setting %s to %s', type(self).__name__, key, val)

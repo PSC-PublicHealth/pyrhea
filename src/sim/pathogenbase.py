@@ -17,15 +17,15 @@
 
 from phacsl.utils.collections.phacollections import enum, namedtuple
 
-PthStatus = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED')
+PthStatus = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED', 'UNDETCOLONIZED')
 defaultPthStatus = PthStatus.CLEAR
 
 class Pathogen(object):
-    def __init__(self, ward, useWardCategory):
+    def __init__(self, ward, implCategory):
         """
-        useWardCategory will typically be the same as that listed in the facility
+        implCategory will typically be the same as that listed in the facility
         description file for the ward, but it may differ if category mapping has
-        occurred.  For example, ward.fac.category might be 'SNF' while useWardCategory
+        occurred.  For example, ward.fac.category might be 'SNF' while implCategory
         is 'NURSINGHOME' because that is the category definition in the class which
         actually implements 'SNF'.  This is intended to support category name mapping
         between facility descriptions and implementations.
@@ -44,7 +44,8 @@ class Pathogen(object):
     def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
         raise RuntimeError('Pathogen base class getStatusChangeTree was called.')
 
-    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime, timeNow):
+    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime,
+                                timeNow):
         return treeList[:]
 
     def initializePatientState(self, patient):

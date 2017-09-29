@@ -37,15 +37,15 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         self.swabEffectiveness = _constants['swabDiagnosticSensitivity']['value']
         self.swabFalsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
         self.active = False
-        
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
         only way in which patient status affects treatment policy or ward is via diagnosis.
-        
+
         This version provides some awareness of pathogen status
         """
-        
+
         # Layer our diagnosis on top of any done by the base class
         parentDiagnosis = super(CREBundleDiagnosticPolicy, self).diagnose(ward,
                                                                           patientId,

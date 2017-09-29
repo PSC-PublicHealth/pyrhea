@@ -20,6 +20,7 @@ import logging
 import pyrheautils
 from policybase import ScenarioPolicy as BaseScenarioPolicy
 from generic_diagnostic import GenericDiagnosticPolicy
+from registry import Registry
 
 _validator = None
 _constants_values = '$(CONSTANTS)/xdro_registry_scenario_constants.yaml'
@@ -48,6 +49,9 @@ class XDRORegistryScenario(BaseScenarioPolicy):
                     fac.diagnosticPolicy.setValue('useCentralRegistry', True)
                     fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',
                                                   self.newEffectiveness)
+
+
+
 
 def getPolicyClasses():
     return [XDRORegistryScenario]

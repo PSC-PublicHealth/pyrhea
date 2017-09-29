@@ -21,6 +21,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
+#'pathogenImplementationDir': '../sim/mrsaImplementation_ChicagoLand'
 'pathogenImplementationDir': '../sim/creImplementation_ChicagoLand'
 
 'policyImplementationDir': '../sim/policyImplementations'

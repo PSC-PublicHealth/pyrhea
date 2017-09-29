@@ -32,11 +32,18 @@
       'communicateDiagnosisBetweenFacility':
         '$ref': '#/definitions/fracByCategoryFrom'
         'description': "Probability that a diagnosis will be communicated between facilities, based on the sending facility's category."
+      'registryAddCompliance':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
+        'description': "Probability that a diagnosis will be added to the registry, based on the sending facility's category."
+      'registrySearchCompliance':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
+        'description': "Probability that a site will search the registry for a previous diagnosis, based on the sending facility's category."
     'required':
       - 'pathogenDiagnosticEffectiveness'
       - 'pathogenDiagnosticFalsePositiveRate'
       - 'sameFacilityDiagnosisMemory'
       - 'communicateDiagnosisBetweenFacility'
- 
+      - 'registryAddCompliance'
+      - 'registrySearchCompliance' 
       
      

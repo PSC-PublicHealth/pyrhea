@@ -83,7 +83,8 @@ def writeReplPairs(runDir, rp):
 
 class RunEnvironment:
     def __init__(self, model, expName, expNum, instNum, baseConfFile,
-                 replPairs=None, finalEditsFn=None, pyrheaDir=None, runsDir=None):
+                 replPairs=None, finalEditsFn=None, pyrheaDir=None, runsDir=None,
+                 pyrheaOpts=None, pyrheaPrefix=None):
         if pyrheaDir is None:
             self.pyrheaDir = getDefaultPyrheaDir()
         else:
@@ -101,12 +102,19 @@ class RunEnvironment:
         self.baseConfFile = baseConfFile
         self.replPairs = replPairs
         self.finalEditsFn = finalEditsFn
+        if pyrheaOpts is None:
+            pyrheaOpts = ""
+        self.pyrheaOpts = pyrheaOpts
+        if pyrheaPrefix is None:
+            pyrheaPrefix = ""
+        self.pyrheaPrefix = pyrheaPrefix
 
     def buildEverything(self):
         self.setDirectories()
         self.buildRunEnvironment()
 
     def runSim(self, reallyRun=True):
+        print 'Starting runSim'
         notesFile = os.path.join(self.runDir, "notes_%03d.pkl"%self.instNum)
         if os.path.isfile(notesFile):
             try:
@@ -117,7 +125,7 @@ class RunEnvironment:
                 pass
         seed = self.expNum * 1000 + self.instNum
 
-        runStr = "time python pyrhea.py -o %s --seed %s %s"%(notesFile, seed, self.confFile)
+        runStr = "%s python pyrhea.py -o %s %s --seed %s %s"%(self.pyrheaPrefix, notesFile, self.pyrheaOpts, seed, self.confFile)
         print runStr
         if reallyRun:
             os.system(runStr)

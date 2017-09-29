@@ -281,9 +281,9 @@ class Facility(pyrheabase.Facility):
                  managerClass=FacilityManager, categoryNameMapper=None):
         """
         If provided, categoryNameMapper should be a function with the signature:
-        
+
            implCat = categoryNameMapper(descrCat)
-           
+
         where implCat is a facility implementation category name (e.g. NURSINGHOME) and
         descrCat is a facility description category name (e.g. SNF).
         """
@@ -295,6 +295,10 @@ class Facility(pyrheabase.Facility):
             self.categoryNameMapper = categoryNameMapper
 #         self.category = self.categoryNameMapper(descr['category'])
         self.category = descr['category']
+        if categoryNameMapper:
+            self.implCategory = categoryNameMapper(self.category)
+        else:
+            self.implCategory = self.category
         self.abbrev = descr['abbrev']
         if 'longitude' in descr and 'latitude' in descr:
             self.coords = (descr['longitude'], descr['latitude'])
