@@ -211,7 +211,7 @@ def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
     implList = []
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['getPolicyClasses']):
         newPolicyClasses = newMod.getPolicyClasses()
@@ -225,7 +225,7 @@ def loadPolicyImplementations(implementationDir):
 def loadPathogenImplementations(implementationDir):
     logger.info('Loading infectious agent implementations')
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['pathogenName',
@@ -242,7 +242,7 @@ def loadFacilityImplementations(implementationDir):
     logger.info('Loading facility implementations')
     # provide some string mapping
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['category',
@@ -688,11 +688,16 @@ def main():
     try:
         patchGroup = None  # for the benefit of diagnostics during init
         clData = comm.bcast(clData, root=0)
-        if 'modelDir' in clData['input']:
-            pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
-        if 'pathTranslations' in clData['input']:
-            for elt in clData['input']['pathTranslations']:
-                pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+
+        pyrheautils.prepPathTranslations(clData['input'])
+
+        if 0:
+            if 'modelDir' in clData['input']:
+                pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
+            if 'pathTranslations' in clData['input']:
+                for elt in clData['input']['pathTranslations']:
+                    pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+                    
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     
         verbose = clData['verbose']  # @UnusedVariable
