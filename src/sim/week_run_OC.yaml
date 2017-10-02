@@ -39,10 +39,10 @@
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
 
-#  - 'category': 'scenario'
+  - 'category': 'scenario'
 #    'policyClass': 'XDROPlusCREBundleScenario'
     #'policyClass': 'CREBundleScenario'
-    #'policyClass': 'XDRORegistryScenario'
+    'policyClass': 'XDRORegistryScenario'
 
 'notesFileName': 'notes_week_OC.pkl'
 

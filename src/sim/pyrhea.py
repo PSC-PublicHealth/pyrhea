@@ -497,20 +497,15 @@ def findPolicies(policyClassList,
                  category,
                  abbrev = None):
     l = []
-    abbrevFlag = False
     for pCl in policyClassList:
         for ruleKey in policyRulesDict.keys():
             categoryRegex, classRegex = ruleKey[0:2]
-            if abbrev is not None and categoryRegex.match(abbrev) and classRegex.match(pCl.__name__):
+            if ((abbrev is not None and categoryRegex.match(abbrev))
+                    or categoryRegex.match(category)) and classRegex.match(pCl.__name__):
                 l.append(pCl)
-                abbrevFlag = True
                 policyRulesDict[ruleKey] = True  # rule has been used
-            else:
-                if not abbrevFlag:
-                    if categoryRegex.match(category) and classRegex.match(pCl.__name__):
-                        l.append(pCl)
-                        policyRulesDict[ruleKey] = True  # rule has been used
-         
+    if True:
+        print '%s %s got %s' % (category, abbrev, [cl.__name__ for cl in l])
     return l
 
 
