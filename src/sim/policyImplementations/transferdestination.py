@@ -25,7 +25,7 @@ from facilitybase import CareTier, tierToQueueMap
 from transferbydistance import MinDistanceTransferDestinationPolicy
 
 _validator = None
-_constants_values = 'transferdestination_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/transferdestination_constants.yaml'
 _constants_schema = 'transferdestination_constants_schema.yaml'
 _constants = None
 
@@ -93,6 +93,5 @@ def getPolicyClasses():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
-                                         _constants_schema)
+_constants = pyrheautils.importConstants(os.path.join(_constants_values,
+                                                      _constants_schema)

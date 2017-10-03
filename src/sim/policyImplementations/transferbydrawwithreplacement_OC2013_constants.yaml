@@ -1,4 +1,0 @@
-'transferFilePaths': 
-  - '../../models/OrangeCounty2013/transfer_counts.yaml'
-  - '../../models/OrangeCounty2013/fac_to_community_inv_sep.yaml'
-'transferFileSchema': 'transfermatrix_schema.yaml'
