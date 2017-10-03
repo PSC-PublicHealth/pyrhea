@@ -1,52 +1,50 @@
-'modelDir': '../../models/ChicagoLand'
+'modelDir': '../../models/OrangeCounty2013'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
     'value': '$(MODELDIR)/constants'
 
 'facilityDirs':
-  - '$(MODELDIR)/facilityfacts'
+  - '$(MODELDIR)/facilityfactsCurrent2013'
   - '$(MODELDIR)/synthCommunities'
 
-'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilityImplementationDir': '../sim/facilityImplementations_OC2013'
 'facilitySelectors':
-  - 'category': 'SNF'
+  - 'category': 'NURSINGHOME'
     'implementation': 'NURSINGHOME'
-  - 'category': 'VSNF'
-    'implementation': 'VSNF'
-  - 'category': 'LTACH'
+  - 'category': 'LTAC'
     'implementation': 'LTAC'
   - 'category': 'HOSPITAL'
     'implementation': 'HOSPITAL'
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-#'pathogenImplementationDir': '../sim/mrsaImplementation'
-'pathogenImplementationDir': '../sim/creImplementation'
+'pathogenImplementationDir': '../sim/mrsaImplementation'
+#'pathogenImplementationDir': '../sim/creImplementation'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'CREBundleTreatmentPolicy'
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'CREBundleDiagnosticPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleTreatmentPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleDiagnosticPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
 
   - 'category': 'scenario'
-    'policyClass': 'XDROPlusCREBundleScenario'
+#    'policyClass': 'XDROPlusCREBundleScenario'
     #'policyClass': 'CREBundleScenario'
-    #'policyClass': 'XDRORegistryScenario'
+    'policyClass': 'XDRORegistryScenario'
 
-'notesFileName': 'notes_week_ChicagoLand.pkl'
+'notesFileName': 'notes_week_OC.pkl'
 
 #'runDurationDays': 1095
 'runDurationDays': 7

@@ -105,14 +105,18 @@ def loadModulesFromDir(implementationDir,
     for fname in os.listdir(implementationDir):
         name, ext = os.path.splitext(fname)
         if ext == '.py':
-            newMod = load_source(name, os.path.join(implementationDir, fname))
-            for requiredAttr in requiredAttrList:
-                if not hasattr(newMod, requiredAttr):
-                    raise RuntimeError('The implementation in '
-                                       '%s is missing the required attribute %s' %
-                                       (os.path.join(implementationDir, fname),
-                                        requiredAttr))
-            yield newMod
+            try:
+                newMod = load_source(name, os.path.join(implementationDir, fname))
+                for requiredAttr in requiredAttrList:
+                    if not hasattr(newMod, requiredAttr):
+                        raise RuntimeError('The implementation in '
+                                           '%s is missing the required attribute %s' %
+                                           (os.path.join(implementationDir, fname),
+                                            requiredAttr))
+                yield newMod
+            except IOError, e:
+                logger.warning('Unable to load %s - is a config file missing? %s',
+                               fname, str(e))
         elif ext.startswith('.py'):
             pass  # .pyc files for example
         else:
