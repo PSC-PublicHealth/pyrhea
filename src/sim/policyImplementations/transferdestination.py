@@ -93,5 +93,5 @@ def getPolicyClasses():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(_constants_values,
-                                                      _constants_schema)
+_constants = pyrheautils.importConstants(_constants_values,
+                                         _constants_schema)
