@@ -17,6 +17,7 @@
 
 import logging
 import math
+import types
 from collections import defaultdict
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
