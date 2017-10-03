@@ -211,7 +211,7 @@ def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
     implList = []
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['getPolicyClasses']):
         newPolicyClasses = newMod.getPolicyClasses()
@@ -225,7 +225,7 @@ def loadPolicyImplementations(implementationDir):
 def loadPathogenImplementations(implementationDir):
     logger.info('Loading infectious agent implementations')
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['pathogenName',
@@ -242,7 +242,7 @@ def loadFacilityImplementations(implementationDir):
     logger.info('Loading facility implementations')
     # provide some string mapping
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
+    #pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['category',
@@ -611,6 +611,8 @@ def main():
     def handle_pdb(sig, frame):
         import pdb
         pdb.Pdb().set_trace(frame)
+
+    global logger
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
 
@@ -691,11 +693,16 @@ def main():
     try:
         patchGroup = None  # for the benefit of diagnostics during init
         clData = comm.bcast(clData, root=0)
-        if 'modelDir' in clData['input']:
-            pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
-        if 'pathTranslations' in clData['input']:
-            for elt in clData['input']['pathTranslations']:
-                pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+
+        pyrheautils.prepPathTranslations(clData['input'])
+
+        if 0:
+            if 'modelDir' in clData['input']:
+                pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
+            if 'pathTranslations' in clData['input']:
+                for elt in clData['input']['pathTranslations']:
+                    pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+                    
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     
         verbose = clData['verbose']  # @UnusedVariable
@@ -793,8 +800,10 @@ def main():
         if quitNow:
             raise RuntimeError('Probable typos found in the policy section of the input file')
 
-    except Exception, e:
+    except Exception as e:
         if patchGroup:
+            if logger is None:
+                logger = logging.getLogger(__name__)
             logger.error('%s exception during initialization: %s; traceback follows' %
                          (patchGroup.name, e))
             import traceback
@@ -803,6 +812,8 @@ def main():
             logging.shutdown()
             sys.exit('Exception during initialization')
         else:
+            if logger is None:
+                logger = logging.getLogger(__name__)
             logger.error('%s exception during initialization: %s; traceback follows' %
                          ('<no patchGroup yet>', e))
             import traceback

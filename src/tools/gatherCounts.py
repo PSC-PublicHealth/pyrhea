@@ -166,21 +166,26 @@ def main():
     if 'trackedFacilities' not in inputDict or not len(inputDict['trackedFacilities']):
         raise RuntimeError('Run description file does not list any tracked facilities')
 
-    modelDir = inputDict['modelDir']
-    pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(modelDir)
-    implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
-    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
+    pyrheautils.prepPathTranslations(inputDict)
+    if 0:
+        modelDir = inputDict['modelDir']
+        pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(modelDir)
+        implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
+        pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
+        if 'pathTranslations' in inputDict:
+            for elt in inputDict['pathTranslations']:
+                pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
 
     facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
     facDict = readFacFiles(facDirList)
-    
+
     ### get the abbreviations within a 13 mile radius
-    facilitiesWithin13Miles = []
-    with open("{0}/constants/facilities_in_13miles.yaml".format(modelDir),"rb") as f:
+    facIn13Path = pyrheautils.pathTranslate("$(CONSTANTS)/facilities_in_13miles.yaml")
+    with open(facIn13Path, "rb") as f:
         facilitiesWithin13Miles = yaml.load(f)['facilitiesWithin13Miles']['locAbbrevList']
-    
-    facilitiesWithinCookCounty = []
-    with open("{0}/constants/facilities_in_CookCounty.yaml".format(modelDir),"rb") as f:
+
+    facInCookPath = pyrheautils.pathTranslate("$(CONSTANTS)/facilities_in_CookCounty.yaml")
+    with open(facInCookPath, "rb") as f:
         facilitiesWithinCookCounty = yaml.load(f)['facilitiesWithinCookCounty']['locAbbrevList']
 
     burninDays = int(inputDict['burnInDays'])

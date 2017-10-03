@@ -17,6 +17,7 @@
 
 import sys
 import os
+import os.path
 import logging
 from imp import load_source
 import yaml
@@ -26,6 +27,26 @@ import schemautils
 logger = logging.getLogger(__name__)
 
 PATH_STRING_MAP = {}
+
+def prepPathTranslations(inp):
+    """
+    load up PATH_STRING_MAP based on the (already read in) pyrhea input yaml file/input dict
+    """
+    global PATH_STRING_MAP
+    primaryKeys = [('modelDir', 'MODELDIR'),
+                   ('facilityImplementationDir', 'IMPLDIR'),
+                   ('policyImplementationDir', 'POLICYDIR'),
+                   ('pathogenImplementationDir', 'PATHOGENDIR')]
+
+
+    for inputKey, xlateKey in primaryKeys:
+        if inputKey in inp:
+            PATH_STRING_MAP[xlateKey] = inp[inputKey]
+
+    if 'pathTranslations' in inp:
+        for elt in inp['pathTranslations']:
+            PATH_STRING_MAP[elt['key']] = elt['value']
+
 
 def pathTranslate(rawPath, lookupDict=None):
     """
@@ -41,6 +62,8 @@ def pathTranslate(rawPath, lookupDict=None):
             if ('$(%s)' % key) in path:
                 path = path.replace('$(%s)' % key, val)
                 changed = True
+
+    #return os.path.abspath(path)
     return path
 
 
