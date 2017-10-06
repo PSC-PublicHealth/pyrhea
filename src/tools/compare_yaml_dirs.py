@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-from google.protobuf.internal.descriptor_test import NewDescriptorTest
 
 ###################################################################################
 # Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
