@@ -724,6 +724,8 @@ def main():
         pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
         assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
         PthClass = pthImplDict.values()[0].getPathogenClass()
+        pthName = pthImplDict.values()[0].pathogenName
+        pyrheautils.PATH_STRING_MAP['PATHOGEN'] = pthName
     
         facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
         if 'facilitySelectors' in inputDict:

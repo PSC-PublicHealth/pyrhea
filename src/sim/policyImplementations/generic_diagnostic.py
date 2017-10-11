@@ -27,7 +27,7 @@ from pathogenbase import PthStatus
 from registry import Registry
 
 _validator = None
-_constants_values = '$(CONSTANTS)/generic_diagnosis_constants.yaml'
+_constants_values = '$(CONSTANTS)/$(PATHOGEN)/generic_diagnosis_constants.yaml'
 _constants_schema = 'generic_diagnosis_constants_schema.yaml'
 _constants = None
 

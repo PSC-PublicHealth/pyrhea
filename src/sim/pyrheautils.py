@@ -59,9 +59,10 @@ def pathTranslate(rawPath, lookupDict=None):
     while changed:
         changed = False
         for key, val in lookupDict.items():
-            if ('$(%s)' % key) in path:
+            if '$(%s)' % key in path:
                 path = path.replace('$(%s)' % key, val)
                 changed = True
+                print ' -> %s' % path
 
     #return os.path.abspath(path)
     return path
