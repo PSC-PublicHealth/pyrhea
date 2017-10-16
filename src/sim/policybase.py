@@ -29,6 +29,12 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
+        """
+        This is called on patients when they arrive at a ward.
+        """
+        pass  # For example, communities do nothing on patient arrival
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The

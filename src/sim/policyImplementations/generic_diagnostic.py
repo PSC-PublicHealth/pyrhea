@@ -33,21 +33,18 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-def _parseConstantByFacilityCategory(fieldStr):
+def _parseConstantByFacilityCategory(fieldStr, key='category'):
     topD = {}
     for elt in _constants[fieldStr]:
-        if 'category' in elt:
-            cat = elt['category']
-        else:
-            cat = elt['categoryFrom']
+        cat = elt[key]
         topD[cat] = float(elt['frac']['value'])
     return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
     return _parseConstantByFacilityCategory(fieldStr)
 
-def _parseCommunicateDiagnosisBetweenFacility(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+def _parseCommunicateDiagnosisBetweenFacility(fieldStr, key='category'):
+    return _parseConstantByFacilityCategory(fieldStr, key=key)
 
 def _parseRegistryAddCompliance(fieldStr):
     return _parseConstantByFacilityCategory(fieldStr)
@@ -62,8 +59,12 @@ class GDPCore(object):
     def __init__(self):
         self.sameFacilityDiagnosisMemory = \
             _parseSameFacilityDiagnosisMemoryByCategory('sameFacilityDiagnosisMemory')
-        self.communicateDiagnosisBetweenFacility = \
-            _parseCommunicateDiagnosisBetweenFacility('communicateDiagnosisBetweenFacility')
+        self.rcvDiagnosisBetweenFacility = \
+            _parseCommunicateDiagnosisBetweenFacility('receiveDiagnosisBetweenFacility',
+                                                      key='categoryTo')
+        self.sendDiagnosisBetweenFacility = \
+            _parseCommunicateDiagnosisBetweenFacility('sendDiagnosisBetweenFacility',
+                                                      key='categoryFrom')
         self.registryAddCompliance = \
             _parseRegistryAddCompliance('registryAddCompliance')
         self.registrySearchCompliance = \
@@ -80,6 +81,18 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         self.increasedEffectivness = -1.0
         self.increasedFalsePosRate = -1.0
         self.useCentralRegistry = False
+
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
+        """
+        This is called on patients when they arrive at a ward.
+        """
+        # Check for any info delivered with the transfer
+        if 'carriesPth' in transferInfoDict:
+            # Transfer probability was checked on the sending end
+            rcvFacProb = self.core.rcvDiagnosisBetweenFacility[ward.fac.category]
+            if random() <= rcvFacProb:
+                with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
+                    pRec.carriesPth = True
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
@@ -137,8 +150,8 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         # Maybe we remember to send known-carrier status with the patient
         pRec = facility.getPatientRecord(patient.id)
         if pRec.carriesPth:
-            commFacProb = self.core.communicateDiagnosisBetweenFacility[facility.category]
-            if random() <= commFacProb:
+            sendFacProb = self.core.sendDiagnosisBetweenFacility[facility.category]
+            if random() <= sendFacProb:
                 transferInfoDict['carriesPth'] = True
 
             if self.useCentralRegistry:
