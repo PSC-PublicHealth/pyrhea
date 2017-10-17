@@ -611,6 +611,8 @@ def main():
     def handle_pdb(sig, frame):
         import pdb
         pdb.Pdb().set_trace(frame)
+
+    global logger
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
 
@@ -798,8 +800,10 @@ def main():
         if quitNow:
             raise RuntimeError('Probable typos found in the policy section of the input file')
 
-    except Exception, e:
+    except Exception as e:
         if patchGroup:
+            if logger is None:
+                logger = logging.getLogger(__name__)
             logger.error('%s exception during initialization: %s; traceback follows' %
                          (patchGroup.name, e))
             import traceback
@@ -808,6 +812,8 @@ def main():
             logging.shutdown()
             sys.exit('Exception during initialization')
         else:
+            if logger is None:
+                logger = logging.getLogger(__name__)
             logger.error('%s exception during initialization: %s; traceback follows' %
                          ('<no patchGroup yet>', e))
             import traceback
