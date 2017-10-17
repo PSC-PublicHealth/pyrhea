@@ -418,7 +418,7 @@ def _populate(fac, descr, patch):
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 11
+    cacheVer = 12
 
     if communityClass is None:
         communityClass = Community
