@@ -166,7 +166,8 @@ class RunEnvironment:
                 if f in rp:
                     yamlReplaceFile(fullF, symF, rp[f])
                 else:
-                    os.symlink(fullF, symF)
+                    os.system("cp %s %s"%(fullF, symF))
+                    #os.symlink(fullF, symF)
 
 
             baseConfReplace = [[['pathTranslations', 0, 'value'], constantsDir]]
