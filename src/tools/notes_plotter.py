@@ -693,14 +693,19 @@ def main():
     specialDict = {}
     for nm, dct in notesDict.items():
         try:
-            if '_' in nm and not nm.startswith('Patch'):
-                category, abbrev = tuple(nm.split('_', 1))
-                abbrev = abbrev.lower()
-                if category not in categoryDict:
-                    categoryDict[category] = {}
-                categoryDict[category][abbrev] = dct
-            else:
+            if '_' not in nm:
                 specialDict[nm] = dct
+                continue
+            if nm.startswith('Patch') and not nm.endswith('Registry'):
+                specialDict[nm] = dct
+                continue
+            if nm.startswith('Patch') and nm.endswith('Registry'):
+                continue
+            category, abbrev = tuple(nm.split('_', 1))
+            abbrev = abbrev.lower()
+            if category not in categoryDict:
+                categoryDict[category] = {}
+            categoryDict[category][abbrev] = dct
         except:
             specialDict[nm] = dct
 

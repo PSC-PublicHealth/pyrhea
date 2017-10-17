@@ -16,6 +16,16 @@
       'required':
         - 'categoryFrom'
         - 'frac'
+  'fracByCategoryTo':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'categoryTo': {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'required':
+        - 'categoryTo'
+        - 'frac'
 
   'generic_diagnosis_constants':
     'type': 'object'
@@ -29,9 +39,12 @@
       'sameFacilityDiagnosisMemory':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
         'description': "If a patient gets a diagnosis, how likely is that diagnosis to make it into the facility's permanent record system?"
-      'communicateDiagnosisBetweenFacility':
+      'sendDiagnosisBetweenFacility':
         '$ref': '#/definitions/fracByCategoryFrom'
-        'description': "Probability that a diagnosis will be communicated between facilities, based on the sending facility's category."
+        'description': "Probability that a diagnosis will be sent with a patient on transfer, based on the sending facility's category."
+      'receiveDiagnosisBetweenFacility':
+        '$ref': '#/definitions/fracByCategoryTo'
+        'description': "Probability that a diagnosis sent with a patient on transfer will be used by the receiving facility, based on the receiving facility's category."
       'registryAddCompliance':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
         'description': "Probability that a diagnosis will be added to the registry, based on the sending facility's category."
@@ -42,7 +55,8 @@
       - 'pathogenDiagnosticEffectiveness'
       - 'pathogenDiagnosticFalsePositiveRate'
       - 'sameFacilityDiagnosisMemory'
-      - 'communicateDiagnosisBetweenFacility'
+      - 'sendDiagnosisBetweenFacility'
+      - 'receiveDiagnosisBetweenFacility'
       - 'registryAddCompliance'
       - 'registrySearchCompliance' 
       

@@ -28,9 +28,12 @@ will match even if the list ['A', 'B', 'C'] in one matches against the list
 import signal
 import optparse
 import types
+import os
+import yaml
 
 import phacsl.utils.formats.yaml_tools as yaml_tools
 
+_VERBOSE = False
 
 def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
     """
@@ -85,6 +88,8 @@ def termCompare(facDict, updatedFacDict, abbrev, key):
     """
     Compare two top-level dictionary entries.
     """
+    if _VERBOSE:
+        print 'comparing %s for %s' % (key, abbrev)
     if abbrev in facDict:
         if abbrev in updatedFacDict:
             if key in facDict[abbrev]:
@@ -108,8 +113,28 @@ def termCompare(facDict, updatedFacDict, abbrev, key):
     else:
         pass  # no such entry exists
 
+def loadByFName(dirPath):
+    resultD = {}
+    keyS = set()
+    for nm in os.listdir(dirPath):
+        if nm.endswith('.yaml'):
+            fullPath = os.path.join(dirPath, nm)
+            try:
+                with open(fullPath, 'r') as f:
+                    newD = yaml.safe_load(f)
+                    if not isinstance(newD, dict):
+                        print '%s is not a dict' % fullPath
+                        continue
+                    keyS.update(newD.keys())
+                    resultD[nm] = newD
+            except Exception, e:
+                print 'Failed to parse %s: %s' % (fullPath, e)
+                
+    return list(keyS), resultD
 
 def main():
+    global _VERBOSE
+    
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
     # handy trick to enable attachment of pdb to a running program
     def handle_pdb(sig, frame):
@@ -118,15 +143,17 @@ def main():
     signal.signal(signal.SIGUSR1, handle_pdb)
 
     parser = optparse.OptionParser(usage="""
-    %prog yamlDir1 yamlDir2
+    %prog [-v] [--byfilename] yamlDir1 yamlDir2
     """)
-#     parser.add_option("-v", "--verbose", action="store_true",
-#                       help="verbose output")
+    parser.add_option("-v", "--verbose", action="store_true",
+                      help="verbose output")
+    parser.add_option("--byfilename", action="store_true",
+                      help="match on filename rather than abbrev")
 
     opts, args = parser.parse_args()  # @UnusedVariable
 
-#     if opts.verbose:
-#         verbose = True
+    if opts.verbose:
+        _VERBOSE = True
 
     if len(args) == 2:
         dir1Path = args[0]
@@ -134,11 +161,15 @@ def main():
     else:
         parser.error("Two directories containing YAML collections must be specified.")
 
-    allKeySet, recs = yaml_tools.parse_all(dir1Path)  # @UnusedVariable
-    facDict = {r['abbrev']:r for r in recs}
-    
-    kL, uRecs = yaml_tools.parse_all(dir2Path)  # @UnusedVariable
-    updatedFacDict= {r['abbrev']:r for r in uRecs}
+    if opts.byfilename:
+        dummy, facDict = loadByFName(dir1Path)
+        dummy, updatedFacDict = loadByFName(dir2Path)
+    else:
+        allKeySet, recs = yaml_tools.parse_all(dir1Path)  # @UnusedVariable
+        facDict = {r['abbrev']:r for r in recs}
+
+        kL, uRecs = yaml_tools.parse_all(dir2Path)  # @UnusedVariable
+        updatedFacDict= {r['abbrev']:r for r in uRecs}
 
     for abbrev, rec in facDict.items():
         if abbrev in updatedFacDict:
@@ -152,7 +183,7 @@ def main():
                         print '%s: no %s in updated rec' % (abbrev, key)
                 else:
                     print '%s: %s key was added' % (abbrev, key)
-    
+
     print '----DONE----'
 
 

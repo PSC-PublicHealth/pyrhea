@@ -33,6 +33,7 @@ def prepPathTranslations(inp):
     load up PATH_STRING_MAP based on the (already read in) pyrhea input yaml file/input dict
     """
     global PATH_STRING_MAP
+
     primaryKeys = [('modelDir', 'MODELDIR'),
                    ('facilityImplementationDir', 'IMPLDIR'),
                    ('policyImplementationDir', 'POLICYDIR'),
@@ -59,7 +60,7 @@ def pathTranslate(rawPath, lookupDict=None):
     while changed:
         changed = False
         for key, val in lookupDict.items():
-            if ('$(%s)' % key) in path:
+            if '$(%s)' % key in path:
                 path = path.replace('$(%s)' % key, val)
                 changed = True
 

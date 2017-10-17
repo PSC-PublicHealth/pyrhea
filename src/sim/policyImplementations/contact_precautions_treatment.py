@@ -109,12 +109,6 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         This is called on patients when they arrive at a ward.
         """
-        # Check for any info delivered with the transfer
-        if 'carriesPth' in transferInfoDict:
-            # Transfer probability was checked on the sending end
-            with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
-                pRec.carriesPth = True
-
         self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
     def handlePatientDeparture(self, ward, patient, timeNow):
