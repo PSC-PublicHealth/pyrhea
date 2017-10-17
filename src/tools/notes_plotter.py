@@ -47,7 +47,8 @@ from collections import defaultdict
 from pyrhea import getLoggerConfig
 
 import numpy as np
-import matplotlib.pyplot as plt
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
 
 from scipy.stats import lognorm, expon
 

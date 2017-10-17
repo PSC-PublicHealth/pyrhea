@@ -32,7 +32,6 @@ if 'line_profiler' not in dir():
         return func
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))

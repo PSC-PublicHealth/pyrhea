@@ -26,7 +26,7 @@ from policybase import TransferDestinationPolicy as BaseTransferDestinationPolic
 from facilitybase import CareTier, tierToQueueMap
 
 _validator = None
-_constants_values = 'transferbydrawwithreplacement_constants.yaml'
+_constants_values = '$(MODELDIR)/constants/transferbydrawwithreplacement_constants.yaml'
 _constants_schema = 'transferbydrawwithreplacement_constants_schema.yaml'
 _constants = None
 
@@ -162,6 +162,5 @@ def getPolicyClasses():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

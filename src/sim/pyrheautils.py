@@ -32,6 +32,8 @@ def prepPathTranslations(inp):
     """
     load up PATH_STRING_MAP based on the (already read in) pyrhea input yaml file/input dict
     """
+    global PATH_STRING_MAP
+
     primaryKeys = [('modelDir', 'MODELDIR'),
                    ('facilityImplementationDir', 'IMPLDIR'),
                    ('policyImplementationDir', 'POLICYDIR'),
@@ -43,8 +45,8 @@ def prepPathTranslations(inp):
             PATH_STRING_MAP[xlateKey] = inp[inputKey]
 
     if 'pathTranslations' in inp:
-        for elt in inputDict['pathTranslations']:
-            pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+        for elt in inp['pathTranslations']:
+            PATH_STRING_MAP[elt['key']] = elt['value']
 
 
 def pathTranslate(rawPath, lookupDict=None):
@@ -58,11 +60,12 @@ def pathTranslate(rawPath, lookupDict=None):
     while changed:
         changed = False
         for key, val in lookupDict.items():
-            if ('$(%s)' % key) in path:
+            if '$(%s)' % key in path:
                 path = path.replace('$(%s)' % key, val)
                 changed = True
 
-    return os.path.abspath(path)
+    #return os.path.abspath(path)
+    return path
 
 
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
@@ -103,14 +106,18 @@ def loadModulesFromDir(implementationDir,
     for fname in os.listdir(implementationDir):
         name, ext = os.path.splitext(fname)
         if ext == '.py':
-            newMod = load_source(name, os.path.join(implementationDir, fname))
-            for requiredAttr in requiredAttrList:
-                if not hasattr(newMod, requiredAttr):
-                    raise RuntimeError('The implementation in '
-                                       '%s is missing the required attribute %s' %
-                                       (os.path.join(implementationDir, fname),
-                                        requiredAttr))
-            yield newMod
+            try:
+                newMod = load_source(name, os.path.join(implementationDir, fname))
+                for requiredAttr in requiredAttrList:
+                    if not hasattr(newMod, requiredAttr):
+                        raise RuntimeError('The implementation in '
+                                           '%s is missing the required attribute %s' %
+                                           (os.path.join(implementationDir, fname),
+                                            requiredAttr))
+                yield newMod
+            except IOError, e:
+                logger.warning('Unable to load %s - is a config file missing? %s',
+                               fname, str(e))
         elif ext.startswith('.py'):
             pass  # .pyc files for example
         else:

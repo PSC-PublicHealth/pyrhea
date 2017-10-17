@@ -29,6 +29,12 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
+        """
+        This is called on patients when they arrive at a ward.
+        """
+        pass  # For example, communities do nothing on patient arrival
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
@@ -161,7 +167,7 @@ class TreatmentPolicy(Policy):
         return the scale factor by which the transmission coefficient tau is multiplied when
         the patient with this treatment is the source of the transmission.
         """
-        raise RuntimeError('Base TreatmentPolicy was called.')        
+        raise RuntimeError('Base TreatmentPolicy was called.')
 
     def getTransmissionToMultiplier(self, careTier, **kwargs):
         """
@@ -169,7 +175,7 @@ class TreatmentPolicy(Policy):
         return the scale factor by which the transmission coefficient tau is multiplied when
         the patient with this treatment is the recipient of the transmission.
         """
-        raise RuntimeError('Base TreatmentPolicy was called.')        
+        raise RuntimeError('Base TreatmentPolicy was called.')
 
     @classmethod
     def getRelativeProb(cls, pthStatus, fromTier, toTier):
@@ -200,7 +206,7 @@ class TreatmentPolicy(Policy):
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         The base class doesn't know how to set any values.
         """
         raise RuntimeError('Class %s does not know how to set the value %s'
@@ -218,4 +224,3 @@ class ScenarioPolicy(object):
 
     def begin(self, callingAgent, timeNow):
         logger.info('The scenario %s is beginning', self.name)
-

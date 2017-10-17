@@ -15,7 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-import os.path
 import logging
 import math
 import types
@@ -23,12 +22,12 @@ from collections import defaultdict
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
-from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
-from facilitybase import PatientStatusSetter, PthStatusSetter
-from pathogenbase import Pathogen, PthStatus, defaultPthStatus
+from facilitybase import CareTier
+from facilitybase import PatientStatusSetter, PthStatus, PthStatusSetter
+from pathogenbase import Pathogen
 
 pathogenName = 'MRSA'
-_constants_values = 'mrsa_constants.yaml'
+_constants_values = '$(CONSTANTS)/mrsa_constants.yaml'
 _constants_schema = 'mrsa_constants_schema.yaml'
 _constants = None
 
@@ -38,9 +37,9 @@ logger = logging.getLogger(__name__)
 def _valFromCategoryEntry(key, ctg, constantsJSON):
     if key not in constantsJSON:
         raise RuntimeError('Constant list for %s was not found' % key)
-    for v in constantsJSON[key]:
-        if v['category'] == ctg:
-            return v['frac']['value']
+    for val in constantsJSON[key]:
+        if val['category'] == ctg:
+            return val['frac']['value']
     raise RuntimeError('Constant entry for category %s was not found' % ctg)
 
 def _parseValByTier(fieldStr):
@@ -245,7 +244,6 @@ class MRSA(Pathogen):
         self.infDischDelayTime = _getValByTierByCategory(self.core.colDischDelayTbl,
                                                          'infectedDischargeDelayTime',
                                                          ward, ward.fac.category, default=0.0)
-
 
     def flushCaches(self):
         """
@@ -490,6 +488,5 @@ def getPathogenClass():
 ###########
 # Initialize the module
 ###########
-_constants = pyrheautils.importConstants(os.path.join(os.path.dirname(__file__),
-                                                      _constants_values),
+_constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)

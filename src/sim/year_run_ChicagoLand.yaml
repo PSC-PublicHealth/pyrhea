@@ -21,7 +21,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/creImplementation_ChicagoLand'
+'pathogenImplementationDir': '../sim/creImplementation'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

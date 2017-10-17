@@ -106,6 +106,8 @@ class Ward(pyrheabase.Ward):
         else:
             transferInfo = self.fac.getBedRequestPayload(patientAgent,self.tier)[-1]
 
+        self.fac.diagnosticPolicy.handlePatientArrival(self, patientAgent, transferInfo,
+                                                       timeNow)
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, transferInfo, timeNow)
 
@@ -463,14 +465,14 @@ class Facility(pyrheabase.Facility):
                                                               transferInfoDict)
             except MissingPatientRecordError:
                 pass
-        return (0, desiredTier, self.abbrev, transferInfoDict)  # number of bounces, tier, originating fac
+        return (0, desiredTier, self.abbrev, transferInfoDict)  # num bounces, tier, originating fac
 
     def handleBedRequestResponse(self, ward, payload, timeNow):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
         The return value of this message becomes the new payload.
-        
+
         If ward is not None, this facility is in the process of accepting the bed request
         and the associated patient will be arriving later in the day.  Thus we cache
         the transfer info which may be associated with the patient.
