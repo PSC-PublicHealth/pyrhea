@@ -56,14 +56,43 @@ def yamlReplaceFile(base, out, repl):
     base: input file name
     out: output file name
     repl: list of tuples of the form (("path", 2, "yaml", "key"), "substitution")
+
+    for lists of dictionaries where there is a key and a value in the dictionary, instead of needing
+    to follow the index into the array use the following:
+        '#KeyVal', <keyKey>, <keyValue>
+    probably followed by 
+        , <valueKey>, <valueValue>
+    The first three will find the appropriate array index and traverse to that
+    This will then traverse to <valueKey> (which is allowed to be the same as keyKey if you wish to change the key)
+    and normally this would be followed by the value you wish to place in valueValue
+
+    for instance in the main pyrhea yaml file 'pathTranslations' is an array of dicts and I want to change
+    'CONSTANTS' value to something else (lets say 'new/constantsdir'):
+    <keyKey> is 'key' <keyValue> is 'CONSTANTS', <valueKey> is 'value' and finally <valueValue> is 'new/constantsdir' so 
+    I would use:
+        '#KeyVal', 'key', 'CONSTANTS', 'value', 'new/constantsdir'
     """
     with open(base) as f:
         yData = yaml.load(f)
 
     for path, val in repl:
         pointer = yData
-        for step in path[:-1]:
-            pointer = pointer[step]
+        idx = 0
+        while idx < len(path) - 2:
+            step = path[idx]
+            if step == '#KeyVal':
+                keyKey = path[idx+1]
+                keyValue = path[idx+2]
+                idx += 3
+                for d in pointer:
+                    if d[keyKey] == keyValue:
+                        pointer = d
+                        break
+                else:
+                    raise KeyError(keyKey)
+            else:  #normal case
+                pointer = pointer[step]
+                idx += 1
         pointer[path[-1]] = val
     with open(out, 'w') as f:
         yaml.dump(yData, f)
@@ -160,17 +189,26 @@ class RunEnvironment:
             if rp is None:
                 rp = {}
 
-            for f in os.listdir(self.baseConstDir):
-                fullF = os.path.join(self.baseConstDir, f)
-                symF = os.path.join(constantsDir, f)
-                if f in rp:
-                    yamlReplaceFile(fullF, symF, rp[f])
-                else:
-                    os.system("cp %s %s"%(fullF, symF))
-                    #os.symlink(fullF, symF)
+            for root, dirs, files in os.walk(self.baseConstDir, followlinks=True):
+                relPath = os.path.relpath(root, self.baseConstDir)
+                if relPath == '.':
+                    relPath = ''
+                curConstDir = os.path.join(constantsDir, relPath)
+                for d in dirs:
+                    os.makedirs(os.path.join(curConstDir, d))
 
-
-            baseConfReplace = [[['pathTranslations', 0, 'value'], constantsDir]]
+                for file in files:
+                    f = os.path.join(relPath, file)
+                    fullF = os.path.join(self.baseConstDir, f)
+                    symF = os.path.join(constantsDir, f)
+                    if f in rp:
+                        yamlReplaceFile(fullF, symF, rp[f])
+                    else:
+                        os.system("cp %s %s"%(fullF, symF))
+                        #os.symlink(fullF, symF)
+                    
+#            baseConfReplace = [[['pathTranslations', 0, 'value'], constantsDir]]
+            baseConfReplace = [[['pathTranslations', '#KeyVal', 'key', 'CONSTANTS', 'value'], constantsDir]]
             yamlReplaceFile(self.baseConfFile, self.confFile, baseConfReplace)
 
             if self.finalEditsFn is not None:
