@@ -33,6 +33,7 @@ def prepPathTranslations(inp):
     load up PATH_STRING_MAP based on the (already read in) pyrhea input yaml file/input dict
     """
     global PATH_STRING_MAP
+
     primaryKeys = [('modelDir', 'MODELDIR'),
                    ('facilityImplementationDir', 'IMPLDIR'),
                    ('policyImplementationDir', 'POLICYDIR'),
