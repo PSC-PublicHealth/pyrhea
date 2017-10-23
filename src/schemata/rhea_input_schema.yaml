@@ -27,8 +27,8 @@
           'properties':
             'category': { 'type': 'string', 'description': 'regex which must match facility description category'}
             'implementation': { 'type': 'string', 'descripition': 'a facility implementation category string'}
-      'pathogenImplementationDir':
-        'description': 'Directory containing implementations of infectious agents'
+      'pathogen':
+        'description': 'name of the pathogen, used in building paths to pathogen specific files and directories'
         'type': 'string'
       'policyImplementationDir':
         'description': 'Directory containing implementations of policies'
@@ -80,7 +80,7 @@
     'required':
       - 'facilityDirs'
       - 'facilityImplementationDir'
-      - 'pathogenImplementationDir'
+      - 'pathogen'
       - 'policyImplementationDir'
       - 'policySelectors'
       - 'runDurationDays'

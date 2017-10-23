@@ -19,8 +19,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/mrsaImplementation'
-#'pathogenImplementationDir': '../sim/creImplementation'
+'pathogen': 'MRSA'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

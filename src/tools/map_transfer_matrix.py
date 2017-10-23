@@ -24,6 +24,7 @@ _rhea_svn_id_ = "$Id$"
 #
 ###############################
 
+import sys
 import os.path
 
 import phacsl.utils.formats.csv_tools as csv_tools
@@ -34,6 +35,13 @@ import types
 import numpy as np
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+
+cwd = os.path.dirname(__file__)
+sys.path.append(os.path.join(cwd, "../sim"))
+import pyrheautils
+import schemautils
+from pyrhea import checkInputFileSchema
+import yaml
 
 
 class Graph(object):
@@ -380,20 +388,33 @@ def addFacilityTypeSynonyms(inclusionSet):
     return newSet
 
 def main():
-    # facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty/'
-    #                             'facilityfactsCurrent')
-#     facDict = parseFacilityData('/home/welling/workspace/pyRHEA/models/OrangeCounty2013/'
-#                                 'facilityfactsCurrent')
-    facDict = parseFacilityData('/home/welling/git/pyrhea/models/ChicagoLand/'
-                                'facilityfacts')
+    SCHEMA_DIR = '../schemata'
+    INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
-#     directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
-#     readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
-#     directTransferDict = importTransferTable('Transferring_matrix_abbrev_9-18-2014_with-update-10-2-2014_copy_RHEA_Direct_fix_HSOU+silos+SCLE.csv',
-#                                              abbrevPrefix=None)
-    directTransferDict = importTransferTable('/home/welling/git/pyrhea/models/ChicagoLand/'
-                                             'Matrices_LOS_08092016_Transfer3day.csv',
-                                             abbrevPrefix='To_', keyLabel='UNIQUE_ID')
+    runDesc = sys.argv[1]
+    schemautils.setSchemaBasePath(SCHEMA_DIR)
+    inputDict = checkInputFileSchema(sys.argv[1],
+                                     os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+    pyrheautils.prepPathTranslations(inputDict)
+    facDir = pyrheautils.pathTranslate('$(MODELDIR)/facilityfacts')
+    facDict = parseFacilityData(facDir)
+    modelDir = inputDict['modelDir']
+    
+    
+    
+    #     directTransferDict = importTransferTable('transfer_matrix_direct_normalized.csv')
+    #     readmitTransferDict = importTransferTable('transfer_matrix_readmit_normalized.csv')
+    #     directTransferDict = importTransferTable('Transferring_matrix_abbrev_9-18-2014_with-update-10-2-2014_copy_RHEA_Direct_fix_HSOU+silos+SCLE.csv',
+    #                                              abbrevPrefix=None)
+    #    directTransferDict = importTransferTable('/home/welling/git/pyrhea/models/ChicagoLand/'
+    #                                             'Matrices_LOS_08092016_Transfer3day.csv',
+    #                                             abbrevPrefix='To_', keyLabel='UNIQUE_ID')
+
+    transferYaml = pyrheautils.pathTranslate('$(MODELDIR)/transfer_counts.yaml')
+    with open(transferYaml) as f:
+        directTransferDict = yaml.load(f)
+
+
     readmitTransferDict = {}
     transferDict = {}
     for k, rec in directTransferDict.items():
