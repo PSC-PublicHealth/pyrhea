@@ -502,8 +502,6 @@ def findPolicies(policyClassList,
                     or categoryRegex.match(category)) and classRegex.match(pCl.__name__):
                 l.append(pCl)
                 policyRulesDict[ruleKey] = True  # rule has been used
-    if True:
-        print '%s %s got %s' % (category, abbrev, [cl.__name__ for cl in l])
     return l
 
 

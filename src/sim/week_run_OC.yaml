@@ -19,7 +19,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogen': 'CRE'
+'pathogen': 'MRSA'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
