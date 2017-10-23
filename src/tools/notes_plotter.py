@@ -587,7 +587,7 @@ def writeTransferMapAsDot(transferDict, fname, facilityDirs, catToImplDict):
         ('LTAC', 'HOSPITAL'),
         ('HOSPITAL', 'LTAC')
         ]
-    
+
     catL = catToImplDict.keys()[:]
     translatedInclusionSet = []
     for src in catL:
@@ -658,7 +658,7 @@ def main():
     global logger
     logging.config.dictConfig(getLoggerConfig())
     logger = logging.getLogger(__name__)
-    
+
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] run_descr.yaml
     """)
@@ -671,7 +671,7 @@ def main():
     parser.destroy()
 
     runDesc = args[0]
-        
+
     schemautils.setSchemaBasePath(SCHEMA_DIR)
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -680,7 +680,7 @@ def main():
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
     pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
     constDir = os.path.join(modelDir, 'constants')
-    
+
     if opts.notes:
         notesFName = opts.notes
     elif 'notesFileName' in inputDict:
@@ -717,7 +717,7 @@ def main():
             allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
 
     catNames = allOfCategoryDict.keys()[:]
-    
+
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
     if "ChicagoLand" in runDesc:
         allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
@@ -735,7 +735,7 @@ def main():
     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
                           'sim_transfer_matrix.csv',
                           facDirList, catToImplDict)
-    
+
     countBirthsDeaths(catNames, allOfCategoryDict)
 
     overallLOSFig(catNames, allOfCategoryDict, catToImplDict, implDir)
@@ -746,7 +746,7 @@ def main():
         #singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         #singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         pass
-    
+
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             singleLOSFig(abbrev, notesDict, facDirList, catToImplDict, implDir)

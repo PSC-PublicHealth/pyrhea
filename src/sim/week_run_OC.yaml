@@ -19,7 +19,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogen': 'MRSA'
+'pathogen': 'CRE'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
@@ -54,7 +54,15 @@ burnInDays: 2
 scenarioWaitDays: 2
 
 'trackedFacilities':
-  - 'GLEN_22660_V'
-  - 'ADVO_836_H'
-  - 'WASH_11308_S'
-  - 'PRES_100_L'
+  - 'AGEN'
+  - 'AMMC'
+  - 'CHAP'
+  - 'COAS'
+  - 'FVRH'
+  - 'GGMC'
+  - 'HBHO'
+  - 'HOAG'
+  - 'KAIA'
+  - 'LAMC'
+  - 'SCLE'
+  - 'WAMC'
