@@ -57,7 +57,7 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                     for ward in fac.getWards():
                         ward.iA.flushCaches()
                     if action == 'START':
-                        if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
+                        if fac.diagnosticPolicy.isinstance(CREBundleDiagnosticPolicy):
                             fac.diagnosticPolicy.setValue('active', True)
                             fac.diagnosticPolicy.setValue('useCentralRegistry', True)
                             fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',
@@ -67,7 +67,7 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                             raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy'
                                                % abbrev)
                         for tP in fac.treatmentPolicies:
-                            if isinstance(tP, CREBundleTreatmentPolicy):
+                            if tP.isinstance(CREBundleTreatmentPolicy):
                                 tP.setValue('active', True)
                                 for ward in fac.getWards():
                                     for patient in ward.getPatientList():
@@ -78,7 +78,7 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                             raise RuntimeError('%s does not have a CREBundleTreatmentPolicy'
                                                % abbrev)
                     elif action == 'END':
-                        if isinstance(fac.diagnosticPolicy, CREBundleDiagnosticPolicy):
+                        if fac.diagnosticPolicy.isinstance(CREBundleDiagnosticPolicy):
                             fac.diagnosticPolicy.setValue('active', False)
                             fac.diagnosticPolicy.setValue('useCentralRegistry', False)
                             fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',
@@ -88,7 +88,7 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
                             raise RuntimeError('%s does not have a CREBundleDiagnosticPolicy'
                                                % abbrev)
                         for tP in fac.treatmentPolicies:
-                            if isinstance(tP, CREBundleTreatmentPolicy):
+                            if tP.isinstance(CREBundleTreatmentPolicy):
                                 tP.setValue('active', False)
                                 logger.info('Deactivated CREBundleScenario at %s' % abbrev)
                                 break
