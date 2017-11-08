@@ -30,6 +30,9 @@
       'pathogen':
         'description': 'name of the pathogen, used in building paths to pathogen specific files and directories'
         'type': 'string'
+      'model':
+        'description': 'name of the model, used in building paths to model specific files and directories'
+        'type': 'string'
       'policyImplementationDir':
         'description': 'Directory containing implementations of policies'
         'type': 'string'
@@ -81,6 +84,7 @@
       - 'facilityDirs'
       - 'facilityImplementationDir'
       - 'pathogen'
+      - 'model'
       - 'policyImplementationDir'
       - 'policySelectors'
       - 'runDurationDays'

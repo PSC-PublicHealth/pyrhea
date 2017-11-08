@@ -1,4 +1,5 @@
-'modelDir': '../../models/ChicagoLand'
+'model': 'ChicagoLand'
+'pathogen': 'CRE'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
@@ -22,7 +23,6 @@
     'implementation': 'COMMUNITY'
 
 
-'pathogen': 'CRE'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

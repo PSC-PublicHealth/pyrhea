@@ -23,6 +23,8 @@ import logging
 import types
 from collections import defaultdict
 
+from phacsl.utils.collections.phacollections import DefaultDict
+import phacsl.utils.collections.interdict as interdict
 
 import cPickle as pickle
 import gzip
@@ -44,6 +46,8 @@ _validator = None
 _constants_values = '$(MODELDIR)/constants/community_constants.yaml'
 _constants_schema = 'community_constants_schema.yaml'
 _constants = None
+
+
 
 
 def importCommunity(moduleName):
@@ -214,13 +218,175 @@ class Freezer(object):
         return agent
 
 
+
+
+class CopyOnWriteLMDBFreezer(Freezer):
+    _AgentListId = -1
+    _SavedInfoListId = -2
+    _SavedWardDataId = -3
+    
+    def __init__(self, ward, orig, changed, infoList, pType):
+        """
+        This is a freezer for community agents that is stored in an LMDB InterDict rather than in memory.
+        It is stored in two parts so that the community agents can be cached and then changed community
+        members are written to a second LMDB file.
+        
+        A given ward can have multiple freezers to store multiple types of community agents but it's useful
+        to have all freezers in one pair of interdicts.  To this end there is an infoPointer which is a list
+        of values that help the multiple freezers interact.
+
+        ward: this is the ward that is associated with the freezer
+        orig: this is the InterDict where the cached community agents are stored.  By default this is not modified.
+        changed: any newly stored agents are saved here
+        infoList: this is a list shared between all freezers using the same pair of interdicts with the following values:
+            origRO: if True (normal usage) write new agents to changed.  For building the cache set to False
+                    and all new members will be written to orig
+            maxOrig: when looking up an agent, any ID less than this will be found in orig, otherwise found in changed
+            nextID: next ID value to write
+        pType: this is the key used for the dict of freezers in the ward
+        """
+        self.ward = ward
+        self.frozenAgentClass = PatientAgent
+        self.frozenAgentLoggerName = None
+        self.frozenAgentTypePattern = None
+        self.orig = orig
+        self.changed = changed
+        self.infoList = infoList
+        self.pType = pType
+        try:
+            self.frozenAgentList = self.orig[self._AgentListId][pType]
+        except:
+            self.frozenAgentList = set()
+
+    def freezeAndStore(self, agent):
+        if agent in self.ward._lockingAgentList:
+            self.ward._lockingAgentList.remove(agent)
+        self.ward.suspend(agent)
+        assert agent not in self.ward._lockingAgentList, 'It is still there!'
+        assert agent in self.ward._lockQueue, 'It is not there!'
+        self.ward._lockQueue.remove(agent)
+        d = agent.__getstate__()
+        agent.kill()
+        if d['newLocAddr'] is None or d['newLocAddr'] == self.ward.getGblAddr():
+            del d['newLocAddr']
+        else:
+            raise FreezerError('%s cannot freezedry %s because it is still in motion'
+                               % (self.ward._name, d['name']))
+        if self.frozenAgentLoggerName is None:
+            self.frozenAgentLoggerName = d['loggerName']
+            del d['loggerName']
+        elif d['loggerName'] == self.frozenAgentLoggerName:
+            del d['loggerName']
+        else:
+            raise FreezerError('%s cannot freezedry %s because it has the wrong logger'
+                               % (self.ward._name, d['name']))
+
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            self.changed[nextId] = d
+        else:
+            self.orig[nextId] = d
+            self.infoList[1] = nextId
+        self.frozenAgentList.add(nextId)
+        self.infoList[2] += 1
+
+        
+    def removeAndThaw(self, frozenAgent):
+        self.frozenAgentList.remove(frozenAgent)
+        origRO, maxOrig, nextId = self.infoList
+        if frozenAgent <= maxOrig:
+            d = self.orig[frozenAgent]
+        else:
+            d = self.changed[frozenAgent]
+            del self.changed[frozenAgent]
+
+        d['locAddr'] = self.ward.getGblAddr()
+        d['newLocAddr'] = self.ward.getGblAddr()
+        d['loggerName'] = self.frozenAgentLoggerName
+        agent = self.frozenAgentClass.__new__(self.frozenAgentClass)
+        agent.__setstate__(d)
+        agent.reHome(self.ward.patch)
+        # NEED to check locking agent count
+        self.ward._lockQueue.append(agent)
+        self.ward.awaken(agent)
+        self.ward._lockingAgentList.append(agent)
+        return agent
+
+    def saveFreezerData(self):
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
+        try:
+            agentListDict = self.changed[self._AgentListId]
+        except:
+            agentListDict = {}
+        agentListDict[self.pType] = self.frozenAgentList
+        lDict[self._AgentListId] = agentListDict
+
+        # save the infoList
+        # this might get saved a few extra times.  It's small so quick.
+        # however we should save it with origRO flag set to True
+        tmpIL = self.infoList[:]
+        tmpIL[0] = True
+        lDict[self._SavedInfoListId] = tmpIL
+
+    def getInfoList(self, fromOrig=True):
+        if fromOrig:
+            return self.orig[self._SavedInfoListId]
+        else:
+            return self.changed[self._SavedInfoListId]
+            
+    def saveWardData(self, data):
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
+
+        lDict[self._SavedWardDataId] = data
+
+    def getWardData(self, fromOrig=True):
+        if fromOrig:
+            return self.orig[self._SavedWardDataId]
+        else:
+            return self.changed[self._SavedWardDataId]
+
+def makeLMDBDirs():
+    origDir = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
+    if not os.path.exists(origDir):
+        os.makedirs(origDir)
+
+    changedDir = pyrheautils.pathTranslate('$(AGENTDIR)')
+    if not os.path.exists(changedDir):
+        os.makedirs(changedDir)
+
+def origFname(abbrev):
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/%s'%abbrev)
+
+def changedFname(abbrev):
+    return pyrheautils.pathTranslate('$(AGENTDIR)/%s'%abbrev)
+
+
+def newFreezer(dd, ward, orig, changed, infoList, key):
+    freezer = CopyOnWriteLMDBFreezer(ward, orig, changed, infoList, key)
+    dd[key] = freezer
+    return freezer
+
 class CommunityWard(Ward):
     """This 'ward' type represents being out in the community"""
     
-    def __init__(self, name, patch, nBeds):
+    def __init__(self, abbrev, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
         self.checkInterval = 1  # so they get freeze dried promptly
-        self.freezers = defaultdict(lambda: Freezer(self))
+        
+        self.orig = interdict.InterDict(origFname(abbrev), convert_int=True, val_serialization='pickle')
+        self.changed = interdict.InterDict(changedFname(abbrev), overwrite_existing=True,
+                                           convert_int=True, val_serialization='pickle')
+        self.infoList = [True,1,1]  # we'll overwrite this shortly.  This deals with a chicken/egg problem
+        self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self, self.orig, self.changed, self.infoList, key))
+        #self.freezers = DefaultDict(lambda dd,key: CopyOnWriteLMDBFreezer(self, self.orig, self.changed, self.infoList, key))
         self.newArrivals = []
 
     def classify(self, agent):
@@ -312,7 +478,7 @@ class Community(Facility):
         losModel = _constants['communityLOSModel']
         assert losModel['pdf'] == 'expon(lambda=$0)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
-        self.addWard(CommunityWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
+        self.addWard(CommunityWard(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                    patch, nBeds))
         self.setCDFs(losModel)
         self.collectiveStatusStartDate = 0
@@ -418,22 +584,33 @@ def _populate(fac, descr, patch):
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 12
+    cacheVer = 1
+    makeLMDBDirs()
 
     if communityClass is None:
         communityClass = Community
     fac = communityClass(facilityDescr, patch, policyClasses=policyClasses,
                          categoryNameMapper=categoryNameMapper)
 
-    fname = 'cache/%s.zkl'%facilityDescr['abbrev']
+
+    # create cache dir    facilityDescr['abbrev']
+    # create facility dir for this instance
+    # integrate everything!!!
+    
+
     wards = fac.getWards()
-    ward = wards[0]
     if len(wards) != 1:
         raise RuntimeError("caching wards assumes 1 ward per community")
+    ward = wards[0]
+
+    orig = ward.orig
+    changed = ward.changed
+    # get myself a freezer to access the metadata
+    tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
 
     try:
-        with gzip.GzipFile(fname) as f:
-            wardInfo = pickle.load(f)
+        ward.infoList = tFreezer.getInfoList()
+        wardInfo = tFreezer.getWardData()
 
         if wardInfo[0] != cacheVer:
             raise Exception()
@@ -444,12 +621,10 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
         agentCount = 0
         for freezerData in freezerList:
-            pType, loggerName, typePattern, agentList = freezerData
+            pType, loggerName = freezerData
             freezer = ward.freezers[pType]
             freezer.frozenAgentLoggerName = loggerName
-            freezer.frozenAgentTypePattern = typePattern
-            freezer.frozenAgentList = agentList
-            agentCount += len(agentList)
+            agentCount += len(freezer.frozenAgentList)
 
         fac.patientDataDict = patientDataDict
         fac.patientStats = patientStats
@@ -458,31 +633,46 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         return [fac], fac.getWards(), []
 
     except:
+#        import traceback
+#        traceback.print_exc()
         # no cache file or whatever was there wasn't satisfactory for any reason.
         # since if we found a valid cache file we'd have returned already, just
         # fall out of the exception.
         pass
+
+    # first overwrite the original interdict.  It may or may not have data in it.  May as well wipe it.
+    ward.orig.close()
+    orig = interdict.InterDict(origFname(facilityDescr['abbrev']), convert_int=True,
+                               val_serialization='pickle', overwrite_existing=True)
+    # Let's write all of our data at once to the interdict, so for now use a normal dict:
+    ward.orig = {}
+    ward.infoList = [False, 0, 0]
     
     pop = _populate(fac, facilityDescr, patch)
 
     freezerList = []
     for pType,freezer in ward.freezers.items():
-        freezerList.append((pType,
-                            freezer.frozenAgentLoggerName,
-                            freezer.frozenAgentTypePattern,
-                            freezer.frozenAgentList))
+        freezerList.append((pType,freezer.frozenAgentLoggerName))
+        freezer.saveFreezerData()
+    
     patientDataDict = fac.patientDataDict
     patientStats = fac.patientStats
 
-    # presumably we don't use up beds now that we have frozen agents.
+    # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
+    tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
+    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats))
 
-    # pickle the (frozen) agents in the facility
-    if not os.path.exists('cache'):
-        os.makedirs('cache')
+    orig.mset(ward.orig.items())
+    orig.flush()
+    #    orig.close()
+    #    orig = interdict.InterDict(origFname(facilityDescr['abbrev']), convert_int=True,
+    #                               val_serialization='pickle')
 
-    with gzip.GzipFile(fname, "w") as f:
-        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats), f, 2)
-
+    for k in ward.orig.keys():
+        del(ward.orig[k])
+        
+    ward.orig = orig
+    
     return [fac], fac.getWards(), pop
 
 

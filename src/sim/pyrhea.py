@@ -50,6 +50,10 @@ _TRACKED_FACILITIES_SET = None
 
 logger = None
 
+# make command line data accessible to anyone
+clData = None
+
+
 def buildFacOccupancyDict(patch, timeNow):
     facTypeDict = {'day': timeNow}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
@@ -604,6 +608,8 @@ def main():
         pdb.Pdb().set_trace(frame)
 
     global logger
+    global clData
+    
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
 

@@ -34,12 +34,27 @@ def prepPathTranslations(inp):
     """
     global PATH_STRING_MAP
 
+    simDir = os.path.dirname(os.path.abspath(__file__))
+    baseDir = os.path.normpath(os.path.join(simDir, os.path.pardir, os.path.pardir))
+    
+
     primaryKeys = [('modelDir', 'MODELDIR'),
+                   ('model', 'MODEL'),
                    ('facilityImplementationDir', 'IMPLDIR'),
                    ('policyImplementationDir', 'POLICYDIR'),
                    ('pathogenImplementationDir', 'PATHOGENDIR'),
                    ('pathogen', 'PATHOGEN'),]
 
+    defaultTranslations = [('BASEDIR', baseDir),
+                           ('SIMDIR', simDir),
+                           ('MODELDIR', '$(BASEDIR)/models/$(MODEL)'),
+                           ('CONSTANTS', '$(MODELDIR)/constants'),
+                           ('COMMUNITYCACHEDIR', '$(SIMDIR)/cache/$(MODEL)'),
+                           ('AGENTDIR', '$(SIMDIR)/agents/$(MODEL)'),
+                           ]
+
+    for k,v in defaultTranslations:
+        PATH_STRING_MAP[k] = v
 
     for inputKey, xlateKey in primaryKeys:
         if inputKey in inp:
