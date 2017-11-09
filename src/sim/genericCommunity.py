@@ -217,13 +217,41 @@ class Freezer(object):
         self.ward._lockingAgentList.append(agent)
         return agent
 
+class InvalidCacheVer(Exception):
+    pass
 
+def mapLMDBAbbrev(abbrev):
+    return 'all'
 
+def mapLMDBSegments(abbrev, iDict):
+    cacheVer = 1
+    segmentInfoId = 0
+    idsPerFac = 1000000000
+    startId = 100
+
+    try:
+        segmentInfo = iDict[segmentInfoId]
+    except:
+        segmentInfo = [cacheVer, startId, {}]
+        # this will necessarily get written later so don't bother yet.
+
+    if segmentInfo[0] != cacheVer:
+        raise InvalidCacheVer()
+
+    cv, nextId, segmentDict = segmentInfo
+    if abbrev in segmentDict:
+        return segmentDict[abbrev]
+
+    ret = segmentDict[abbrev] = nextId
+    nextId += idsPerFac
+    iDict[segmentInfoId] = [cv, nextId, segmentDict]
+    return ret
+    
 
 class CopyOnWriteLMDBFreezer(Freezer):
-    _AgentListId = -1
-    _SavedInfoListId = -2
-    _SavedWardDataId = -3
+    _AgentListId = 0
+    _SavedInfoListId = 1
+    _SavedWardDataId = 2
     
     def __init__(self, ward, orig, changed, infoList, pType):
         """
@@ -253,8 +281,9 @@ class CopyOnWriteLMDBFreezer(Freezer):
         self.changed = changed
         self.infoList = infoList
         self.pType = pType
+        self.iDictOffset = self.ward.iDictOffset
         try:
-            self.frozenAgentList = self.orig[self._AgentListId][pType]
+            self.frozenAgentList = self.orig[self._AgentListId+self.iDictOffset][pType]
         except:
             self.frozenAgentList = set()
 
@@ -319,24 +348,30 @@ class CopyOnWriteLMDBFreezer(Freezer):
         else:
             lDict = self.orig
         try:
-            agentListDict = self.changed[self._AgentListId]
+            agentListDict = self.changed[self._AgentListId+self.iDictOffset]
         except:
             agentListDict = {}
         agentListDict[self.pType] = self.frozenAgentList
-        lDict[self._AgentListId] = agentListDict
+        lDict[self._AgentListId+self.iDictOffset] = agentListDict
 
+
+    def saveInfoList(self):
         # save the infoList
-        # this might get saved a few extra times.  It's small so quick.
         # however we should save it with origRO flag set to True
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
         tmpIL = self.infoList[:]
         tmpIL[0] = True
-        lDict[self._SavedInfoListId] = tmpIL
+        lDict[self._SavedInfoListId+self.iDictOffset] = tmpIL
 
     def getInfoList(self, fromOrig=True):
         if fromOrig:
-            return self.orig[self._SavedInfoListId]
+            return self.orig[self._SavedInfoListId+self.iDictOffset]
         else:
-            return self.changed[self._SavedInfoListId]
+            return self.changed[self._SavedInfoListId+self.iDictOffset]
             
     def saveWardData(self, data):
         origRO, maxOrig, nextId = self.infoList
@@ -345,13 +380,13 @@ class CopyOnWriteLMDBFreezer(Freezer):
         else:
             lDict = self.orig
 
-        lDict[self._SavedWardDataId] = data
+        lDict[self._SavedWardDataId+self.iDictOffset] = data
 
     def getWardData(self, fromOrig=True):
         if fromOrig:
-            return self.orig[self._SavedWardDataId]
+            return self.orig[self._SavedWardDataId+self.iDictOffset]
         else:
-            return self.changed[self._SavedWardDataId]
+            return self.changed[self._SavedWardDataId+self.iDictOffset]
 
 def makeLMDBDirs():
     origDir = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
@@ -363,10 +398,14 @@ def makeLMDBDirs():
         os.makedirs(changedDir)
 
 def origFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
     return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/%s'%abbrev)
 
 def changedFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
     return pyrheautils.pathTranslate('$(AGENTDIR)/%s'%abbrev)
+
+InterdictMapping = {}
 
 
 def newFreezer(dd, ward, orig, changed, infoList, key):
@@ -380,13 +419,30 @@ class CommunityWard(Ward):
     def __init__(self, abbrev, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
         self.checkInterval = 1  # so they get freeze dried promptly
-        
-        self.orig = interdict.InterDict(origFname(abbrev), convert_int=True, val_serialization='pickle')
-        self.changed = interdict.InterDict(changedFname(abbrev), overwrite_existing=True,
-                                           convert_int=True, val_serialization='pickle')
+
+        oName = origFname(abbrev)
+        if oName in InterdictMapping:
+            self.orig = InterdictMapping[oName]
+        else:
+            self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
+            InterdictMapping[oName] = self.orig
+
+        cName = changedFname(abbrev)
+        if cName in InterdictMapping:
+            self.changed = InterdictMapping[cName]
+        else:
+            self.changed = interdict.InterDict(cName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
+            InterdictMapping[cName] = self.changed
+
+        try:
+            self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
+        except InvalidCacheVer:
+            self.orig.close()
+            self.orig = interdict.InterDict(oName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
+            self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
+
         self.infoList = [True,1,1]  # we'll overwrite this shortly.  This deals with a chicken/egg problem
         self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self, self.orig, self.changed, self.infoList, key))
-        #self.freezers = DefaultDict(lambda dd,key: CopyOnWriteLMDBFreezer(self, self.orig, self.changed, self.infoList, key))
         self.newArrivals = []
 
     def classify(self, agent):
@@ -581,7 +637,6 @@ def _populate(fac, descr, patch):
         ward.freezers[ward.classify(a)].freezeAndStore(a)
     return []
 
-
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
     cacheVer = 1
@@ -613,7 +668,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         wardInfo = tFreezer.getWardData()
 
         if wardInfo[0] != cacheVer:
-            raise Exception()
+            raise invalidCacheVer()
 
         ver, fDesc,freezerList,patientDataDict,patientStats = wardInfo
         if fDesc != facilityDescr:
@@ -626,27 +681,38 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
             freezer.frozenAgentLoggerName = loggerName
             agentCount += len(freezer.frozenAgentList)
 
+        if agentCount < 1:
+            raise Exception()
+        
         fac.patientDataDict = patientDataDict
         fac.patientStats = patientStats
         logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
 
         return [fac], fac.getWards(), []
 
+    except InvalidCacheVer as e:
+        raise RuntimeError("community cache versions are out of sync within the same file!")
+        #ward.orig.close()
+        #oName = origFname(facilityDescr['abbrev'])
+        #ward.orig = interdict.InterDict(oName, convert_int=True,
+        #                                val_serialization='pickle', overwrite_existing=True)
+        #InterdictMapping[oName] = ward.orig
     except:
-#        import traceback
-#        traceback.print_exc()
+        #import traceback
+        #traceback.print_exc()
         # no cache file or whatever was there wasn't satisfactory for any reason.
         # since if we found a valid cache file we'd have returned already, just
         # fall out of the exception.
         pass
 
-    # first overwrite the original interdict.  It may or may not have data in it.  May as well wipe it.
-    ward.orig.close()
-    orig = interdict.InterDict(origFname(facilityDescr['abbrev']), convert_int=True,
-                               val_serialization='pickle', overwrite_existing=True)
+    # at this point we _should_ wipe our section of the interdict
+    # it's not absolutely necessary but it's a big todo
+    #  *** TODO wipe our section of the interdict using a new method keyRange()
+    
     # Let's write all of our data at once to the interdict, so for now use a normal dict:
+    orig = ward.orig
     ward.orig = {}
-    ward.infoList = [False, 0, 0]
+    ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
     
     pop = _populate(fac, facilityDescr, patch)
 
@@ -661,12 +727,10 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
     tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
     tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats))
-
+    tFreezer.saveInfoList()
+    
     orig.mset(ward.orig.items())
     orig.flush()
-    #    orig.close()
-    #    orig = interdict.InterDict(origFname(facilityDescr['abbrev']), convert_int=True,
-    #                               val_serialization='pickle')
 
     for k in ward.orig.keys():
         del(ward.orig[k])
