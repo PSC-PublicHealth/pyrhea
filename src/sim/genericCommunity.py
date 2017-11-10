@@ -31,7 +31,7 @@ import gzip
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue, PatientRecord
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
 from quilt.netinterface import GblAddr
@@ -403,7 +403,12 @@ def origFname(abbrev):
 
 def changedFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
-    return pyrheautils.pathTranslate('$(AGENTDIR)/%s'%abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/freezer_%s'%abbrev)
+
+def patientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/patientData_%s'%abbrev)
+    
 
 InterdictMapping = {}
 
@@ -540,6 +545,15 @@ class Community(Facility):
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
+        pdName = patientDataFname(descr['abbrev'])
+        if pdName in InterdictMapping:
+            self.patientDataDict = InterdictMapping[pdName]
+        else:
+            self.patientDataDict = interdict.InterDict(pdName, overwrite_existing=True,
+                                                       key_serialization='pickle', val_serialization='pickle')
+            InterdictMapping[pdName] = self.patientDataDict
+
+
     def flushCaches(self):
         """
         Derived classes often cache things like BayesTrees, but the items in the cache
@@ -618,6 +632,33 @@ class Community(Facility):
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
 
+
+    def getPatientRecord(self, patientId, timeNow=None):
+        if (self.abbrev, patientId) in self.patientDataDict:
+            pR = pickle.loads(self.patientDataDict[(self.abbrev, patientId)])
+            pR._owningFac = self
+            return pR
+        else:
+            # Create a new blank record
+            if timeNow is None:
+                raise MissingPatientRecordError('Record not found and cannot create a new one')
+            pR = PatientRecord(patientId, timeNow, isFrail=False)
+            self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(pR, 2)  # keep a copy
+            pR._owningFac = self
+            return pR
+
+    def mergePatientRecord(self, patientId, newPatientRec, timeNow):
+        patientRec = self.getPatientRecord(patientId, timeNow)
+        patientRec.merge(newPatientRec)
+        delattr(patientRec, '_owningFac')
+        self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(patientRec, 2)
+
+    def patientRecordExists(self, patientId):
+        return (self.abbrev, patientId) in self.patientDataDict
+
+
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Community description %(abbrev)s is missing the expected field 'meanPop'" % descr
@@ -684,7 +725,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if agentCount < 1:
             raise Exception()
         
-        fac.patientDataDict = patientDataDict
+        fac.patientDataDict.mset(patientDataDict)
         fac.patientStats = patientStats
         logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
 
@@ -712,6 +753,11 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # Let's write all of our data at once to the interdict, so for now use a normal dict:
     orig = ward.orig
     ward.orig = {}
+    # do the same with the patientDataDict
+    realPatientDataDict = fac.patientDataDict
+    fac.patientDataDict = {}
+
+    
     ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
     
     pop = _populate(fac, facilityDescr, patch)
@@ -731,12 +777,15 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     
     orig.mset(ward.orig.items())
     orig.flush()
-
+    
     for k in ward.orig.keys():
         del(ward.orig[k])
         
     ward.orig = orig
     
+    realPatientDataDict.mset(fac.patientDataDict)
+    fac.patientDataDict = realPatientDataDict
+
     return [fac], fac.getWards(), pop
 
 

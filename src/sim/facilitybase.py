@@ -361,6 +361,9 @@ class Facility(pyrheabase.Facility):
         delattr(patientRec, '_owningFac')
         self.patientDataDict[patientId] = pickle.dumps(patientRec, 2)
 
+    def patientRecordExists(self, patientId):
+        return patientId in self.patientDataDict
+
     def flushCaches(self):
         """
         Derived classes often cache things like BayesTrees, but the items in the cache
@@ -412,7 +415,7 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload
-            if patientId not in self.patientDataDict:
+            if not self.patientRecordExists(patientId):
                 logger.error('%s has no record of patient %s', self.name, patientId)
             patientRec = self.getPatientRecord(patientId)
             patientRec.departureDate = timeNow
@@ -609,6 +612,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                            timeNow=timeNow)[0:2]
 
         self.lastUpdateTime = timeNow
+        self.pastStates = []
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
 
     def printSummary(self):
@@ -746,6 +750,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         d['treatment'] = self._treatment
         d['lastUpdateTime'] = self.lastUpdateTime
         d['id'] = self.id
+        d['pastStates'] = self.pastStates
         return d
 
     def __setstate__(self, d):
@@ -755,3 +760,4 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._treatment = d['treatment']
         self.lastUpdateTime = d['lastUpdateTime']
         self.id = d['id']
+        self.pastStates = d['pastStates']
