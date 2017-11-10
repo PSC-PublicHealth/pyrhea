@@ -550,7 +550,7 @@ class Community(Facility):
             self.patientDataDict = InterdictMapping[pdName]
         else:
             self.patientDataDict = interdict.InterDict(pdName, overwrite_existing=True,
-                                                       key_serialization='pickle', val_serialization='pickle')
+                                                       key_serialization='msgpack', val_serialization='pickle')
             InterdictMapping[pdName] = self.patientDataDict
 
 
