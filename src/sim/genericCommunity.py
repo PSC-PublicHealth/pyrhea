@@ -143,7 +143,7 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
-cacheVer = 2
+cacheVer = 3
 
 class FreezerError(RuntimeError):
     pass
@@ -400,7 +400,7 @@ def makeLMDBDirs():
 
 def origFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
-    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/%s'%abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/freezer_%s'%abbrev)
 
 def changedFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
@@ -409,6 +409,10 @@ def changedFname(abbrev):
 def patientDataFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
     return pyrheautils.pathTranslate('$(AGENTDIR)/patientData_%s'%abbrev)
+    
+def cachePatientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/patientData_%s'%abbrev)
     
 
 InterdictMapping = {}
@@ -433,12 +437,15 @@ class CommunityWard(Ward):
             self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
             InterdictMapping[oName] = self.orig
 
-        cName = changedFname(abbrev)
-        if cName in InterdictMapping:
-            self.changed = InterdictMapping[cName]
+        if 0:
+            cName = changedFname(abbrev)
+            if cName in InterdictMapping:
+                self.changed = InterdictMapping[cName]
+            else:
+                self.changed = interdict.InterDict(cName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
+                InterdictMapping[cName] = self.changed
         else:
-            self.changed = interdict.InterDict(cName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
-            InterdictMapping[cName] = self.changed
+            self.changed = {}
 
         try:
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
@@ -554,7 +561,9 @@ class Community(Facility):
             self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False, integer_keys=False,
                                                             key_serialization='msgpack', val_serialization='pickle')
             global cacheVer
-            if cacheVer != self.cachePatientDataDict["cacheVer"]:
+            if "cacheVer" not in self.cachePatientDataDict:
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            elif cacheVer != self.cachePatientDataDict["cacheVer"]:
                 self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
                                                                 key_serialization='msgpack', val_serialization='pickle')
                 self.cachePatientDataDict["cacheVer"] = cacheVer
@@ -648,7 +657,7 @@ class Community(Facility):
         except KeyError:
             try:
                 ppr = self.cachePatientDataDict[k]
-            except KeyError:
+            except: # (interdict doesn't give keyerrors) KeyError:
                 if timeNow is None:
                     raise MissingPatientRecordError('Record not found and cannot create a new one')
                 pR = PatientRecord(patientId, timeNow, isFrail=False)
@@ -656,7 +665,7 @@ class Community(Facility):
                 pR._owningFac = self
                 return pR
 
-        pR = pickle.loads(self.patientDataDict[(self.abbrev, patientId)])
+        pR = pickle.loads(ppr)
         pR._owningFac = self
         return pR
 
