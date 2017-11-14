@@ -143,6 +143,7 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
+cacheVer = 2
 
 class FreezerError(RuntimeError):
     pass
@@ -224,7 +225,7 @@ def mapLMDBAbbrev(abbrev):
     return 'all'
 
 def mapLMDBSegments(abbrev, iDict):
-    cacheVer = 1
+    global cacheVer
     segmentInfoId = 0
     idsPerFac = 1000000000
     startId = 100
@@ -545,13 +546,19 @@ class Community(Facility):
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
-        pdName = patientDataFname(descr['abbrev'])
+        pdName = cachePatientDataFname(descr['abbrev'])
+        self.patientDataDict = {}
         if pdName in InterdictMapping:
-            self.patientDataDict = InterdictMapping[pdName]
+            self.cachePatientDataDict = InterdictMapping[pdName]
         else:
-            self.patientDataDict = interdict.InterDict(pdName, overwrite_existing=True,
-                                                       key_serialization='msgpack', val_serialization='pickle')
-            InterdictMapping[pdName] = self.patientDataDict
+            self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False, integer_keys=False,
+                                                            key_serialization='msgpack', val_serialization='pickle')
+            global cacheVer
+            if cacheVer != self.cachePatientDataDict["cacheVer"]:
+                self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
+                                                                key_serialization='msgpack', val_serialization='pickle')
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            InterdictMapping[pdName] = self.cachePatientDataDict
 
 
     def flushCaches(self):
@@ -634,18 +641,25 @@ class Community(Facility):
 
 
     def getPatientRecord(self, patientId, timeNow=None):
-        if (self.abbrev, patientId) in self.patientDataDict:
-            pR = pickle.loads(self.patientDataDict[(self.abbrev, patientId)])
-            pR._owningFac = self
-            return pR
-        else:
-            # Create a new blank record
-            if timeNow is None:
-                raise MissingPatientRecordError('Record not found and cannot create a new one')
-            pR = PatientRecord(patientId, timeNow, isFrail=False)
-            self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(pR, 2)  # keep a copy
-            pR._owningFac = self
-            return pR
+        k = (self.abbrev, patientId)
+        # get your pickled patient record
+        try:
+            ppr = self.patientDataDict[k]
+        except KeyError:
+            try:
+                ppr = self.cachePatientDataDict[k]
+            except KeyError:
+                if timeNow is None:
+                    raise MissingPatientRecordError('Record not found and cannot create a new one')
+                pR = PatientRecord(patientId, timeNow, isFrail=False)
+                self.patientDataDict[k] = pickle.dumps(pR, 2)  # keep a copy
+                pR._owningFac = self
+                return pR
+
+        pR = pickle.loads(self.patientDataDict[(self.abbrev, patientId)])
+        pR._owningFac = self
+        return pR
+
 
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
@@ -654,8 +668,10 @@ class Community(Facility):
         self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(patientRec, 2)
 
     def patientRecordExists(self, patientId):
-        return (self.abbrev, patientId) in self.patientDataDict
-
+        k = (self.abbrev, patientId)
+        if k in self.patientDataDict:
+            return True
+        return k in self.cachePatientDataDict
 
 
 
@@ -678,10 +694,13 @@ def _populate(fac, descr, patch):
         ward.freezers[ward.classify(a)].freezeAndStore(a)
     return []
 
+TotalCommunity=0
+
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 1
+    global cacheVer
     makeLMDBDirs()
+    global TotalCommunity
 
     if communityClass is None:
         communityClass = Community
@@ -711,7 +730,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if wardInfo[0] != cacheVer:
             raise invalidCacheVer()
 
-        ver, fDesc,freezerList,patientDataDict,patientStats = wardInfo
+        ver, fDesc,freezerList,patientStats = wardInfo
         if fDesc != facilityDescr:
             raise Exception()
 
@@ -725,9 +744,9 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if agentCount < 1:
             raise Exception()
         
-        fac.patientDataDict.mset(patientDataDict)
         fac.patientStats = patientStats
-        logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
+        TotalCommunity += agentCount
+        logger.info('read population for %s from cache (%s freeze-dried people, %s)'%(fDesc['abbrev'], agentCount, TotalCommunity))
 
         return [fac], fac.getWards(), []
 
@@ -754,8 +773,10 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     orig = ward.orig
     ward.orig = {}
     # do the same with the patientDataDict
-    realPatientDataDict = fac.patientDataDict
-    fac.patientDataDict = {}
+    realCachePatientDataDict = fac.cachePatientDataDict
+    fac.cachePatientDataDict = {}  # make sure no one is found while writing these
+    # the patient data dict is currently an empty dict where things will be initially written.
+    # just leave this and we'll move things around after everyone is generated.
 
     
     ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
@@ -767,12 +788,11 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
     
-    patientDataDict = fac.patientDataDict
     patientStats = fac.patientStats
 
     # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
     tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
-    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats))
+    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientStats))
     tFreezer.saveInfoList()
     
     orig.mset(ward.orig.items())
@@ -782,9 +802,12 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         del(ward.orig[k])
         
     ward.orig = orig
-    
-    realPatientDataDict.mset(fac.patientDataDict)
-    fac.patientDataDict = realPatientDataDict
+
+    realCachePatientDataDict.mset(fac.patientDataDict.items())
+    fac.cachePatientDataDict = realCachePatientDataDict
+    for k in fac.patientDataDict.keys():
+        del(fac.patientDataDict[k])
+    fac.patientDataDict = {}
 
     return [fac], fac.getWards(), pop
 
