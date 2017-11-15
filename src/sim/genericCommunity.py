@@ -38,6 +38,9 @@ from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
+import time
+import psutil
+
 logger = logging.getLogger(__name__)
 
 category = 'COMMUNITY'
@@ -144,6 +147,7 @@ def ldecode(typeTpl, valL):
         return valL[0], valL[1:]
 
 cacheVer = 3
+LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
     pass
@@ -217,6 +221,7 @@ class Freezer(object):
         self.ward.awaken(agent)
         self.ward._lockingAgentList.append(agent)
         return agent
+
 
 class InvalidCacheVer(Exception):
     pass
@@ -340,6 +345,11 @@ class CopyOnWriteLMDBFreezer(Freezer):
         self.ward._lockQueue.append(agent)
         self.ward.awaken(agent)
         self.ward._lockingAgentList.append(agent)
+        global LastMemCheck
+        if time.time() > 60.0 + LastMemCheck:
+            p = psutil.Process()
+            print p.memory_full_info()
+            LastMemCheck = time.time()
         return agent
 
     def saveFreezerData(self):
