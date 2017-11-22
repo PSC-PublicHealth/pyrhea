@@ -52,7 +52,7 @@ for fmAbbrev, toDict in transferOutDictDict.items():
             transferInDict[toAbbrev] += toCt
         else:
             transferInDict[toAbbrev] = toCt
-            
+
 for rec in totTransRecs:
     abbrev = rec['UNIQUE_ID']
     totDischarges = (cumTotDict[abbrev] if abbrev in cumTotDict else None)

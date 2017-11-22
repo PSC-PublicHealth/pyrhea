@@ -44,8 +44,20 @@ Facilities to exclude, typically because they violate the schema (which isn't de
 """
 EXCLUDE_THESE_FACILITIES = ['CHOC', 'HBRI', 'HSUB', 'CMIS', 'AGBP']
 
+"""
+Model days per year
+"""
 DAYS_PER_YEAR = 365  # But might not, in HERMES for example
 #DAYS_PER_YEAR = 10  # But might not, in HERMES for example
+
+CENSUS_DAYS = 365 # The ground truth data really was gathered for a 1 year interval
+
+"""
+Numbers of facilities, initialized when the model is loaded
+"""
+N_FAC = None
+N_HOSP = None
+DIRECT_TRANSFER_TABLE = None
 
 def configureLogging(cfgDict):
     global LOGGER
@@ -66,54 +78,111 @@ def getPooledLOSCRV(facR):
     Return the LOS CRV, pooled over CareTier and any other patient state, so that it
     depends only on facility abbrev
     """
-    if 'losModel' in facR:
-        return fullCRVFromLOSModel(facR['losModel'])
-    else:
-        raise RuntimeError('no losModel and meanLOS is not implemented yet')
+    if '_pooledLOSCRV' not in facR:
+        if 'losModel' in facR:
+            facR['_pooledLOSCRV'] = fullCRVFromLOSModel(facR['losModel'])
+        else:
+            raise RuntimeError('no losModel and meanLOS is not implemented yet')
+    return facR['_pooledLOSCRV']
+
+def getMeanPooledLOSCRV(facR):
+    """
+    Return the mean of the pooled LOS distribution, with caching.
+    """
+    if '_meanPooledLOSCRV' not in facR:
+        facR['_meanPooledLOSCRV'] = getPooledLOSCRV(facR).mean()
+        print('getMeanPooledLOSCRV %s' % facR['abbrev'])
+    return facR['_meanPooledLOSCRV']
 
 
 class BinSwap(Mutator):
     """
-    Move a fraction of the contents of one bin to another bin at the same facility
+    Change LOS date, staying within a facility
     """
     @classmethod
     def select(cls, state, facIdx, facDict):
+        facN, dayN, hospDay, hospIdx, isTransfer = state
         baseAR, baseDesc = super(BinSwap, cls).select(state, facIdx, facDict)
-        facN = np.random.randint(0, state.shape[0])  # facility
-        abbrev = facIdx[facN]
-        dayN = np.random.randint(0, state.shape[1])  # time since arrival
-        newDayN = np.random.randint(0, state.shape[1])  # new time since arrival
-        fracMov = np.random.random()
-        # fraction of weight to move
         facR = facDict[facIdx[facN]]
-        if 'losCRV' not in facR:
-            # losCRV represents the pooled LOS model over all conditions, including CareTier
-            facR['losCRV'] = getPooledLOSCRV(facR)
-        losCRV = facR['losCRV']
-        # subState is meanPop * LOS PDF
-        subState = np.sum(state[facN, :, :, :], axis=(1, 2))
-        delta = fracMov * subState[dayN]
-        #print("subState before: %s" % subState)
-        subState[dayN] -= delta
-        subState[newDayN] += delta
-        #print("subState after: %s" % subState)
-        #print("losCRV on dayN is %s" % losCRV.logpdf(float(dayN)))
-        #print("losCRV on newDayN is %s" % losCRV.logpdf(float(newDayN)))
-        beforeLnLik = (subState[dayN] * losCRV.logpdf(float(dayN) + 0.5)
-                       + subState[newDayN] * losCRV.logpdf(float(newDayN) + 0.5))
-        afterLnLik = ((subState[dayN] - delta) * losCRV.logpdf(float(dayN) + 0.5)
-                       + (subState[newDayN] + delta) * losCRV.logpdf(float(newDayN) + 0.5))
-        aR = min(afterLnLik/beforeLnLik, 1.0)
-        #print('lnLiks: %s %s %s' % (beforeLnLik, afterLnLik, afterLnLik/beforeLnLik))
-        return aR, (facN, dayN, newDayN, fracMov, baseDesc)
+        newDayN = np.random.randint(0, DAYS_PER_YEAR)  # new time since arrival
+        losCRV = getPooledLOSCRV(facR)
+        aR = baseAR * min(losCRV.pdf(float(newDayN) + 0.5)/losCRV.pdf(float(dayN) + 0.5),
+                          1.0)
+        return aR, (newDayN, baseDesc)
     @classmethod
     def apply(cls, state, descriptor):
-        facN, dayN, newDayN, fracMov, baseDesc = descriptor
+        newDayN, baseDesc = descriptor
         state = super(BinSwap, cls).apply(state, baseDesc)
-        delta = fracMov * state[facN, dayN, :, :]
-        state[facN, dayN, :, :] -= delta
-        state[facN, newDayN, :, :] += delta
-        return state
+        facN, dayN, hospDay, hospIdx, isTransfer = state
+        return (facN, newDayN, hospDay, hospIdx, isTransfer)
+
+
+class FacSwap(Mutator):
+    """
+    Change facilities. Acceptance ratio is based on relative mean population, so there is no
+    correlation between before-and-after dates- that would require a conditional probability
+    """
+    @classmethod
+    def select(cls, state, facIdx, facDict):
+        facN, dayN, hospDay, hospIdx, isTransfer = state
+        baseAR, baseDesc = super(FacSwap, cls).select(state, facIdx, facDict)
+        facR = facDict[facIdx[facN]]
+        if 'meanPop' in facR:
+            oMP = facR['meanPop']['value']
+        else:
+            raise RuntimeError('%s has no meanPop' % facR['abbrev'])
+        newFacN = np.random.randint(0, N_FAC)  # new facility
+        if newFacN == facN:
+            # reject self-transfers because the mutator would conflict with the LOS pdf
+            return 0.0, baseDesc
+        newFacR = facDict[facIdx[newFacN]]
+        if 'meanPop' in newFacR:
+            nMP = newFacR['meanPop']['value']
+        else:
+            raise RuntimeError('%s has no meanPop' % newFacR['abbrev'])
+        aR = baseAR * min((nMP/oMP), 1.0)
+        return aR, (newFacN, baseDesc)
+    @classmethod
+    def apply(cls, state, descriptor):
+        newFacN, baseDesc = descriptor
+        newDayN = np.random.randint(0, DAYS_PER_YEAR)
+        state = super(FacSwap, cls).apply(state, baseDesc)
+        facN, dayN, hospDay, hospIdx, isTransfer = state
+        return (newFacN, newDayN, hospDay, hospIdx, isTransfer)
+
+
+class IsTransferSwap(Mutator):
+    """
+    Within a facility, change whether or not the sample was a direct transfer in.  Acceptance
+    ratio is based on the fraction of patients that are direct transfers.
+    """
+    @classmethod
+    def select(cls, state, facIdx, facDict):
+        facN, dayN, hospDay, hospIdx, isTransfer = state
+        baseAR, baseDesc = super(IsTransferSwap, cls).select(state, facIdx, facDict)
+        facR = facDict[facIdx[facN]]
+        if 'meanPop' not in facR:
+            raise RuntimeError('%s has no meanPop' % facR['abbrev'])
+        meanPop = facR['meanPop']['value']
+        if 'totalTransfersIn' not in facR:
+            raise RuntimeError('%s has no totalTransfersIn' % facR['abbrev'])
+        ttI = facR['totalTransfersIn']['value']
+        meanPooledLOS = getMeanPooledLOSCRV(facR)
+        transferPop = ttI*(meanPooledLOS/CENSUS_DAYS)
+        transferFrac = min(1.0, transferPop/meanPop)
+        if isTransfer:
+            return baseAR * (1.0 - transferFrac), (transferFrac, baseDesc)
+        else:
+            return baseAR * transferFrac, (transferFrac, baseDesc)
+    @classmethod
+    def apply(cls, state, descriptor):
+        transferFrac, baseDesc = descriptor
+        state = super(IsTransferSwap, cls).apply(state, baseDesc)
+        facN, dayN, hospDay, hospIdx, isTransfer = state
+        isTransfer = (0 if isTransfer else 1)
+        return (facN, dayN, hospDay, hospIdx, isTransfer)
+
+
 
 class DirectTransfer(Mutator):
     pass
@@ -124,12 +193,17 @@ class IndirectTransfer(Mutator):
 class NHIndirect(Mutator):
     pass
 
-MUTATIONS = [BinSwap] #, DirectTransfer, IndirectTransfer, NHIndirect]
+MUTATIONS = [BinSwap, FacSwap, IsTransferSwap] #, DirectTransfer, IndirectTransfer, NHIndirect]
 
 def main():
     """
     main
     """
+
+    global N_FAC
+    global N_HOSP
+    global DIRECT_TRANSFER_TABLE
+    
     parser = OptionParser(usage="""
     %prog [--verbose] run_descr.yaml
     """)
@@ -161,6 +235,22 @@ def main():
         if abbrev in facDict:
             del facDict[abbrev]
 
+#     directTransferTblPath = pyrheautils.pathTranslate('$(MODELDIR)/transfer_counts.yaml')
+#     with open(directTransferTblPath, 'rU') as f:
+#         transferDict = yaml.load(f)
+#     invertDict = {}
+#     for src, r in transferDict.items():
+#         totTransfersOut = float(sum([v for k, v in r.items()]))
+#         if totTransfersOut == 0.0:
+#             print('%s has no outgoing transfers' % src)
+#         for dst, v in r.items():
+#             if dst not in invertDict:
+#                 invertDict[dst] = {}
+#             invertDict[dst][src] = v
+#     DIRECT_TRANSFER_TABLE = transferDict
+#     print(DIRECT_TRANSFER_TABLE.keys())
+#     print(DIRECT_TRANSFER_TABLE['SJUD'])
+
     hospL = [abbrev for abbrev in facDict
              if facDict[abbrev]['category'] in ['HOSPITAL','LTAC', 'LTACH']]
     hospL.sort()
@@ -176,30 +266,30 @@ def main():
     notHospIdx = {idx: abbrev for idx, abbrev in enumerate(notHospL)}
 
     # Allocate and initialize the state
-    nFac = len(notHomeIdx)
-    nHosp = len(hospIdx)
-    state = np.zeros((nFac, DAYS_PER_YEAR, DAYS_PER_YEAR, nHosp))
-    cellsPerFac = 1
-    for rng in state.shape[1:]:
-        cellsPerFac *= rng
-    for fN in xrange(nFac):
-        abbrev = notHomeIdx[fN]
-        if 'meanPop' in facDict[abbrev]:
-            meanPop = facDict[abbrev]['meanPop']['value']
-            state[fN,:,:,:] = float(meanPop)/cellsPerFac
-        else:
-            LOGGER.fatal('%s (%s) has no meanPop', abbrev, facDict[abbrev]['category'])
-            raise RuntimeError('%s (%s) has no meanPop' % (abbrev, facDict[abbrev]['category']))
-
-#    for loop in xrange(10):  # @UnusedVariable
-    while True:
+    N_FAC = len(notHomeIdx)
+    N_HOSP = len(hospIdx)
+    samples = np.zeros((N_FAC, DAYS_PER_YEAR, DAYS_PER_YEAR, N_HOSP, 2), dtype=np.int32)
+    facIdx = 1
+    losDay = 0
+    hospDay = 1
+    hospIdx = 1
+    isTransfer = 0  # or 1
+    state = (facIdx, losDay, hospDay, hospIdx, 0)
+    for loop in xrange(100000):  # @UnusedVariable
+#    while True:
+        facIdx, losDay, hospDay, hospIdx, isTransfer = state
+        samples[facIdx, losDay, hospDay, hospIdx, isTransfer] += 1
         mutator = np.random.choice(MUTATIONS)
         acceptRatio, descriptor = mutator.select(state, notHomeIdx, facDict)
         if np.random.random() < acceptRatio:
             print('aR %s -> update %s %s' % (acceptRatio, mutator.__name__, descriptor))
             state = mutator.apply(state, descriptor)
         else:
-            print('aR %s -> reject %s' % (acceptRatio, mutator.__name__))
+            print('aR %s -> reject %s %s' % (acceptRatio, mutator.__name__, descriptor))
+    facIdx, losDay, hospDay, hospIdx, isTransfer = state
+    print(np.sum(samples, 0)[:, hospDay, hospIdx, isTransfer])
+    print(np.sum(samples, 1)[:, hospDay, hospIdx, isTransfer])
+    print(np.sum(samples, (0,1))[hospDay, hospIdx, :])
 
 #############
 # Input types:
