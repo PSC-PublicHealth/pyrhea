@@ -19,10 +19,15 @@ import logging
 from typebase import CareTier, PatientDiagnosis, PatientOverallHealth, DiagClassA
 from pathogenbase import PthStatus, defaultPthStatus
 
+from phacsl.utils.classutils import ClassIsInstanceMeta
+
 logger = logging.getLogger(__name__)
 
 
 class Policy(object):
+    
+    __metaclass__ = ClassIsInstanceMeta
+
     def __init__(self, patch, categoryNameMapper):
         self.patch = patch
         self.categoryNameMapper = categoryNameMapper

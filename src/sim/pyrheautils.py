@@ -37,7 +37,8 @@ def prepPathTranslations(inp):
     primaryKeys = [('modelDir', 'MODELDIR'),
                    ('facilityImplementationDir', 'IMPLDIR'),
                    ('policyImplementationDir', 'POLICYDIR'),
-                   ('pathogenImplementationDir', 'PATHOGENDIR')]
+                   ('pathogenImplementationDir', 'PATHOGENDIR'),
+                   ('pathogen', 'PATHOGEN'),]
 
 
     for inputKey, xlateKey in primaryKeys:
