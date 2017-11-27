@@ -23,6 +23,7 @@ import math
 import sys
 import traceback
 import os.path
+from collections import defaultdict
 import phacsl.utils.formats.csv_tools as csv_tools
 from map_transfer_matrix import parseFacilityData
 
@@ -36,7 +37,7 @@ from scipy.cluster.vq import whiten, kmeans, vq
 from scipy.stats import lognorm, expon
 
 # Truncate the sample set at how many days during fitting?
-truncLim = 300
+truncLim = 365
 
 
 def importLOSHistoTable(fname):
@@ -73,6 +74,27 @@ def importLOSHistoTable(fname):
             low = band[0]
             high = band[1]
         losHistoDict[key] = newLst
+    return losHistoDict
+
+def importLOSLineRecs(fname, key1=None, key2=None):
+    """
+    Parse the input csv file into a format matching the histogram bands produced
+    by importLOSHistoTable above.  key1 must be the key for the facility abbreviation
+    column; key2 must be the key for the stay duration column
+    """
+    if key1 is None:
+        raise RuntimeError('key1 (column header 1) is required')
+    if key2 is None:
+        raise RuntimeError('key2 (column header 2) is required')
+    with open(fname, 'r') as f:
+        keys, losRecs = csv_tools.parseCSV(f)  # @UnusedVariable
+    assert key1 in keys, 'column header key 1 is incorrect'
+    assert key2 in keys, 'column header key 2 is incorrect'
+    losHistoDict = defaultdict(list)
+    for rec in losRecs:
+        fac = rec[key1]
+        band = (rec[key2], rec[key2] + 1, 1)
+        losHistoDict[fac].append(band)
     return losHistoDict
 
 
@@ -141,6 +163,72 @@ class LOSModel(object):
         except Exception:
             traceback.print_exc(file=sys.stdout)
             sys.exit('Exception during minimization')
+
+
+class ExponLOSModel(LOSModel):
+    """
+    A simple exponential distribution
+    """
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.01]
+        if not optimizationBounds:
+            optimizationBounds = [(0.0001, None)]
+        super(ExponLOSModel, self).__init__(initialVals=initialVals,
+                                            optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'lmda': 0})
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        lmda = fitParms[0]
+        # print "fullPDF: lmda= %s" % lmda
+        pVec = expon.pdf(xArr, scale=1.0/lmda, loc=0.0)
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        lmda = fitParms[0]
+        # print "fullLogPDF: lmda= %s" % lmda
+        lnTerm = expon.logpdf(xArr, scale=1.0/lmda, loc=0.0)
+        return lnTerm
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        lmda = fitParms[0]
+        # print "fullCDF: lmda= %s" % lmda
+        cdfVec = expon.cdf(xArr, scale=1.0/lmda, loc=0.0)
+        return cdfVec
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        lmda = fitParms[0]
+        invL = 1.0/lmda
+        xMean = expon.mean(scale=invL, loc=0.0)
+        lowHighFlags = lowVec >= xMean
+        highLowFlags = highVec < xMean
+        bothLowFlags = highLowFlags  # since low must be lower
+        bothHighFlags = lowHighFlags  # ditto
+        lowCDFVec = expon.cdf(lowVec, scale=invL, loc=0.0)
+        highCDFVec = expon.cdf(highVec, scale=invL, loc=0.0)
+        bothLowCDFVec = highCDFVec - lowCDFVec
+        lowSFVec = expon.sf(lowVec, scale=invL, loc=0.0)
+        highSFVec = expon.sf(highVec, scale=invL, loc=0.0)
+        bothHighCDFVec = lowSFVec - highSFVec
+        mixedCDFVec = 1.0 - (highSFVec + lowCDFVec)
+        dCDFVec = np.select([bothLowFlags, bothHighFlags],
+                            [bothLowCDFVec, bothHighCDFVec],
+                            default=mixedCDFVec)
+        return dCDFVec
+
+    def strDesc(self):
+        return "expon(lmda=$0)"
 
 
 class LogNormLOSModel(LOSModel):
@@ -301,7 +389,7 @@ class TwoPopLOSModel(LOSModel):
                                                  debug=debug)
         self.innerLNModel.setFitParms(resultX[1:3])
         return resultX, bestVal, resultSuccess
-        
+
     def strDesc(self):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
@@ -322,15 +410,15 @@ class TwoLogNormLOSModel(LOSModel):
                                             optimizationBounds=optimizationBounds[3:])
         super(TwoLogNormLOSModel, self).__init__(initialVals=initialVals,
                                                  optimizationBounds=optimizationBounds)
-        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'mu2':3, 'sigma2': 4})        
+        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'mu2':3, 'sigma2': 4})
 
     def fullPDF(self, xVec, fitParms=None):
         if fitParms is None:
             fitParms = self.fitParms
         xArr = np.asarray(xVec, np.float64)
         k = fitParms[0]
-        pVec = ((k * self.leftInnerLN.fullPDF(xVec, fitParms[1:3]))
-                + ((1.0 - k) * self.rightInnerLN.fullPDF(xVec, fitParms[3:])))
+        pVec = ((k * self.leftInnerLN.fullPDF(xArr, fitParms[1:3]))
+                + ((1.0 - k) * self.rightInnerLN.fullPDF(xArr, fitParms[3:])))
         return pVec
 
     def fullLogPDF(self, xVec, fitParms=None):
@@ -382,6 +470,80 @@ class TwoLogNormLOSModel(LOSModel):
 
     def strDesc(self):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*lognorm(mu=$3, sigma=$4)"
+
+class TwoExponLOSModel(LOSModel):
+    """
+    The population is divided between two groups, each with its own exponential distribution.
+    """
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.5, 0.1, 0.001]
+        if not optimizationBounds:
+            optimizationBounds = [(0.0, 1.0), (0.01, None), (0.0001, None)]
+        self.leftInnerEx = ExponLOSModel(initialVals=initialVals[1:2],
+                                           optimizationBounds=optimizationBounds[1:2])
+        self.rightInnerEx = ExponLOSModel(initialVals=initialVals[2:],
+                                            optimizationBounds=optimizationBounds[2:])
+        super(TwoExponLOSModel, self).__init__(initialVals=initialVals,
+                                               optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'k': 0, 'lmda': 1, 'lmda2': 2})
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        pVec = ((k * self.leftInnerEx.fullPDF(xArr, fitParms[1:2]))
+                + ((1.0 - k) * self.rightInnerEx.fullPDF(xArr, fitParms[2:])))
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerEx.fullPDF(xArr, fitParms[1:2])
+        rightTerm = (1.0 - k) * self.rightInnerEx.fullPDF(xArr, fitParms[2:])
+        oldErrInfo = np.seterr(all='ignore')
+        leftVersion = (math.log(k) + self.leftInnerEx.fullLogPDF(xArr, fitParms[1:2])
+                       + np.log(1.0 + (rightTerm / np.where(leftTerm == 0.0, 1.0, leftTerm))))
+        rightVersion = (math.log(1.0 - k) + self.rightInnerEx.fullLogPDF(xArr, fitParms[2:])
+                        + np.log(1.0 + (leftTerm / np.where(rightTerm == 0.0, 1.0, rightTerm))))
+        np.seterr(**oldErrInfo)
+        lpVec = np.where(leftTerm > rightTerm, leftVersion, rightVersion)
+        return lpVec
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerEx.fullCDF(xArr, fitParms[1:2])
+        rightTerm = (1.0 - k) * self.rightInnerEx.fullCDF(xArr, fitParms[2:])
+        return leftTerm + rightTerm
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        k = fitParms[0]
+        leftTerm = k * self.leftInnerEx.intervalCDF(lowVec, highVec, fitParms[1:2])
+        rightTerm = (1.0 - k) * self.rightInnerEx.intervalCDF(lowVec, highVec, fitParms[2:])
+        return leftTerm + rightTerm
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        resultX, bestVal, resultSuccess = \
+            super(TwoExponLOSModel, self).modelFit(losHistoList,
+                                                   funToMinimize=funToMinimize,
+                                                   funToMaximize=funToMaximize,
+                                                   truncLim=truncLim,
+                                                   debug=debug)
+        self.leftInnerEx.setFitParms(resultX[1:2])
+        self.rightInnerEx.setFitParms(resultX[2:])
+        return resultX, bestVal, resultSuccess
+
+    def strDesc(self):
+        return "$0*expon(lmda=$1)+(1-$0)*expon(lmda2=$2)"
 
 
 def lnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
@@ -504,7 +666,7 @@ def plotAsHistogram(vec, axes):
     # update the view limits
     axes.set_xlim(left[0], right[-1])
     axes.set_ylim(bottom.min(), top.max())
-    
+
 
 def performClustering(valVecList, nClusters=3):
     """
@@ -554,14 +716,25 @@ def makeScatterPlot(ax, markerTupleList):
 
 def main():
 
-    modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
-    losHistoPath = os.path.join(modelDir, 'Histogram_09292016.csv')
-    losHistoDict = importLOSHistoTable(losHistoPath)
-    facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
-#     LOSModelType = LogNormLOSModel
-#     LOSModelType = TwoPopLOSModel
-    LOSModelType = TwoLogNormLOSModel
-
+    #modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
+    #modelDir = os.path.join(os.path.dirname(__file__), '../../models/ChicagoLand')
+    #losHistoPath = os.path.join(modelDir, 'Histogram_09292016.csv')
+    #facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
+    #losHistoDict = importLOSHistoTable(losHistoPath)
+    modelDir = os.path.join(os.path.dirname(__file__), '../../models/OrangeCounty2013')
+    losHistoPath = os.path.join(modelDir,
+                                "OC_Hospital_Time_to_Readmission_LINE_LIST_"
+                                "for_RHEA_2.0-Adult_Only-UPDATED-10-20-2017_"
+                                "TimeToReadmitList.csv")
+    losHistoDict = importLOSLineRecs(losHistoPath,
+                                     key1='Hospital Code',
+                                     key2='Time to Readmit (Days)')
+    facDict = parseFacilityData(os.path.join(modelDir, 'facilityfactsCurrent2013'))
+#    LOSModelType = LogNormLOSModel
+    LOSModelType = TwoPopLOSModel
+#    LOSModelType = TwoLogNormLOSModel
+#    LOSModelType = ExponLOSModel
+#    LOSModelType = TwoExponLOSModel
     tblRecs = []
     indexDict = {}
     valVecList = []
@@ -585,6 +758,7 @@ def main():
                             'nsamples': nSamples, 'nbins': nBins,
                             'notes': note, 'pdf': losModel.strDesc()}
             newRec.update({k: fitVec[v] for k, v in losModel.nameToIndexMap.items()})
+            newRec.update({'_fitVec': fitVec})
             tblRecs.append(newRec)
             print tblRecs[-1]
         else:
@@ -595,42 +769,46 @@ def main():
                             'lnLikPerSample': None,
                             'nsamples': nSamples, 'nbins': nBins,
                             'notes': note, 'pdf': 'NA'})
-            
 
     ofName = 'los_model_fit_parms.csv'
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
-        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'mu2', 'sigma2', 
-                               'lmda', 'lnLikPerSample', 'nsamples', 'nbins', 'notes'],
+        csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'mu2', 'sigma2',
+                               'lmda', 'lmda2', 'lnLikPerSample', 'nsamples', 'nbins', 'notes'],
                            tblRecs)
 
     reverseMap = {val: key for key, val in indexDict.items()}
 
     nTrackers = 6
     nClusters = 3
-    xLabel = 'mu'
-    yLabel = 'sigma'
+    xLabel = 'k'
+    yLabel = 'lmda'
 #     yLabel = 'k'
     annotateScatterPts = False
     clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
     histoRange = (0.0, 400.0)
 
-    pairs = [(-rec['lnLikPerSample'], rec['abbrev']) for rec in tblRecs
+    tupleL = [(-rec['lnLikPerSample'], rec['abbrev'], rec['_fitVec']) for rec in tblRecs
              if rec['lnLikPerSample'] is not None]
-    pairs = sorted(pairs, reverse=True)
+    tupleL = sorted(tupleL, reverse=True)
     print 'Top pairs:'
-    for val, key in pairs[:nTrackers]:
-        print '  %s: %s' % (key, -val)
-
-    trackers = [key for val, key in pairs[:nTrackers]]  # @UnusedVariable
+    for val, key, pdfS in tupleL[:nTrackers]:
+        print '  %s: %s fit by %s' % (key, -val, pdfS)
+    tupleL.reverse()
+    print 'Bottom pairs:'
+    for val, key, pdfS in tupleL[:nTrackers]:
+        print '  %s: %s fit by %s' % (key, -val, pdfS)
     
+
+    trackers = ([key for val, key, pdfS in tupleL[:nTrackers/2]]  # @UnusedVariable
+                + [key for val, key, pdfS in tupleL[-(nTrackers - nTrackers/2):]])  # @UnusedVariable
 #     trackers = ['EMBA_555_S', 'SH_700_S', 'CLAR_700_S', 'ADVO_17800_H', 'MORR_150_H']
 #     trackers = ['HEAR_3100_S', 'MISE_6300_S', 'PARK_6125_V', 'NORT_800_H', 'SOME_5009_S',
 #                 'RIVE_350_H']
-    trackers = [
+#    trackers = [
 #                 'ADVO_3435_L', 'PRES_100_L', 'RML_5601_L', 'THC_225_L', 'THC_2544_L',
 #                 'THC_365_L', 'THC_4058_L', 'THC_6130_L', 'VIBR_9509_L',
-                'PETE_520_S', 'ADVO_17800_H', 'MORR_150_H', 'THC_2544_L', 'THC_225_L']
+#                'PETE_520_S', 'ADVO_17800_H', 'MORR_150_H', 'THC_2544_L', 'THC_225_L']
 
     for lbl in [xLabel, yLabel]:
         assert lbl in losModel.nameToIndexMap, '%s is not a parameter name' % lbl
