@@ -582,6 +582,46 @@ def lnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
         print losModel.intervalCDF(lowVec, highVec, fitParms)
         sys.exit('lnLik failed')
 
+def boundedLnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False):
+    ctVec = lowVec = highVec = None
+    if truncLim:
+        losHistoList = [(llim, hlim, ct) for llim, hlim, ct in losHistoList
+                        if hlim <= truncLim]
+    try:
+        ctVec = np.asarray([float(ct) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                           np.float64)
+        lowVec = (np.asarray([float(llim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                            np.float64)
+                  + 0.0001)
+        highVec = (np.asarray([float(hlim) for llim, hlim, ct in losHistoList],  # @UnusedVariable
+                             np.float64)
+                   + 0.9999)
+        lowBnd = min([llim for llim, hlim, ct in losHistoList])
+        highBnd = max([hlim for llim, hlim, ct in losHistoList])
+        cdfScale = losModel.intervalCDF([lowBnd], [highBnd], fitParms)
+        lnLikVal = (np.sum(ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms)))
+                    - np.sum(ctVec) * np.log(cdfScale))
+        if truncLim is not None:
+            cdfAtBound = losModel.fullCDF(truncLim, fitParms)
+            lnLikVal -= np.sum(ctVec) * np.log(cdfAtBound)
+        if debug:
+            print '%s -> %s' % (fitParms, lnLikVal/np.sum(ctVec))
+#             print ctVec
+#             print lowVec
+#             print highVec
+#             print losModel.intervalCDF(lowVec, highVec, fitParms)
+#             print ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms))
+#             print 'log likelihood %s' % lnLikVal
+        return lnLikVal
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        print fitParms
+        print ctVec
+        print lowVec
+        print highVec
+        print losModel.intervalCDF(lowVec, highVec, fitParms)
+        sys.exit('lnLik failed')
+
 
 def kSScore(fitParms, losHistoList, losModel, truncLim=None):
     """
@@ -627,26 +667,46 @@ def plotCurve(axes, parmVec, losModel, scale, rng, nbins, pattern='r-'):
     axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
-def resampleBand(bandTuple, sampVec):
+def resampleBand(bandTuple, sampVec, range=None):
+    """
+    If given, range should be a tuple (low, high).  If range is none,
+    (0, sampVec.shape[0]) is used.
+    """
+    if range is None:
+        rLow = 0.0
+        rHigh = float(sampVec.shape[0])
+    else:
+        rLow, rHigh = range
+    sampW = sampVec.shape[0]
     lo, hi, ct = bandTuple
-    if hi >= sampVec.shape[0]:
-        sampVec = np.pad(sampVec, (0, hi + 1 - sampVec.shape[0]),
-                         'constant',
-                         constant_values=(0.0, 0.0))
-    sval = float(ct) / (hi + 1 - lo)
-    for i in xrange(lo, hi+1):
+    if hi > rHigh or lo < rLow:
+        raise RuntimeError('sample band (%s, %s) out of range (%s, %s)'
+                           % (lo, hi, rLow, rHigh))
+    cLow = int(sampW*((lo - rLow)/(rHigh-rLow)) + 0.0001)
+    cHigh = int(sampW*((hi - rLow)/(rHigh-rLow)) - 0.0001)
+    sval = float(ct) / (cHigh + 1 - cLow)
+    #print lo, hi, ct, sampW, cLow, cHigh, sval
+    for i in xrange(cLow, cHigh+1):
         sampVec[i] += sval
     return sampVec
 
 
-def plotAsHistogram(vec, axes):
+def plotAsHistogram(vec, axes, range=None):
     """
-    vec is assumed to be an array representing sample counts
-    in unit-width bins from 0.0 to float(vec.shape[0]).  axes
-    is a pyplot axes structure.
+    vec is assumed to be an array representing sample counts.
+    range gives the width of the vector; if range is none the
+    vector is assumed to span from 0.0 to float(vec.shape[0]).
+    axes is a pyplot axes structure.
     """
     # get the corners of the rectangles for the histogram
-    bins = np.asarray(xrange(vec.shape[0] + 1), np.float64)
+    if range is None:
+        rLow = 0.0
+        rHigh = float(vec.shape[0])
+    else:
+        rLow, rHigh = range
+    delta = (rHigh - rLow)/vec.shape[0]
+    bins = np.asarray([rLow + delta * i for i in xrange(vec.shape[0] + 1)],
+                      np.float64)
     left = np.array(bins[:-1])
     right = np.array(bins[1:])
     bottom = np.zeros(len(left))
@@ -731,10 +791,10 @@ def main():
                                      key2='Time to Readmit (Days)')
     facDict = parseFacilityData(os.path.join(modelDir, 'facilityfactsCurrent2013'))
 #    LOSModelType = LogNormLOSModel
-    LOSModelType = TwoPopLOSModel
+#    LOSModelType = TwoPopLOSModel
 #    LOSModelType = TwoLogNormLOSModel
 #    LOSModelType = ExponLOSModel
-#    LOSModelType = TwoExponLOSModel
+    LOSModelType = TwoExponLOSModel
     tblRecs = []
     indexDict = {}
     valVecList = []
@@ -749,7 +809,7 @@ def main():
             print '%s:' % abbrev,
             losModel = LOSModelType()
             fitVec, accuracyMeasure, success = losModel.modelFit(losHistoList,
-                                                                 funToMaximize=lnLik)
+                                                                 funToMaximize=boundedLnLik)
             valVecList.append(fitVec)
             offset += 1
             note = "" if success else "fitting iteration did not converge"
@@ -781,12 +841,13 @@ def main():
 
     nTrackers = 6
     nClusters = 3
-    xLabel = 'k'
-    yLabel = 'lmda'
+    xLabel = 'lmda'
+    yLabel = 'lmda2'
 #     yLabel = 'k'
-    annotateScatterPts = False
+    annotateScatterPts = True
     clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
     histoRange = (0.0, 400.0)
+    histoBins = 400
 
     tupleL = [(-rec['lnLikPerSample'], rec['abbrev'], rec['_fitVec']) for rec in tblRecs
              if rec['lnLikPerSample'] is not None]
@@ -872,7 +933,7 @@ def main():
     if annotateScatterPts:
         for abbrev, offset in indexDict.items():
             xy = (xVals[offset], yVals[offset])
-            xytext = (xVals[offset]+0.0125, yVals[offset]+0.0125)
+            xytext = (xVals[offset]+0.00125, yVals[offset]+0.00125)
             clusterAx.annotate(abbrev, xy=xy, xytext=xytext)
             scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
@@ -882,42 +943,92 @@ def main():
         for abbrev, offset in indexDict.items():
             if code[offset] == i:
                 samples.extend(losHistoDict[abbrev])
-        vec = np.zeros(400)
+        vec = np.zeros(histoBins)
         if samples:
             for samp in samples:
-                vec = resampleBand(samp, vec)
-        plotAsHistogram(vec, histoAxes[i])
+                vec = resampleBand(samp, vec, range=histoRange)
+        plotAsHistogram(vec, histoAxes[i], range=histoRange)
         allSampList = []
+        rLow, rHigh = histoRange
+        delta = (rHigh - rLow)/vec.shape[0]
         for step in xrange(vec.shape[0]):
-            allSampList.append((step, step, vec[step]))
-        print '%s:' % category,
+            lo = rLow + step * delta
+            hi = lo + delta
+            allSampList.append((lo, hi, vec[step]/delta))
+        allSampList.sort()
         losModel = LOSModelType()
+        print ('%s: '%category),
         fitVec, accuracyMeasure, success = losModel.modelFit(allSampList,  # @UnusedVariable
-                                                             funToMaximize=lnLik)
-#                                                              funToMinimize=kSScore)
-        plotCurve(histoAxes[i], fitVec, losModel, np.sum(vec), rng=histoRange,
-                  nbins=vec.shape[0])
+                                                             funToMaximize=boundedLnLik)
+        lowBandEdge = min([lo for lo, hi, ct in allSampList])  # @UnusedVariable
+        highBandEdge = max([hi for lo, hi, ct in allSampList])  # @UnusedVariable
+        curveScale = ((np.sum(vec) * (histoRange[1]-histoRange[0]))
+                      / (histoBins*losModel.intervalCDF(lowBandEdge, highBandEdge, fitVec)))
+        plotCurve(histoAxes[i], fitVec, losModel,
+                  np.sum(vec)*((histoRange[1]-histoRange[0])/histoBins),
+                  rng=histoRange, nbins=vec.shape[0])
         histoAxes[i].set_title(category)
-#     fig3.tight_layout()
+        if category == 'HOSPITAL':
+            print 'at src: %s %s' % (sum([ct for lo, hi, ct in allSampList]),curveScale)
+            print 'First and last of %d bins: %s %s' % (len(allSampList), allSampList[0],
+                                                        allSampList[-1])
+            testSampL = allSampList[:]
+            testVec = vec.copy()
+    fig3.tight_layout()
     fig3.canvas.set_window_title("Category LOS Histograms")
 
     fig4, locAxes = plt.subplots(nrows=1, ncols=len(trackers))
     for i in xrange(len(trackers)):
         abbrev = trackers[i]
-        vec = np.zeros(400)
+        vec = np.zeros(histoBins)
         for band in losHistoDict[abbrev]:
-            vec = resampleBand(band, vec)
-        plotAsHistogram(vec, locAxes[i])
+            vec = resampleBand(band, vec, range=histoRange)
+        plotAsHistogram(vec, locAxes[i], range=histoRange)
         locAxes[i].set_title(abbrev)
         if abbrev in indexDict:
             fitParms = valVecList[indexDict[abbrev]]
             losModel = LOSModelType()
-            plotCurve(locAxes[i], fitParms, losModel, np.sum(vec),
+
+            lowBandEdge = min([a for a, b, c in losHistoDict[abbrev]])
+            highBandEdge = max([b for a, b, c in losHistoDict[abbrev]])
+            curveScale = ((np.sum(vec) * (histoRange[1] - histoRange[0]))
+                      / (histoBins*losModel.intervalCDF(lowBandEdge, highBandEdge, fitVec)))
+
+            plotCurve(locAxes[i], fitParms, losModel, curveScale,
+                      #np.sum(vec)*((histoRange[1]-histoRange[0])/histoBins),
                       rng=histoRange, nbins=vec.shape[0])
         else:
             print 'No fit curve was calculated for %s' % abbrev
     fig4.canvas.set_window_title("Tracked Locations")
-    
+
+#     testFig, testAxes = plt.subplots()  # @UnusedVariable
+# #    bandL = []
+# #     for i in xrange(100):
+# #         band = (float(i), float(i+1), 100.0*math.exp(-(float(i)+0.5)/100.0))
+# #         bandL.append(band)
+#     bandL = testSampL
+#     losModel = TwoExponLOSModel()
+#     fitVec, accuracyMeasure, success = losModel.modelFit(bandL,  # @UnusedVariable
+#                                                          funToMaximize=boundedLnLik)
+#     vec = testVec
+# #     vec = np.zeros(histoBins)
+# #     for band in bandL:
+# #         vec = resampleBand(band, vec, range=histoRange)
+#     plotAsHistogram(vec, testAxes, range=histoRange)
+#     print 'sum is %s' % np.sum(vec)
+#     print 'alternate sum is %s' % np.sum([ct for lo, hi, ct in bandL])
+#     lowBandEdge = min([lo for lo, hi, ct in bandL])
+#     highBandEdge = max([hi for lo, hi, ct in bandL])
+#     curveScale = ((np.sum(vec) * (histoRange[1] - histoRange[0]))
+#                   / (histoBins*losModel.intervalCDF(lowBandEdge, highBandEdge, fitVec)))
+#     print 'BandEdges: %s %s' % (lowBandEdge, highBandEdge)
+#     print 'scaling: %s %s %s' % (np.sum(vec), losModel.intervalCDF(lowBandEdge, highBandEdge, fitVec), curveScale)
+#     print 'fitVec: %s' % fitVec
+#     print 'First and last of %d bins: %s %s' % (len(bandL), bandL[0], bandL[-1])
+#     plotCurve(testAxes, fitVec, losModel, curveScale,
+#               rng=histoRange, nbins=histoBins)
+#     testAxes.set_title('Test')
+
     plt.show()
 
 ############
