@@ -146,7 +146,7 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
-cacheVer = 3
+cacheVer = 6
 LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
@@ -447,19 +447,11 @@ class CommunityWard(Ward):
             self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
             InterdictMapping[oName] = self.orig
 
-        if 0:
-            cName = changedFname(abbrev)
-            if cName in InterdictMapping:
-                self.changed = InterdictMapping[cName]
-            else:
-                self.changed = interdict.InterDict(cName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
-                InterdictMapping[cName] = self.changed
-        else:
-            self.changed = {}
+        self.changed = {}
 
         try:
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
-        except InvalidCacheVer:
+        except:
             self.orig.close()
             self.orig = interdict.InterDict(oName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
@@ -574,6 +566,7 @@ class Community(Facility):
             if "cacheVer" not in self.cachePatientDataDict:
                 self.cachePatientDataDict["cacheVer"] = cacheVer
             elif cacheVer != self.cachePatientDataDict["cacheVer"]:
+                self.cachePatientDataDict.close()
                 self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
                                                                 key_serialization='msgpack', val_serialization='pickle')
                 self.cachePatientDataDict["cacheVer"] = cacheVer

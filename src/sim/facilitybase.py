@@ -108,6 +108,7 @@ class Ward(pyrheabase.Ward):
 
         self.fac.diagnosticPolicy.handlePatientArrival(self, patientAgent, transferInfo,
                                                        timeNow)
+        patientAgent.addHistoryEntry(self, timeNow)
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, transferInfo, timeNow)
 
@@ -591,6 +592,32 @@ class Facility(pyrheabase.Facility):
         return newDescr
     
 
+def decodeHistoryEntry(histEntry):
+    return {"time": histEntry[0],
+            "abbrev": histEntry[1],
+            "category": histEntry[2],
+            "careTier": histEntry[3]}
+
+def buildTimeTupleList(agent, timeNow):
+    """
+    This routine is supposed to access the patient's history to produce a list of the form
+    [(lengthOfStay, facAbbrev, facCategory, careTier)...] in most-recent-first order,
+    *including* the current facility stay as the first entry.
+        
+    return [(2, 'foo', 'COMMUNITY', 'HOME'), (21, 'bar', 'HOSPITAL', 'HOSP')]
+    """
+
+    ret = []
+    lastTime = timeNow
+    for histEntry in reversed(agent.agentHistory):
+        t,abbrev,cat,tier = histEntry
+        ret.append((lastTime - t, abbrev, cat, tier))
+        lastTime = t
+
+    return ret
+
+    
+
 class PatientAgent(pyrheabase.PatientAgent):
     idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
 
@@ -612,8 +639,12 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                            timeNow=timeNow)[0:2]
 
         self.lastUpdateTime = timeNow
-        self.pastStates = []
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
+        self.agentHistory = []
+        self.addHistoryEntry(self.ward, timeNow)
+
+    def addHistoryEntry(self, ward, timeNow):
+        self.agentHistory.append((timeNow, ward.fac.abbrev, ward.fac.category, ward.tier))
 
     def printSummary(self):
         print '%s as of %s' % (self.name, self.lastUpdateTime)
@@ -750,7 +781,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         d['treatment'] = self._treatment
         d['lastUpdateTime'] = self.lastUpdateTime
         d['id'] = self.id
-        d['pastStates'] = self.pastStates
+        d['agentHistory'] = self.agentHistory
         return d
 
     def __setstate__(self, d):
@@ -760,4 +791,4 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._treatment = d['treatment']
         self.lastUpdateTime = d['lastUpdateTime']
         self.id = d['id']
-        self.pastStates = d['pastStates']
+        self.agentHistory = d['agentHistory']
