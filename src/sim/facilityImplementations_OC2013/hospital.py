@@ -144,7 +144,7 @@ class Hospital(Facility):
         self.hospTreeCache = {}
         self.icuTreeCache = {}
 
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
         """Specialized to restrict transfers to being between our own HOSP and ICU"""
         queueClass = tierToQueueMap[newTier]
         if ((oldTier == CareTier.ICU and newTier == CareTier.HOSP)
@@ -153,7 +153,8 @@ class Hospital(Facility):
 #             print '%s: clause 1' % self.abbrev
             return [q.getGblAddr() for q in qList]
         else:
-            facAddrList = super(Hospital, self).getOrderedCandidateFacList(oldTier, newTier,
+            facAddrList = super(Hospital, self).getOrderedCandidateFacList(patientAgent,
+                                                                           oldTier, newTier,
                                                                            timeNow)
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList

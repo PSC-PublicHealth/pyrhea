@@ -22,26 +22,24 @@ from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
 import genericCommunity
 
-
 _constants_schema = 'community_ChicagoLand_constants_schema.yaml'
-
 
 class CommunityManagerCore(object):
     """This is a place to put infrastructure we must share between communities"""
     __metaclass__ = SingletonMetaClass
-     
+
     def __init__(self):
         self.rateScale = 1.0
         self.p = 1.0
         self.Q = _constants['kalmanQ']['value']
         self.H = _constants['kalmanH']['value']
-     
+
     def kalmanUpdate(self, totPop, meanPop, callerAbbrev):
         """
         Perform a Kalman update of the rate scaling factor.  The nomenclature is
         from Welch & Bishop, "An Introduction to the Kalman Filter" and
         http://scipy-cookbook.readthedocs.io/items/KalmanFiltering.html .
-        
+
         x is the scale factor for the rate constant (to be estimated),
           expected to be near 1.0
         z is the population delta: z = totPop - meanPop
@@ -54,7 +52,7 @@ class CommunityManagerCore(object):
           since the standard deviation scales as 1/sqrt(N)
         W and V are 1.0
         """
-        
+
         x = self.rateScale
         P = self.p
         z = totPop - meanPop

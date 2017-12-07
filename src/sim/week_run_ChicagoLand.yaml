@@ -21,17 +21,16 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-
 'pathogen': 'CRE'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
-    #'policyClass': 'MinDistanceTransferDestinationPolicy'
-    #'policyClass': 'CapacityTransferDestinationPolicy'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
+    #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'

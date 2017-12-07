@@ -23,11 +23,11 @@ import cPickle as pickle
 from phacsl.utils.notes.statval import HistoVal
 import pyrheabase
 from typebase import CareTier, PatientOverallHealth, DiagClassA
-from typebase import TreatmentProtocol, TREATMENT_DEFAULT
-from typebase import PatientStatus, PatientDiagnosis
+from typebase import TreatmentProtocol, TREATMENT_DEFAULT  # @UnusedImport
+from typebase import PatientStatus, PatientDiagnosis  # @UnusedImport
 from stats import BayesTree
 from pathogenbase import PthStatus
-from registry import Registry
+from registry import Registry  # @UnusedImport
 
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
@@ -37,7 +37,7 @@ class PatientStatusSetter(object):
     def __init__(self):
         pass
 
-    def set(self, patientStatus, timeNow):
+    def set(self, patientStatus, timeNow):  # @UnusedVariable
         """This base class just returns a copy"""
         return PatientStatus._make(patientStatus)
 
@@ -212,8 +212,8 @@ class PatientRecord(object):
         assert hasattr(self, '_owningFac'), ('PatientRecord can only be a context if'
                                              ' created via Facility.getPatientRecord')
         return self
-     
-    def __exit__(self, *args):
+
+    def __exit__(self, tp, val, tb):  # @UnusedVariable
         self._owningFac.mergePatientRecord(self.patientId, self, None)
 
     @property
@@ -259,7 +259,8 @@ class PatientRecord(object):
                                                    self.arrivalDate,
                                                    self.departureDate,
                                                    'Frail' if self.isFrail else 'Healthy',
-                                                   'Contagious' if self.isContagious else 'NonContagious')
+                                                   ('Contagious' if self.isContagious 
+                                                    else 'NonContagious'))
 
 class PatientStats(object):
     def __init__(self):
@@ -320,7 +321,6 @@ class Facility(pyrheabase.Facility):
                     transferDestinationPolicyClass = pC
                 if issubclass(pC, TreatmentPolicy):
                     treatmentPolicyClasses.append(pC)
-                    treatmentPolicyClass = pC
                 if issubclass(pC, DiagnosticPolicy):
                     diagnosticPolicyClass = pC
         if not treatmentPolicyClasses:
@@ -370,8 +370,9 @@ class Facility(pyrheabase.Facility):
         """
         pass
 
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
         return self.transferDestinationPolicy.getOrderedCandidateFacList(self,
+                                                                         patientAgent,
                                                                          oldTier, newTier,
                                                                          timeNow)
 
@@ -392,13 +393,13 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, pyrheabase.ArrivalMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientId, tier, isFrail, patientName = myPayload
+            patientId, tier, isFrail, patientName = myPayload  # @UnusedVariable
             patientRec = self.getPatientRecord(patientId, timeNow)
             if patientRec.arrivalDate != timeNow:
-                logger.debug('Patient %s has returned to %s' % (patientId, self.name))
+                logger.debug('Patient %s has returned to %s', patientId, self.name)
                 patientRec.arrivalDate = timeNow
                 patientRec.prevVisits += 1
-            if patientRec.departureDate is None:  # ie patient is being readmitted without previously leaving
+            if patientRec.departureDate is None:  # ie patient readmit without first leaving
                 self.patientStats.remPatient()
             patientRec.isFrail = isFrail
             patientRec.departureDate = None
@@ -411,7 +412,7 @@ class Facility(pyrheabase.Facility):
         elif issubclass(msgType, pyrheabase.DepartureMsg):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
-            patientId, tier, isFrail, patientName = myPayload
+            patientId, tier, isFrail, patientName = myPayload  # @UnusedVariable
             if patientId not in self.patientDataDict:
                 logger.error('%s has no record of patient %s', self.name, patientId)
             patientRec = self.getPatientRecord(patientId)
@@ -448,7 +449,7 @@ class Facility(pyrheabase.Facility):
         """
         The return value defines the contents of the BedRequest payload and must
         be parsed in the other BedRequest methods of the facility.
-        
+
         The format used here is (number of bounces, tier, originating facility, and
         transferInfo dictionary).
         """
@@ -467,7 +468,7 @@ class Facility(pyrheabase.Facility):
                 pass
         return (0, desiredTier, self.abbrev, transferInfoDict)  # num bounces, tier, originating fac
 
-    def handleBedRequestResponse(self, ward, payload, timeNow):
+    def handleBedRequestResponse(self, ward, payload, timeNow):  # @UnusedVariable
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
@@ -485,13 +486,13 @@ class Facility(pyrheabase.Facility):
         # updated number of bounces and sender
         return (nBounces + 1, tier, self.abbrev, transferInfoDict)
 
-    def handleBedRequestFate(self, ward, payload, timeNow):
+    def handleBedRequestFate(self, ward, payload, timeNow):  # @UnusedVariable
         """
         This routine is called in the time slice of the Facility Manager when the manager
         receives the final response to a bed request it initiated. If the search for a bed
         failed, 'ward' will be None.
         """
-        nBounces, tier, senderAbbrev, transferInfoDict = payload
+        nBounces, tier, senderAbbrev, transferInfoDict = payload  # @UnusedVariable
         if ward is None:
             nFail = 1
             nSuccess = 0
@@ -547,7 +548,7 @@ class Facility(pyrheabase.Facility):
         """
         return self.diagnosticPolicy.initializePatientDiagnosis(careTier, timeNow)
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
         """
         Return a Bayes tree the traversal of which yields a patientStatus.
 
@@ -586,7 +587,7 @@ class Facility(pyrheabase.Facility):
                     newL.append({'category': cat, 'count': {'value': val, 'prov': prov}})
                 newDescr[field] = newL
         return newDescr
-    
+
 
 class PatientAgent(pyrheabase.PatientAgent):
     idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
@@ -597,7 +598,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
-                                     False, True, True, None)
+                                     False, True, True, None, 
+#                                     '', -1
+                                     )
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
@@ -647,7 +650,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         """
         return self._treatment._asdict()[key]
     
-    def updateDiseaseState(self, treatment, facility, timeNow):
+    def updateDiseaseState(self, treatment, facility, timeNow):  # @UnusedVariable
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         previousStatus = self._status
@@ -663,7 +666,8 @@ class PatientAgent(pyrheabase.PatientAgent):
                                      % (str(e), self.name, self.id, str(src)))
                 raise
             try:
-                treeL = self.ward.iA.filterStatusChangeTrees(treeL, self._status, self.ward, self._treatment,
+                treeL = self.ward.iA.filterStatusChangeTrees(treeL, self._status, self.ward,
+                                                             self._treatment,
                                                              self.lastUpdateTime, timeNow)
             except Exception, e:
                 self.logger.critical('Got exception %s on patient %s (id %s) filtering trees'
@@ -706,7 +710,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self.lastUpdateTime = timeNow
         return newTier, modifierList
 
-    def getPostArrivalPauseTime(self, timeNow):
+    def getPostArrivalPauseTime(self, timeNow):  # @UnusedVariable
         if self.ward.checkInterval > 1:
             return randint(0, self.ward.checkInterval-1)
         else:
@@ -737,7 +741,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         return newAddr
     
     def getCandidateFacilityList(self, timeNow, newTier):
-        return self.ward.fac.getOrderedCandidateFacList(self.ward.tier, newTier, timeNow)
+        return self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, timeNow)
 
     def __getstate__(self):
         d = pyrheabase.PatientAgent.__getstate__(self)
