@@ -118,23 +118,6 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                                DrawWithReplacementTransferDestinationPolicy(patch,
                                                                             categoryNameMapper))
 
-#     def buildCacheEntry(self, oldFacility, newTier):
-#         srcAbbrev = oldFacility.abbrev
-#         queueClass = tierToQueueMap[newTier]
-#         try:
-#             tplList = []
-#             for info, addr in self.patch.serviceLookup(queueClass.__name__):
-#                 innerInfo, destAbbrev, destCoords = info  # @UnusedVariable
-#                 travelTime = self.core.tbl[srcAbbrev][destAbbrev]['seconds']
-#                 tplList.append((travelTime, info, addr))
-#             tplList.sort()
-#             return [addr for tT, info, addr in tplList]  # @UnusedVariable
-#         except KeyError:
-#             # At least one dest has no travel time info
-#             LOGGER.debug('fallback to geo distance for transfer %s -> %s',
-#                          oldFacility.abbrev, CareTier.names[newTier])
-#             return self.fallbackPolicy.buildCacheEntry(oldFacility, newTier)
-
     def buildTimeTupleList(self, thisFacility, patientAgent, timeNow):
         """
         This routine is supposed to access the patient's history to produce a list of the form
