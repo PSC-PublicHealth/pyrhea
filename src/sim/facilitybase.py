@@ -108,6 +108,7 @@ class Ward(pyrheabase.Ward):
 
         self.fac.diagnosticPolicy.handlePatientArrival(self, patientAgent, transferInfo,
                                                        timeNow)
+        patientAgent.addHistoryEntry(self, timeNow)
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientArrival(self, patientAgent, transferInfo, timeNow)
 
@@ -361,6 +362,9 @@ class Facility(pyrheabase.Facility):
         delattr(patientRec, '_owningFac')
         self.patientDataDict[patientId] = pickle.dumps(patientRec, 2)
 
+    def patientRecordExists(self, patientId):
+        return patientId in self.patientDataDict
+
     def flushCaches(self):
         """
         Derived classes often cache things like BayesTrees, but the items in the cache
@@ -412,7 +416,7 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload
-            if patientId not in self.patientDataDict:
+            if not self.patientRecordExists(patientId):
                 logger.error('%s has no record of patient %s', self.name, patientId)
             patientRec = self.getPatientRecord(patientId)
             patientRec.departureDate = timeNow
@@ -588,6 +592,32 @@ class Facility(pyrheabase.Facility):
         return newDescr
     
 
+def decodeHistoryEntry(histEntry):
+    return {"time": histEntry[0],
+            "abbrev": histEntry[1],
+            "category": histEntry[2],
+            "careTier": histEntry[3]}
+
+def buildTimeTupleList(agent, timeNow):
+    """
+    This routine is supposed to access the patient's history to produce a list of the form
+    [(lengthOfStay, facAbbrev, facCategory, careTier)...] in most-recent-first order,
+    *including* the current facility stay as the first entry.
+        
+    return [(2, 'foo', 'COMMUNITY', 'HOME'), (21, 'bar', 'HOSPITAL', 'HOSP')]
+    """
+
+    ret = []
+    lastTime = timeNow
+    for histEntry in reversed(agent.agentHistory):
+        t,abbrev,cat,tier = histEntry
+        ret.append((lastTime - t, abbrev, cat, tier))
+        lastTime = t
+
+    return ret
+
+    
+
 class PatientAgent(pyrheabase.PatientAgent):
     idCounters = defaultdict(int) # to provide a reliable identifier for each patient.
 
@@ -610,6 +640,11 @@ class PatientAgent(pyrheabase.PatientAgent):
 
         self.lastUpdateTime = timeNow
         self.logger = logging.getLogger(__name__ + '.PatientAgent')
+        self.agentHistory = []
+        self.addHistoryEntry(self.ward, timeNow)
+
+    def addHistoryEntry(self, ward, timeNow):
+        self.agentHistory.append((timeNow, ward.fac.abbrev, ward.fac.category, ward.tier))
 
     def printSummary(self):
         print '%s as of %s' % (self.name, self.lastUpdateTime)
@@ -746,6 +781,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         d['treatment'] = self._treatment
         d['lastUpdateTime'] = self.lastUpdateTime
         d['id'] = self.id
+        d['agentHistory'] = self.agentHistory
         return d
 
     def __setstate__(self, d):
@@ -755,3 +791,4 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._treatment = d['treatment']
         self.lastUpdateTime = d['lastUpdateTime']
         self.id = d['id']
+        self.agentHistory = d['agentHistory']

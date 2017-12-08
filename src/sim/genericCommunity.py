@@ -31,12 +31,15 @@ import gzip
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
+from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue, PatientRecord
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
+
+import time
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +146,8 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
+cacheVer = 6
+LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
     pass
@@ -217,6 +222,7 @@ class Freezer(object):
         self.ward._lockingAgentList.append(agent)
         return agent
 
+
 class InvalidCacheVer(Exception):
     pass
 
@@ -224,7 +230,7 @@ def mapLMDBAbbrev(abbrev):
     return 'all'
 
 def mapLMDBSegments(abbrev, iDict):
-    cacheVer = 1
+    global cacheVer
     segmentInfoId = 0
     idsPerFac = 1000000000
     startId = 100
@@ -339,6 +345,11 @@ class CopyOnWriteLMDBFreezer(Freezer):
         self.ward._lockQueue.append(agent)
         self.ward.awaken(agent)
         self.ward._lockingAgentList.append(agent)
+        global LastMemCheck
+        if time.time() > 60.0 + LastMemCheck:
+            p = psutil.Process()
+            print p.memory_full_info()
+            LastMemCheck = time.time()
         return agent
 
     def saveFreezerData(self):
@@ -399,11 +410,20 @@ def makeLMDBDirs():
 
 def origFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
-    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/%s'%abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/freezer_%s'%abbrev)
 
 def changedFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
-    return pyrheautils.pathTranslate('$(AGENTDIR)/%s'%abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/freezer_%s'%abbrev)
+
+def patientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/patientData_%s'%abbrev)
+    
+def cachePatientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/patientData_%s'%abbrev)
+    
 
 InterdictMapping = {}
 
@@ -427,16 +447,11 @@ class CommunityWard(Ward):
             self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
             InterdictMapping[oName] = self.orig
 
-        cName = changedFname(abbrev)
-        if cName in InterdictMapping:
-            self.changed = InterdictMapping[cName]
-        else:
-            self.changed = interdict.InterDict(cName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
-            InterdictMapping[cName] = self.changed
+        self.changed = {}
 
         try:
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
-        except InvalidCacheVer:
+        except:
             self.orig.close()
             self.orig = interdict.InterDict(oName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
@@ -540,6 +555,24 @@ class Community(Facility):
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
+        pdName = cachePatientDataFname(descr['abbrev'])
+        self.patientDataDict = {}
+        if pdName in InterdictMapping:
+            self.cachePatientDataDict = InterdictMapping[pdName]
+        else:
+            self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False, integer_keys=False,
+                                                            key_serialization='msgpack', val_serialization='pickle')
+            global cacheVer
+            if "cacheVer" not in self.cachePatientDataDict:
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            elif cacheVer != self.cachePatientDataDict["cacheVer"]:
+                self.cachePatientDataDict.close()
+                self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
+                                                                key_serialization='msgpack', val_serialization='pickle')
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            InterdictMapping[pdName] = self.cachePatientDataDict
+
+
     def flushCaches(self):
         """
         Derived classes often cache things like BayesTrees, but the items in the cache
@@ -618,6 +651,42 @@ class Community(Facility):
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
 
+
+    def getPatientRecord(self, patientId, timeNow=None):
+        k = (self.abbrev, patientId)
+        # get your pickled patient record
+        try:
+            ppr = self.patientDataDict[k]
+        except KeyError:
+            try:
+                ppr = self.cachePatientDataDict[k]
+            except: # (interdict doesn't give keyerrors) KeyError:
+                if timeNow is None:
+                    raise MissingPatientRecordError('Record not found and cannot create a new one')
+                pR = PatientRecord(patientId, timeNow, isFrail=False)
+                self.patientDataDict[k] = pickle.dumps(pR, 2)  # keep a copy
+                pR._owningFac = self
+                return pR
+
+        pR = pickle.loads(ppr)
+        pR._owningFac = self
+        return pR
+
+
+    def mergePatientRecord(self, patientId, newPatientRec, timeNow):
+        patientRec = self.getPatientRecord(patientId, timeNow)
+        patientRec.merge(newPatientRec)
+        delattr(patientRec, '_owningFac')
+        self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(patientRec, 2)
+
+    def patientRecordExists(self, patientId):
+        k = (self.abbrev, patientId)
+        if k in self.patientDataDict:
+            return True
+        return k in self.cachePatientDataDict
+
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Community description %(abbrev)s is missing the expected field 'meanPop'" % descr
@@ -637,10 +706,13 @@ def _populate(fac, descr, patch):
         ward.freezers[ward.classify(a)].freezeAndStore(a)
     return []
 
+TotalCommunity=0
+
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 1
+    global cacheVer
     makeLMDBDirs()
+    global TotalCommunity
 
     if communityClass is None:
         communityClass = Community
@@ -670,7 +742,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if wardInfo[0] != cacheVer:
             raise invalidCacheVer()
 
-        ver, fDesc,freezerList,patientDataDict,patientStats = wardInfo
+        ver, fDesc,freezerList,patientStats = wardInfo
         if fDesc != facilityDescr:
             raise Exception()
 
@@ -684,9 +756,9 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if agentCount < 1:
             raise Exception()
         
-        fac.patientDataDict = patientDataDict
         fac.patientStats = patientStats
-        logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
+        TotalCommunity += agentCount
+        logger.info('read population for %s from cache (%s freeze-dried people, %s)'%(fDesc['abbrev'], agentCount, TotalCommunity))
 
         return [fac], fac.getWards(), []
 
@@ -712,6 +784,13 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # Let's write all of our data at once to the interdict, so for now use a normal dict:
     orig = ward.orig
     ward.orig = {}
+    # do the same with the patientDataDict
+    realCachePatientDataDict = fac.cachePatientDataDict
+    fac.cachePatientDataDict = {}  # make sure no one is found while writing these
+    # the patient data dict is currently an empty dict where things will be initially written.
+    # just leave this and we'll move things around after everyone is generated.
+
+    
     ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
     
     pop = _populate(fac, facilityDescr, patch)
@@ -721,22 +800,27 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
     
-    patientDataDict = fac.patientDataDict
     patientStats = fac.patientStats
 
     # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
     tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
-    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats))
+    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientStats))
     tFreezer.saveInfoList()
     
     orig.mset(ward.orig.items())
     orig.flush()
-
+    
     for k in ward.orig.keys():
         del(ward.orig[k])
         
     ward.orig = orig
-    
+
+    realCachePatientDataDict.mset(fac.patientDataDict.items())
+    fac.cachePatientDataDict = realCachePatientDataDict
+    for k in fac.patientDataDict.keys():
+        del(fac.patientDataDict[k])
+    fac.patientDataDict = {}
+
     return [fac], fac.getWards(), pop
 
 
