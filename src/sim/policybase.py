@@ -219,7 +219,7 @@ class TreatmentPolicy(Policy):
 
 
 class TransferDestinationPolicy(Policy):
-    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier, timeNow):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 class ScenarioPolicy(object):

@@ -44,6 +44,7 @@ from pyrhea import getLoggerConfig
 # -What are we doing with self-transfers? What should we be doing?
 # -What does it mean if a FacilitySwap causes srcN to be a place that is never a src
 #  for the new facility?  Does it even matter?  Should all FacilitySwaps set src to N_FAC?
+# -We need a burn-in, and maybe to save samples only every few mutations
 ###########################
 
 """
@@ -63,8 +64,9 @@ CENSUS_DAYS = 365 # The ground truth data really was gathered for a 1 year inter
 Numbers of facilities, initialized when the model is loaded
 """
 N_FAC = None  # Total number of facilities
-N_HOSP = None  # Number that count as hospitals for indirect-transfer purposes
 N_SRC = None  # Possible places to come from - N_FAC + 1 for 'home'
+N_HOSP = None  # Number that count as hospitals for indirect-transfer purposes
+N_PREV_HOSP = None  # Possible most recent hospitals - N_HOSP + 1 for 'never hospitalized'
 DIRECT_TRANSFER_TABLE = None  # This is indexed like DTT[thisLoc][whereTransferCameFrom]
 
 def configureLogging(cfgDict):
@@ -133,6 +135,35 @@ def getRandomDirectTransferSrc(facN, facR):
         facR['_directTransferWLP'] = wlp
     return facR['_directTransferWLP'].draw()
 
+class SampleCollection(object):
+    """
+    This is implemented as a class to allow more efficient representations.
+    """
+    def __init__(self):
+        self.samples = np.zeros((N_FAC, DAYS_PER_YEAR, DAYS_PER_YEAR, N_SRC),
+                                dtype=np.int32)
+
+    @classmethod
+    def state(cls, facN, dayN, hospDayN, srcN, phN):
+        """
+        Arguments are facility number, days at that facility, days since last hospitalization,
+        previous facility number, most recent hospital number
+        """
+        return (facN, dayN, hospDayN, srcN, phN)
+
+    @classmethod
+    def split(cls, state):
+        """
+        The opposite of state()
+        """
+        # This works as long as state is just a tuple
+        return state
+
+    def sample(self, state):
+        facN, dayN, hospDayN, srcN, phN = state
+        self.samples[facN, dayN, hospDayN, srcN] += 1
+
+
 class Mutator(object):
     @classmethod
     def select(cls, state, facIdx, facDict):
@@ -149,7 +180,7 @@ class BinSwap(Mutator):
     """
     @classmethod
     def select(cls, state, facIdx, facDict):
-        facN, dayN, hospDay, srcN = state
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
         baseAR, baseDesc = super(BinSwap, cls).select(state, facIdx, facDict)
         facR = facDict[facIdx[facN]]
         newDayN = np.random.randint(0, DAYS_PER_YEAR)  # new time since arrival
@@ -161,8 +192,8 @@ class BinSwap(Mutator):
     def apply(cls, state, descriptor):
         newDayN, baseDesc = descriptor
         state = super(BinSwap, cls).apply(state, baseDesc)
-        facN, dayN, hospDay, srcN = state
-        return (facN, newDayN, hospDay, srcN)
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        return SampleCollection.state(facN, newDayN, hospDay, srcN, phN)
 
 
 class FacSwap(Mutator):
@@ -172,7 +203,7 @@ class FacSwap(Mutator):
     """
     @classmethod
     def select(cls, state, facIdx, facDict):
-        facN, dayN, hospDay, srcN = state
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
         baseAR, baseDesc = super(FacSwap, cls).select(state, facIdx, facDict)
         facR = facDict[facIdx[facN]]
         if 'meanPop' in facR:
@@ -195,8 +226,8 @@ class FacSwap(Mutator):
         newFacN, baseDesc = descriptor
         newDayN = np.random.randint(0, DAYS_PER_YEAR)
         state = super(FacSwap, cls).apply(state, baseDesc)
-        facN, dayN, hospDay, srcN = state
-        return (newFacN, newDayN, hospDay, srcN)
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        return SampleCollection.state(newFacN, newDayN, hospDay, srcN, phN)
 
 
 class IsTransferSwap(Mutator):
@@ -206,7 +237,7 @@ class IsTransferSwap(Mutator):
     """
     @classmethod
     def select(cls, state, facIdx, facDict):
-        facN, dayN, hospDay, srcN = state
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
         baseAR, baseDesc = super(IsTransferSwap, cls).select(state, facIdx, facDict)
         facR = facDict[facIdx[facN]]
         if 'meanPop' not in facR:
@@ -228,8 +259,8 @@ class IsTransferSwap(Mutator):
     def apply(cls, state, descriptor):
         transferFrac, newSrcN, baseDesc = descriptor
         state = super(IsTransferSwap, cls).apply(state, baseDesc)
-        facN, dayN, hospDay, srcN = state
-        return (facN, dayN, hospDay, newSrcN)
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        return SampleCollection.state(facN, dayN, hospDay, newSrcN, phN)
 
 
 class DirectTransferSrcSwap(Mutator):
@@ -239,7 +270,7 @@ class DirectTransferSrcSwap(Mutator):
     """
     @classmethod
     def select(cls, state, facIdx, facDict):
-        facN, dayN, hospDay, srcN = state
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
         baseAR, baseDesc = super(DirectTransferSrcSwap, cls).select(state, facIdx, facDict)
         if srcN == N_FAC:
             # No direct transfer src swaps if the src was the community
@@ -250,7 +281,8 @@ class DirectTransferSrcSwap(Mutator):
             return 0.0, (srcN, baseDesc)  # why bother
         nWt = float(myDDT[newSrcN])
         if srcN in myDDT:
-            oWt = (float(myDDT[srcN]) if srcN in myDDT else 0.0)
+            #oWt = (float(myDDT[srcN]) if srcN in myDDT else 0.0)
+            oWt = float(myDDT[srcN])
             return baseAR * min(1.0, nWt/oWt), (newSrcN, baseDesc)
         else:
             return baseAR, (newSrcN, baseDesc)
@@ -259,14 +291,50 @@ class DirectTransferSrcSwap(Mutator):
     def apply(cls, state, descriptor):
         newSrcN, baseDesc = descriptor
         state = super(DirectTransferSrcSwap, cls).apply(state, baseDesc)
-        facN, dayN, hospDay, srcN = state
-        return (facN, dayN, hospDay, newSrcN)
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        return SampleCollection.state(facN, dayN, hospDay, newSrcN, phN)
 
-class DirectTransfer(Mutator):
-    pass
 
-class IndirectTransfer(Mutator):
-    pass
+class IsIndirectTransferSwap(Mutator):
+    """
+    To turn a direct transfer into an indirect transfer:
+    -srcN must be a hospital
+    -facN must be a hospital
+    -srcN becomes phN, and srcN becomes 'home'
+    -dayN has to get split between dayN and hospDay
+    Factors contributing to relative odds:
+     -current odds: LOS distro with dayN, odds of transfer from srcN to facN
+     -new odds: home LOS distro for new hospDay, local LOS distro for remaining dayN,
+      odds of transfer from new phN to home, odds of transfer home to facN
+    Constraints on state:
+     -srcN must be home
+    """
+    @classmethod
+    def select(cls, state, facIdx, facDict):
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        baseAR, baseDesc = super(DirectTransferSrcSwap, cls).select(state, facIdx, facDict)
+        if srcN == N_FAC:
+            # No direct transfer src swaps if the src was the community
+            return 0.0, (srcN, baseDesc)
+        myDDT = DIRECT_TRANSFER_TABLE[facN]
+        newSrcN = np.random.choice(myDDT.keys())
+        if newSrcN == srcN:
+            return 0.0, (srcN, baseDesc)  # why bother
+        nWt = float(myDDT[newSrcN])
+        if srcN in myDDT:
+            #oWt = (float(myDDT[srcN]) if srcN in myDDT else 0.0)
+            oWt = float(myDDT[srcN])
+            return baseAR * min(1.0, nWt/oWt), (newSrcN, baseDesc)
+        else:
+            return baseAR, (newSrcN, baseDesc)
+
+    @classmethod
+    def apply(cls, state, descriptor):
+        newSrcN, baseDesc = descriptor
+        state = super(DirectTransferSrcSwap, cls).apply(state, baseDesc)
+        facN, dayN, hospDay, srcN, phN = SampleCollection.split(state)
+        return SampleCollection.state(facN, dayN, hospDay, newSrcN, phN)
+
 
 class NHIndirect(Mutator):
     pass
@@ -281,6 +349,7 @@ def main():
     global N_FAC
     global N_SRC
     global N_HOSP
+    global N_PREV_HOSP
     global DIRECT_TRANSFER_TABLE
 
     parser = OptionParser(usage="""
@@ -349,16 +418,17 @@ def main():
     N_FAC = len(facIdx)
     N_SRC = N_FAC + 1  # the additional value is for 'came from home'
     N_HOSP = len(hospIdx)
-    samples = np.zeros((N_FAC, DAYS_PER_YEAR, DAYS_PER_YEAR, N_SRC), dtype=np.int32)
+    N_PREV_HOSP = N_HOSP + 1 # the additional value is 'no previous hospitalization'
+    samples = SampleCollection()
     facN = 1
     losDay = 0
     hospDay = 1
     srcN = N_FAC  # which means this sample came from 'home'
-    state = (facN, losDay, hospDay, srcN)
+    prevHospN = N_HOSP  # which means no prev hospitalization
+    state = samples.state(facN, losDay, hospDay, srcN, prevHospN)
     for loop in xrange(100000):  # @UnusedVariable
 #    while True:
-        facN, losDay, hospDay, srcN  = state
-        samples[facN, losDay, hospDay, srcN] += 1
+        samples.sample(state)
         mutator = np.random.choice(MUTATIONS)
         acceptRatio, descriptor = mutator.select(state, facIdx, facDict)
         if np.random.random() < acceptRatio:
@@ -366,9 +436,9 @@ def main():
             state = mutator.apply(state, descriptor)
         else:
             print('aR %s -> reject %s %s' % (acceptRatio, mutator.__name__, descriptor))
-    facN, losDay, hospDay, srcN = state
-    print(np.sum(samples, 0)[:, hospDay, srcN])
-    print(np.sum(samples, 1)[:, hospDay, srcN])
+    facN, losDay, hospDay, srcN, prevHospN = SampleCollection.split(state)
+    print(np.sum(samples.samples, 0)[:, hospDay, srcN])
+    print(np.sum(samples.samples, 1)[:, hospDay, srcN])
 
 #############
 # Input types:

@@ -414,7 +414,6 @@ def main():
     with open(transferYaml) as f:
         directTransferDict = yaml.load(f)
 
-
     readmitTransferDict = {}
     transferDict = {}
     for k, rec in directTransferDict.items():

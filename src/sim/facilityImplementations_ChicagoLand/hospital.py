@@ -23,10 +23,11 @@ from random import random
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, ForcedStateWard
+from facilitybase import DiagClassA, CareTier
+from facilitybase import PatientOverallHealth, Facility, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, ClassASetter, HOSPQueue, ICUQueue, tierToQueueMap
 from facilitybase import FacilityManager, PthStatus
+from facilitybase import Ward as BaseWard
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
@@ -135,6 +136,16 @@ class OverallHealthSetter(PatientStatusSetter):
         return ('PatientStatusSetter(overallHealth <- %s)'
                 % PatientOverallHealth.names[self.newOverallHealth])
 
+
+class Ward(BaseWard):
+    def handlePatientDeparture(self, patientAgent, timeNow):
+        """An opportunity for derived classes to customize the departure processing of patients"""
+        super(Ward, self).handlePatientDeparture(patientAgent, timeNow)
+#        patientAgent._status._replace(mostRecentHosp=self.fac.abbrev,
+#                                      mostRecentHospReleaseTime=timeNow)
+        for tP in self.fac.treatmentPolicies:
+            tP.handlePatientDeparture(self, patientAgent, timeNow)
+        self.miscCounters['departures'] += 1
 
 class ICUWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
@@ -271,7 +282,7 @@ class Hospital(Facility):
         self.hospTreeCache = {}
         self.icuTreeCache = {}
 
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
         """Specialized to restrict transfers to being between our own HOSP and ICU"""
         queueClass = tierToQueueMap[newTier]
         if ((oldTier == CareTier.ICU and newTier == CareTier.HOSP)
@@ -280,7 +291,8 @@ class Hospital(Facility):
 #             print '%s: clause 1' % self.abbrev
             return [q.getGblAddr() for q in qList]
         else:
-            facAddrList = super(Hospital, self).getOrderedCandidateFacList(oldTier, newTier,
+            facAddrList = super(Hospital, self).getOrderedCandidateFacList(patientAgent,
+                                                                           oldTier, newTier,
                                                                            timeNow)
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList

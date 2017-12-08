@@ -18,7 +18,6 @@
 import os.path
 import sys
 import random
-from scipy.stats import expon, binom
 import logging
 import types
 from collections import defaultdict
@@ -28,11 +27,13 @@ import phacsl.utils.collections.interdict as interdict
 
 import cPickle as pickle
 import gzip
+from scipy.stats import expon, binom
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue, PatientRecord
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
+from typebase import DiagClassA, CareTier, PatientOverallHealth
+from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
+from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
@@ -72,13 +73,11 @@ def importCommunity(moduleName):
     logger = logging.getLogger(moduleName)
 
     module = sys.modules[moduleName]
-    
+
     curModule = sys.modules[__name__]
     for attr in attrs:
         if not hasattr(module, attr):
             setattr(module, attr, getattr(curModule, attr))
-
-    
 
 
 def lencode(thing):
@@ -435,7 +434,6 @@ def newFreezer(dd, ward, orig, changed, infoList, key):
 
 class CommunityWard(Ward):
     """This 'ward' type represents being out in the community"""
-    
     def __init__(self, abbrev, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
         self.checkInterval = 1  # so they get freeze dried promptly
@@ -585,9 +583,8 @@ class Community(Facility):
     def setCDFs(self, losModel):
         baseRate = losModel['parms'][0]
         self.cachedCDFs = {"base": CachedCDFGenerator(expon(scale=1.0/baseRate))}
-        
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
         careTier = ward.tier
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
@@ -625,8 +622,8 @@ class Community(Facility):
             self.treeCache[key] = tree
             return tree
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
-                  timeNow=None):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
+                  timeNow=None):  # @UnusedVariable
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
@@ -814,6 +811,8 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         del(ward.orig[k])
         
     ward.orig = orig
+    for f in ward.freezers:
+        f.orig = orig
 
     realCachePatientDataDict.mset(fac.patientDataDict.items())
     fac.cachePatientDataDict = realCachePatientDataDict

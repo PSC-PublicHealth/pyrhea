@@ -10,6 +10,7 @@ import pyrheautils
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import yaml
 import cPickle as pickle
+import glob
 
 SCHEMA_DIR = '../schemata'
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -20,7 +21,8 @@ def checkInputFileSchema(fname, schemaFname):
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
         if os.name != "nt":
-            validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__), schemaFname))
+            validator = schemautils.getValidator(os.path.join(os.path.dirname(__file__),
+                                                              schemaFname))
             nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
             if nErrors:
                 print 'Input file violates schema:'
