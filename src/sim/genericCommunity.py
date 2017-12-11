@@ -811,7 +811,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         del(ward.orig[k])
         
     ward.orig = orig
-    for f in ward.freezers:
+    for f in ward.freezers.values():
         f.orig = orig
 
     realCachePatientDataDict.mset(fac.patientDataDict.items())
