@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from scipy.stats import expon
 from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
+import facilitybase
 import genericCommunity
 
 # Setting _constants_schema here does not work because of order of operations
@@ -92,8 +93,9 @@ class CommunityManager(genericCommunity.CommunityManager):
 
 
 class CommunityWard(genericCommunity.CommunityWard):
-    def classify(self, agent):
+    def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent"""
+        timeTupleL = facilitybase.buildTimeTupleList(agent, timeNow)
         if agent._status.pthStatus == PthStatus.COLONIZED:
             return 'colonized'
         elif agent._status.pthStatus == PthStatus.CLEAR:

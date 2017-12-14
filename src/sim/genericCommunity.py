@@ -463,7 +463,7 @@ class CommunityWard(Ward):
         self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self, self.orig, self.changed, self.infoList, key))
         self.newArrivals = []
 
-    def classify(self, agent):
+    def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent for freeze drying"""
         return "base"
 
@@ -510,7 +510,7 @@ class CommunityManager(FacilityManager):
                 if agent.debug:
                     agent.logger.debug('%s freezedrying %s at %s'
                                        % (ward._name, agent.name, timeNow))
-                ward.freezers[ward.classify(agent)].freezeAndStore(agent)
+                ward.freezers[ward.classify(agent, timeNow)].freezeAndStore(agent)
             ward.newArrivals = []
         self.fac.collectiveStatusStartDate = timeNow
 
