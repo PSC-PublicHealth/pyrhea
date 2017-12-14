@@ -41,6 +41,7 @@ import schemautils
 
 import time
 import psutil
+from Cython.Tempita._tempita import attr
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ _constants = None
 
 
 def importCommunity(moduleName):
+    print 'importCommunity %s' % moduleName
     attrs = (
         'category',
         '_schema',
@@ -78,6 +80,9 @@ def importCommunity(moduleName):
     for attr in attrs:
         if not hasattr(module, attr):
             setattr(module, attr, getattr(curModule, attr))
+            print 'setting %s' % attr
+        else:
+            print 'not setting %s' % attr
 
 
 def lencode(thing):
@@ -544,12 +549,9 @@ class Community(Facility):
         descr = self.mapDescrFields(descr)
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
-        losModel = _constants['communityLOSModel']
-        assert losModel['pdf'] == 'expon(lambda=$0)', \
-            "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
+        self.setCDFs(_constants['losModelMap'])
         self.addWard(CommunityWard(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                    patch, nBeds))
-        self.setCDFs(losModel)
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
@@ -578,11 +580,15 @@ class Community(Facility):
         changed.  This method is called when the environment wants to trigger a cache
         flush.
         """
-        self.treeCache = {}        
+        self.treeCache = {}
 
-    def setCDFs(self, losModel):
-        baseRate = losModel['parms'][0]
-        self.cachedCDFs = {"base": CachedCDFGenerator(expon(scale=1.0/baseRate))}
+    def setCDFs(self, losModelMap):
+        self.cachedCDFs = {}
+        for classKey, losModel in losModelMap.items():
+            assert losModel['pdf'] == 'expon(lambda=$0)', \
+                "Unexpected losModel form %s - only expon is supported" % losModel['pdf']
+            rate = losModel['parms'][0]
+            self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
         careTier = ward.tier
@@ -839,6 +845,7 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
+print 'importConstants %s %s' % (_constants_values, _constants_schema)
 _constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)
 

@@ -1,3 +1,5 @@
+'model': 'OrangeCounty2013'
+'pathogen': 'MRSA'
 'modelDir': '../../models/OrangeCounty2013'
 
 'pathTranslations':
@@ -18,8 +20,6 @@
     'implementation': 'HOSPITAL'
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
-
-'pathogen': 'MRSA'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':

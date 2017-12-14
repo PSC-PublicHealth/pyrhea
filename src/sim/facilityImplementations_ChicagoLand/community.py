@@ -22,7 +22,8 @@ from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
 import genericCommunity
 
-_constants_schema = 'community_ChicagoLand_constants_schema.yaml'
+# Setting _constants_schema here does not work because of order of operations
+# _constants_schema = 'community_ChicagoLand_constants_schema.yaml'
 
 class CommunityManagerCore(object):
     """This is a place to put infrastructure we must share between communities"""
@@ -77,10 +78,10 @@ class CommunityManager(genericCommunity.CommunityManager):
         self.core = CommunityManagerCore()
         self.meanPop = self.fac.meanPop
         self.lastKalmanUpdateTime = 0
-        
+
     def getProbThaw(self, patientCategory, dT):
         return self.core.rateScale * self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
-    
+
     def perTickActions(self, timeNow):
         super(CommunityManager, self).perTickActions(timeNow)
         if timeNow != self.lastKalmanUpdateTime:
@@ -88,7 +89,7 @@ class CommunityManager(genericCommunity.CommunityManager):
                           for ward in self.fac.getWards()])
             self.core.kalmanUpdate(totPop, self.meanPop, self.fac.name)
             self.lastKalmanUpdateTime = timeNow
-        
+
 
 class CommunityWard(genericCommunity.CommunityWard):
     def classify(self, agent):
@@ -99,21 +100,16 @@ class CommunityWard(genericCommunity.CommunityWard):
             return 'base'
         else:
             raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
-                                                (agent.name, PthStatus.names[agent._status.pthStatus]))
+                                                (agent.name,
+                                                 PthStatus.names[agent._status.pthStatus]))
 
-        
+
 class Community(genericCommunity.Community):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         self.meanPop = descr['meanPop']['value']
         super(Community, self).__init__(descr, patch, policyClasses=policyClasses,
                                         categoryNameMapper=categoryNameMapper,
                                         managerClass=CommunityManager)
-    def setCDFs(self, losModel):
-        baseRate = losModel['parms'][0]
-        colonizedRate = _constants['communityColonizedReadmissionRateScale']['value'] * baseRate
-        self.cachedCDFs = {'base': CachedCDFGenerator(expon(scale=1.0/baseRate)),
-                           'colonized': CachedCDFGenerator(expon(scale=1.0/colonizedRate))}
-        
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
     return genericCommunity.generateFull(facilityDescr, patch, policyClasses=policyClasses,
