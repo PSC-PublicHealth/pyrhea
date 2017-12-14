@@ -698,7 +698,7 @@ def _populate(fac, descr, patch):
         a._status = a._status._replace(homeAddr=ward.getGblAddr())
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
         ward.freezers[ward.classify(a)].freezeAndStore(a)
     return []
@@ -752,10 +752,11 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
         if agentCount < 1:
             raise Exception()
-        
+
         fac.patientStats = patientStats
         TotalCommunity += agentCount
-        logger.info('read population for %s from cache (%s freeze-dried people, %s)'%(fDesc['abbrev'], agentCount, TotalCommunity))
+        logger.info('read population for %s from cache (%s freeze-dried people, %s)'
+                    %(fDesc['abbrev'], agentCount, TotalCommunity))
 
         return [fac], fac.getWards(), []
 

@@ -270,10 +270,12 @@ class PatientStats(object):
 
     def addPatient(self):
         self.currentOccupancy += 1
+        #print '+',
         self.totalOccupancy += 1
 
     def remPatient(self):
         self.currentOccupancy -=1
+        #print '-',
 
 
 class MissingPatientRecordError(RuntimeError):
@@ -326,7 +328,8 @@ class Facility(pyrheabase.Facility):
                     diagnosticPolicyClass = pC
         if not treatmentPolicyClasses:
             treatmentPolicyClasses = [TreatmentPolicy]
-        self.transferDestinationPolicy = transferDestinationPolicyClass(patch, self.categoryNameMapper)
+        self.transferDestinationPolicy = transferDestinationPolicyClass(patch,
+                                                                        self.categoryNameMapper)
         self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
                                   for treatmentPolicyClass in treatmentPolicyClasses]
         self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
@@ -398,22 +401,27 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload  # @UnusedVariable
-            patientRec = self.getPatientRecord(patientId, timeNow)
-            if patientRec.arrivalDate != timeNow:
-                logger.debug('Patient %s has returned to %s', patientId, self.name)
-                patientRec.arrivalDate = timeNow
-                patientRec.prevVisits += 1
-            if patientRec.departureDate is None:  # ie patient readmit without first leaving
-                self.patientStats.remPatient()
-            patientRec.isFrail = isFrail
-            patientRec.departureDate = None
-            self.mergePatientRecord(patientId, patientRec, timeNow)
             self.patientStats.addPatient()
-            if timeNow != 0:  # Exclude initial populations
-                nh = self.getNoteHolder()
-                if nh:
-                    nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
+            patientRec = self.getPatientRecord(patientId,
+                                               (timeNow if timeNow is not None else 0))
+            patientRec.isFrail = isFrail
+            if timeNow is not None:
+                if patientRec.arrivalDate != timeNow:
+                    logger.debug('Patient %s has returned to %s', patientId, self.name)
+                    patientRec.arrivalDate = timeNow
+                    patientRec.prevVisits += 1
+                    if patientRec.departureDate is None:  # ie patient readmit without first leaving
+                        self.patientStats.remPatient()
+                if timeNow != 0:  # Exclude initial populations
+                    nh = self.getNoteHolder()
+                    if nh:
+                        nh.addNote({(CareTier.names[tier] + '_arrivals'): 1})
+            patientRec.departureDate = None
+            self.mergePatientRecord(patientId, patientRec,
+                                    (timeNow if timeNow is not None else 0))
         elif issubclass(msgType, pyrheabase.DepartureMsg):
+            if timeNow is None:
+                raise RuntimeError('Only arrival messages should happen before execution starts')
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload # @UnusedVariable
@@ -432,6 +440,8 @@ class Facility(pyrheabase.Facility):
                     nh.addNote({losKey: HistoVal([])})
                 nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
         elif issubclass(msgType, BirthMsg):
+            if timeNow is None:
+                raise RuntimeError('Only arrival messages should happen before execution starts')
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
@@ -604,7 +614,7 @@ def buildTimeTupleList(agent, timeNow):
     This routine is supposed to access the patient's history to produce a list of the form
     [(lengthOfStay, facAbbrev, facCategory, careTier)...] in most-recent-first order,
     *including* the current facility stay as the first entry.
-        
+
     return [(2, 'foo', 'COMMUNITY', 'HOME'), (21, 'bar', 'HOSPITAL', 'HOSP')]
     """
 
@@ -617,7 +627,6 @@ def buildTimeTupleList(agent, timeNow):
 
     return ret
 
-    
 
 class PatientAgent(pyrheabase.PatientAgent):
     idCounters = defaultdict(int) # to provide a reliable identifier for each patient.

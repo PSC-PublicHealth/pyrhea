@@ -1,5 +1,6 @@
 'model': 'ChicagoLand'
 'pathogen': 'CRE'
+'modelDir': '../../models/ChicagoLand'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
@@ -59,3 +60,12 @@ scenarioWaitDays: 2
   - 'ADVO_836_H'
   - 'WASH_11308_S'
   - 'PRES_100_L'
+  - 'BALL_9300_V'
+  - 'OAK_9525_V'
+  - 'BETH_5025_H'
+  - 'CENT_25_H'
+  - 'CHAT_7050_S'
+  - 'CHEV_3400_S'
+  - 'RML_5601_L'
+  - 'THC_225_L'
+  

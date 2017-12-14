@@ -63,24 +63,13 @@ def buildFacOccupancyDict(patch, timeNow):
             facTypeDict[tpName] = 0
             facTypeDict[tpName + '_all'] = 0
 
-        if 0:
-            if hasattr(fac, 'patientDataDict'):
-                patientCount = 0
-                allCount = 0
-                for rec in fac.patientDataDict.values():
-                    rec = pickle.loads(rec)
-                    allCount += 1 + rec.prevVisits
-                    if rec.departureDate is None:
-                        patientCount += 1
-                facTypeDict[tpName] += patientCount
-                facTypeDict[tpName + '_all'] += allCount
-        else:
-            if hasattr(fac, 'patientStats'):
-                patientCount = fac.patientStats.currentOccupancy
-                allCount = fac.patientStats.totalOccupancy
-                facTypeDict[tpName] += patientCount
-                facTypeDict[tpName + '_all'] += allCount
+        if hasattr(fac, 'patientStats'):
+            patientCount = fac.patientStats.currentOccupancy
+            allCount = fac.patientStats.totalOccupancy
+            facTypeDict[tpName] += patientCount
+            facTypeDict[tpName + '_all'] += allCount
 
+    #print 'buildFacOccupancyDict: %s' % facTypeDict
     return facTypeDict
 
 
@@ -113,18 +102,9 @@ def buildLocalOccupancyDict(patch, timeNow):
     facDict = {'day': timeNow}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
     for fac in patch.allFacilities:
-        if 0:
-            if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientDataDict'):
-                patientCount = 0
-                for rec in fac.patientDataDict.values():
-                    rec = pickle.loads(rec)
-                    if rec.departureDate is None:
-                        patientCount += 1
-                facDict[fac.abbrev] = patientCount
-        else:
-            if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
-                patientCount = fac.patientStats.currentOccupancy
-                facDict[fac.abbrev] = patientCount
+        if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
+            patientCount = fac.patientStats.currentOccupancy
+            facDict[fac.abbrev] = patientCount
             
     return facDict
 

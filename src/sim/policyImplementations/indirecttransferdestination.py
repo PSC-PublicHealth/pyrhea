@@ -119,15 +119,6 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                                DrawWithReplacementTransferDestinationPolicy(patch,
                                                                             categoryNameMapper))
 
-    def buildTimeTupleList(self, patientAgent, thisFacility, timeNow):
-        """
-        This routine is supposed to access the patient's history to produce a list of the form
-        [(lengthOfStay, facAbbrev, facCategory, careTier)...] in most-recent-first order,
-        *including* the current facility stay as the first entry.
-        """
-        return facilitybase.buildTimeTupleList(patientAgent, timeNow)
-        #return [(2, 'foo', 'COMMUNITY', 'HOME'), (21, 'bar', 'HOSPITAL', 'HOSP')]
-
     def classifyTrans(self, newTier, timeTupleL):
         """
         Given a list returned by buildTimeTupleList, what type of transfer is this?
@@ -178,7 +169,7 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
 
     def getOrderedCandidateFacList(self, thisFacility, patientAgent,  # @UnusedVariable
                                    oldTier, newTier, timeNow):  # @UnusedVariable
-        timeTupleL = self.buildTimeTupleList(patientAgent, thisFacility, timeNow)
+        timeTupleL = facilitybase.buildTimeTupleList(patientAgent, timeNow)
         transType, rootFac, daysSince = self.classifyTrans(newTier, timeTupleL)
         if transType == TransType.OTHER:
             return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
@@ -188,10 +179,10 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                 pairList, tot = self.core.getWeightedList(rootFac, newTier)
             else:
                 raise RuntimeError('Unknown transfer type %s' % transType)
-            print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],
-                                           CareTier.names[newTier], tot)
-            print 'pairList: %s' % str([(wt, tpl[0]) for wt, tpl in pairList])
-            print 'newTier: %s' % CareTier.names[newTier]
+#             print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],
+#                                            CareTier.names[newTier], tot)
+#             print 'pairList: %s' % str([(wt, tpl[0]) for wt, tpl in pairList])
+#             print 'newTier: %s' % CareTier.names[newTier]
 
             try:
                 return [addr for destNm, addr
