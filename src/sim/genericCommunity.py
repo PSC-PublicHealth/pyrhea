@@ -80,9 +80,6 @@ def importCommunity(moduleName):
     for attr in attrs:
         if not hasattr(module, attr):
             setattr(module, attr, getattr(curModule, attr))
-            print 'setting %s' % attr
-        else:
-            print 'not setting %s' % attr
 
 
 def lencode(thing):
@@ -845,7 +842,6 @@ def checkSchema(facilityDescr):
 ###########
 # Initialize the module
 ###########
-print 'importConstants %s %s' % (_constants_values, _constants_schema)
 _constants = pyrheautils.importConstants(_constants_values,
                                          _constants_schema)
 
