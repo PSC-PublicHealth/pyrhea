@@ -52,15 +52,15 @@ def loadInitialWeightDict(modelDir):
             weightSetDict[key] = yaml.load(f)
     return weightSetDict
 
-def loadWeightDict(weightDir, suffix):
-    weightSetDict = {}
-    for key, path in [('vsnf', 'com_to_vsnf_inv_sep_{0}.yaml'.format(suffix)),
-                     ('snf', 'com_to_snf_inv_sep_{0}.yaml'.format(suffix)),
-                     ('hospital', 'com_to_hosp_inv_sep_{0}.yaml'.format(suffix)),
-                     ('ltach', 'com_to_ltach_inv_sep_{0}.yaml'.format(suffix))]:
-        with open(os.path.join(modelDir, path), 'rU') as f:
-            weightSetDict[key] = yaml.load(f)
-    return weightSetDict
+# def loadWeightDict(weightDir, suffix):
+#     weightSetDict = {}
+#     for key, path in [('vsnf', 'com_to_vsnf_inv_sep_{0}.yaml'.format(suffix)),
+#                      ('snf', 'com_to_snf_inv_sep_{0}.yaml'.format(suffix)),
+#                      ('hospital', 'com_to_hosp_inv_sep_{0}.yaml'.format(suffix)),
+#                      ('ltach', 'com_to_ltach_inv_sep_{0}.yaml'.format(suffix))]:
+#         with open(os.path.join(modelDir, path), 'rU') as f:
+#             weightSetDict[key] = yaml.load(f)
+#     return weightSetDict
 
 def rescaleWeights(weightSetDict, popRatios):
     missingSet = set()
