@@ -35,13 +35,13 @@ from typebase import DiagClassA, CareTier, PatientOverallHealth
 from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
 from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
+from facilitybase import MissingPatientRecordError
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
 import time
 import psutil
-from Cython.Tempita._tempita import attr
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,6 @@ _constants_schema = 'community_constants_schema.yaml'
 _constants = None
 
 
-
-
 def importCommunity(moduleName):
     print 'importCommunity %s' % moduleName
     attrs = (
@@ -63,7 +61,6 @@ def importCommunity(moduleName):
         '_validator',
         '_constants_values',
         '_constants_schema',
-        '_constants',
         'CommunityWard',
         'CommunityManager',
         'Community',
@@ -80,6 +77,15 @@ def importCommunity(moduleName):
     for attr in attrs:
         if not hasattr(module, attr):
             setattr(module, attr, getattr(curModule, attr))
+    ###########
+    # Load constants
+    ###########
+    global _constants
+    _constants = pyrheautils.importConstants(_constants_values,
+                                             _constants_schema)
+    if not hasattr(module, '_constants'):
+        setattr(module, '_constants', _constants)
+
 
 
 def lencode(thing):
@@ -534,9 +540,11 @@ class CommunityManager(FacilityManager):
 
 class Community(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None,
-                 managerClass=None):
+                 managerClass=None, wardClass=None):
         if managerClass is None:
             managerClass = CommunityManager
+        if wardClass is None:
+            wardClass = CommunityWard
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
@@ -547,8 +555,8 @@ class Community(Facility):
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
         self.setCDFs(_constants['losModelMap'])
-        self.addWard(CommunityWard(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                                   patch, nBeds))
+        self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                               patch, nBeds))
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
 
@@ -838,10 +846,6 @@ def checkSchema(facilityDescr):
     nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
 
-
-###########
-# Initialize the module
-###########
-_constants = pyrheautils.importConstants(_constants_values,
-                                         _constants_schema)
-
+################
+# Constants are loaded when the client module calls importCommunity()
+################
