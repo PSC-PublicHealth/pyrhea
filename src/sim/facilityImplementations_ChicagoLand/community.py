@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 from scipy.stats import expon
 from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
+from pathogenbase import PthStatus
 import facilitybase
 import genericCommunity
 
@@ -95,11 +96,16 @@ class CommunityManager(genericCommunity.CommunityManager):
 class CommunityWard(genericCommunity.CommunityWard):
     def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent"""
-        timeTupleL = facilitybase.buildTimeTupleList(agent, timeNow)
+        timeTupleL = facilitybase.buildTimeTupleList(agent, 
+                                                     (timeNow if timeNow is not None else 0))
+        if len(timeTupleL) < 2:
+            cameFrom = 'COMMUNITY'
+        else:
+            cameFrom = timeTupleL[1][2]
         if agent._status.pthStatus == PthStatus.COLONIZED:
-            return 'colonized'
+            return '%s_colonized' % cameFrom
         elif agent._status.pthStatus == PthStatus.CLEAR:
-            return 'base'
+            return '%s_base' % cameFrom
         else:
             raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
                                                 (agent.name,
@@ -111,7 +117,8 @@ class Community(genericCommunity.Community):
         self.meanPop = descr['meanPop']['value']
         super(Community, self).__init__(descr, patch, policyClasses=policyClasses,
                                         categoryNameMapper=categoryNameMapper,
-                                        managerClass=CommunityManager)
+                                        managerClass=CommunityManager,
+                                        wardClass=CommunityWard)
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):
     return genericCommunity.generateFull(facilityDescr, patch, policyClasses=policyClasses,

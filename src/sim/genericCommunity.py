@@ -54,7 +54,6 @@ _constants = None
 
 
 def importCommunity(moduleName):
-    print 'importCommunity %s' % moduleName
     attrs = (
         'category',
         '_schema',
@@ -459,11 +458,13 @@ class CommunityWard(Ward):
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
         except:
             self.orig.close()
-            self.orig = interdict.InterDict(oName, overwrite_existing=True, convert_int=True, val_serialization='pickle')
+            self.orig = interdict.InterDict(oName, overwrite_existing=True,
+                                            convert_int=True, val_serialization='pickle')
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
 
         self.infoList = [True,1,1]  # we'll overwrite this shortly.  This deals with a chicken/egg problem
-        self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self, self.orig, self.changed, self.infoList, key))
+        self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self,
+                                                              self.orig, self.changed, self.infoList, key))
         self.newArrivals = []
 
     def classify(self, agent, timeNow):
@@ -493,6 +494,7 @@ class CommunityManager(FacilityManager):
         for ward in self.fac.getWards():
             if dT != 0:
                 for patCat, freezer in ward.freezers.items():
+                    print '%s vs %s' % (patCat, self.fac.cachedCDFs.keys())
                     assert patCat in self.fac.cachedCDFs, ('%s has no CDF for patient category %s' %
                                                            (self.fac.name, patCat))
                     pThaw = self.getProbThaw(patCat, dT)
@@ -711,7 +713,7 @@ def _populate(fac, descr, patch):
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
-        ward.freezers[ward.classify(a)].freezeAndStore(a)
+        ward.freezers[ward.classify(a, None)].freezeAndStore(a)
     return []
 
 TotalCommunity=0
