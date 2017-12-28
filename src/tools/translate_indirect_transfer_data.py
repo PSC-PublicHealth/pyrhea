@@ -16,9 +16,9 @@
 ###################################################################################
 
 """
-This program runs somewhere on a cluster host, submitting batch jobs and reading
-results to find the parameter point which minimizes a scalar measure.  The use
-case is back-calculating run parameters to match a given set of measured values.
+This program parses a CSV file extracted from an xlsx representation of a transfer 
+matrix and outputs the transfer data in yaml form.  This version is designed for
+indirect transfers.
 """
 
 import sys
@@ -91,6 +91,8 @@ def main():
     hospTbl = {}
     nhTbl = {}
     hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
+    toSnfCt = 0
+    toHospCt = 0
     for rec in recs:
         src = str(rec['UNIQUE_ID'])
         if facDict[src]['category'] in hospCatList:
@@ -100,10 +102,18 @@ def main():
         assert src not in tbl, 'Duplicate entry for source %s' % src
         tbl[src] = {}
         for dst in [k for k in keys if k != 'UNIQUE_ID']:
-            n = rec[k]
+            n = rec[dst]
             if n != 0:
                 assert str(dst) not in tbl[src], 'redundant entry for %s %s' % (src, dst)
                 tbl[src][str(dst)] = n
+                if facDict[src]['category'] in hospCatList:
+                    print '%s -> %s' % (facDict[src]['category'], facDict[str(dst)]['category'])
+                    if facDict[str(dst)]['category'] in hospCatList:
+                        toHospCt += n
+                    else:
+                        toSnfCt += n
+    print 'hosp -> hosp %s' % toHospCt
+    print 'hosp -> snf %s' % toSnfCt
     print 'parsed'
     with open('hosp_indirect_transfer_counts.yaml', 'w') as f:
         yaml.dump(hospTbl, f, indent=4, encoding='utf-8',width=130,explicit_start=True)
