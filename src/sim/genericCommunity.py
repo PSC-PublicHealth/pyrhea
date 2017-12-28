@@ -494,7 +494,6 @@ class CommunityManager(FacilityManager):
         for ward in self.fac.getWards():
             if dT != 0:
                 for patCat, freezer in ward.freezers.items():
-                    print '%s vs %s' % (patCat, self.fac.cachedCDFs.keys())
                     assert patCat in self.fac.cachedCDFs, ('%s has no CDF for patient category %s' %
                                                            (self.fac.name, patCat))
                     pThaw = self.getProbThaw(patCat, dT)
@@ -502,7 +501,8 @@ class CommunityManager(FacilityManager):
                     try:
                         nThawed = binom.rvs(nFroz, pThaw)
                     except ValueError:
-                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz, pThaw)
+                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz,
+                                                                         pThaw)
                         raise
                     self.fac.getNoteHolder().addNote({('thawed_%s' % timeNow) : nThawed })
                     changedList = random.sample(freezer.frozenAgentList, nThawed)

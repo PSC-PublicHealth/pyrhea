@@ -637,7 +637,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         self._status = PatientStatus(PatientOverallHealth.HEALTHY,
                                      self._diagnosis.diagClassA, 0,
                                      self._diagnosis.pthStatus, 0,
-                                     False, True, True, None, 
+                                     False, True, True, None,
 #                                     '', -1
                                      )
         abbrev = self.ward.fac.abbrev
@@ -679,21 +679,21 @@ class PatientAgent(pyrheabase.PatientAgent):
     def getPthDiagnosis(self):
         """Accessor for private diagnosis pathogen info"""
         return self._diagnosis.pthStatus
-    
+
     def setTreatment(self, **kwargs):
         """
         keyword arguments are elements of PatientTreatment, for example 'rehab'.
         The associated values must be boolean.
         """
         self._treatment = self._treatment._replace(**kwargs)
-        
+
     def getTreatment(self, key):
         """
         key is one of the elements of PatientTreatment, for example 'rehab'.
         Returns a boolean for the state of that treatment element for this patient.
         """
         return self._treatment._asdict()[key]
-    
+
     def updateDiseaseState(self, treatment, facility, timeNow):  # @UnusedVariable
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
@@ -706,7 +706,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                    self.lastUpdateTime, timeNow)
                     treeL.append(tree)
             except Exception, e:
-                self.logger.critical('Got exception %s on patient %s (id %s) for tree %s'
+                self.logger.critical('Got exception %s on patient %s (id %s) for from %s'
                                      % (str(e), self.name, self.id, str(src)))
                 raise
             try:

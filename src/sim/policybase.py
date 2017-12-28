@@ -38,7 +38,7 @@ class DiagnosticPolicy(Policy):
         """
         This is called on patients when they arrive at a ward.
         """
-        pass  # For example, communities do nothing on patient arrival
+        logger.debug('%s arrives %s %s', '%s_%s'%patient.id, ward._name, timeNow)
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """

@@ -185,8 +185,9 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
 #             print 'newTier: %s' % CareTier.names[newTier]
 
             try:
-                return [addr for destNm, addr
-                        in transferbydrawwithreplacement.randomOrderByWt(pairList, tot)]  # @UnusedVariable
+                return [addr for destNm, addr                                   # @UnusedVariable
+                        in transferbydrawwithreplacement.randomOrderByWt(pairList, tot,
+                                                                         cull=thisFacility.abbrev)]
             except IndexError, e:
                 LOGGER.error('Hit IndexError %s for %s %s -> %s at %s', e, thisFacility.abbrev,
                                oldTier, newTier, timeNow)

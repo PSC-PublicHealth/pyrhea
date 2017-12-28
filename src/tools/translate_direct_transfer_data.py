@@ -18,7 +18,7 @@
 """
 This program parses a CSV file extracted from an xlsx representation of a transfer 
 matrix and outputs the transfer data in yaml form.  This version is designed for
-indirect transfers.
+direct transfers.
 """
 
 import sys
@@ -46,7 +46,7 @@ INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 LOGGER = None
 
-inputCSV = '../../models/ChicagoLand/Matrices_LOS_09292016_cleaned_Transfer365day.csv'
+inputCSV = '../../models/ChicagoLand/Matrices_LOS_09292016_cleaned_Transfer3day.csv'
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -79,7 +79,6 @@ def main():
         for elt in inputDict['pathTranslations']:
             pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
 
-#    loadPthInfo(inputDict['pathogenImplementationDir'])
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
     print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
@@ -88,24 +87,19 @@ def main():
 
     with open(os.path.join(os.path.dirname(__file__), inputCSV), 'rU') as f:
         keys, recs = csv_tools.parseCSV(f)
-    hospTbl = {}
-    nhTbl = {}
+    allTbl = {}
     hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
     toSnfCt = 0
     toHospCt = 0
     for rec in recs:
         src = str(rec['UNIQUE_ID'])
-        if facDict[src]['category'] in hospCatList:
-            tbl = hospTbl
-        else:
-            tbl = nhTbl
-        assert src not in tbl, 'Duplicate entry for source %s' % src
-        tbl[src] = {}
+        assert src not in allTbl, 'Duplicate entry for source %s' % src
+        allTbl[src] = {}
         for dst in [k for k in keys if k != 'UNIQUE_ID']:
             n = rec[dst]
             if n != 0:
-                assert str(dst) not in tbl[src], 'redundant entry for %s %s' % (src, dst)
-                tbl[src][str(dst)] = n
+                assert str(dst) not in allTbl[src], 'redundant entry for %s %s' % (src, dst)
+                allTbl[src][str(dst)] = n
                 if facDict[src]['category'] in hospCatList:
                     print '%s -> %s' % (facDict[src]['category'], facDict[str(dst)]['category'])
                     if facDict[str(dst)]['category'] in hospCatList:
@@ -115,10 +109,8 @@ def main():
     print 'hosp -> hosp %s' % toHospCt
     print 'hosp -> snf %s' % toSnfCt
     print 'parsed'
-    with open('hosp_indirect_transfer_counts.yaml', 'w') as f:
-        yaml.dump(hospTbl, f, indent=4, encoding='utf-8',width=130,explicit_start=True)
-    with open('nh_readmit_transfer_counts.yaml', 'w') as f:
-        yaml.dump(nhTbl, f, indent=4, encoding='utf-8',width=130,explicit_start=True)
+    with open('direct_transfer_counts.yaml', 'w') as f:
+        yaml.dump(allTbl, f, indent=4, encoding='utf-8',width=130,explicit_start=True)
     print 'done'
 
 

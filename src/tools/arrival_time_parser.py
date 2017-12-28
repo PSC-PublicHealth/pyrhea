@@ -54,7 +54,7 @@ hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
 
 inputTxt = 'arrivals_year_run_ChicagoLand.txt'
 
-directTransferData = ['$(MODELDIR)/transfer_counts.yaml']
+directTransferData = ['$(MODELDIR)/direct_transfer_counts.yaml']
 # indirectTransferData = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
 #                         '$(MODELDIR)/constants/nh_readmit_transfer_matrix.yaml']
 indirectTransferData = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
@@ -114,6 +114,23 @@ def addDepartureTime(tupleL):
     return rslt
 
 
+def mergeSelfTransfers(tupleL):
+    """
+    If two adjacent tuples represent a direct transfer to self, merge them.
+    """
+    rslt = []
+    if tupleL:
+        prevLoc, prevArrival, prevDeparture = tupleL[0]
+        for loc, arrival, departure in tupleL[1:]:
+            if loc != prevLoc or arrival != prevDeparture:
+                rslt.append((prevLoc, prevArrival, prevDeparture))
+                prevLoc, prevArrival, prevDeparture = loc, arrival, departure
+            else:
+                prevDeparture = departure
+        rslt.append((prevLoc, prevArrival, prevDeparture))
+    return rslt
+    
+
 def filterPath(tupleL, testFun, facDict, patName):
     rslt = [tpl for tpl in tupleL if testFun(tpl[0], facDict, patName)]
     return rslt
@@ -142,7 +159,7 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
     return counts
 
 
-def plotImg(mtx, minVal, maxVal):
+def plotLogImg(mtx, minVal, maxVal):
     fltIm = np.log10(mtx.astype(np.float32) + 1.0)
     myMin = np.log10(float(minVal) + 1.0)
     myMax = np.log10(float(maxVal) + 1.0)
@@ -156,6 +173,27 @@ def plotImg(mtx, minVal, maxVal):
 #                       origin='lower',
 #                       extent=[-3, 3, -3, 3]
                )
+
+def plotImg(mtx, minVal, maxVal):
+    fltIm = mtx.astype(np.float32)
+    myMin, myMax = minVal, maxVal
+    return plt.imshow(fltIm,
+                      cmap=cm.bwr,
+                      vmin=myMin, vmax=myMax,
+                      )
+
+def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
+    mtx = np.zeros_like(protoMtx)
+    for dataPth in [pyrheautils.pathTranslate(pth) for pth in filePathL]:
+        with open(dataPth, 'rU') as f:
+            data = yaml.safe_load(f)
+            for srcLoc, dstD in data.items():
+                for dstLoc, ct in dstD.items():
+                    srcIdx = facIdxTbl[srcLoc] if srcLoc in facIdxTbl else commIdx
+                    dstIdx = facIdxTbl[dstLoc] if dstLoc in facIdxTbl else commIdx
+                    mtx[srcIdx, dstIdx] += ct
+    return mtx
+
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -235,10 +273,12 @@ def main():
 
         #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleDirect, facDict, patName)
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
+        filtTupleL = mergeSelfTransfers(filtTupleL)
         directCounts += accumulate(directMtx, filtTupleL, 0, 3, facIdxTbl, facDict, commIdx)
 
         #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleIndirect, facDict, patName)
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
+        filtTupleL = mergeSelfTransfers(filtTupleL)
         indirectCounts += accumulate(indirectMtx, filtTupleL, 4, 365, facIdxTbl, facDict, commIdx)
 
     print 'directCounts = %s' % directCounts
@@ -250,41 +290,37 @@ def main():
     maxVal = max(np.max(directMtx), np.max(indirectMtx))
 
     ax11 = plt.subplot(2, 2, 1)
-    ax11.set_title('direct')
-    plotImg(directMtx, 0.0, float(maxVal))
-    ax12 = plt.subplot(2, 2, 2)
-    ax12.set_title('indirect')
-    plotImg(indirectMtx, 0.0, float(maxVal))
-    ax21 = plt.subplot(2, 2, 3)
-    ax21.set_title('measured direct')
+    ax11.set_title('log direct')
+    plotLogImg(directMtx, 0.0, float(maxVal))
 
-    measDirectMtx = np.zeros_like(directMtx)
-    for dataPth in [pyrheautils.pathTranslate(pth) for pth in directTransferData]:
-        with open(dataPth, 'rU') as f:
-            data = yaml.safe_load(f)
-            for srcLoc, dstD in data.items():
-                for dstLoc, ct in dstD.items():
-                    srcIdx = facIdxTbl[srcLoc] if srcLoc in facIdxTbl else commIdx
-                    dstIdx = facIdxTbl[dstLoc] if dstLoc in facIdxTbl else commIdx
-                    measDirectMtx[srcIdx, dstIdx] += ct
+    ax12 = plt.subplot(2, 2, 2)
+    ax12.set_title('log indirect')
+    plotLogImg(indirectMtx, 0.0, float(maxVal))
+
+    plt.colorbar(ax=[ax11, ax12])
+
+    measDirectMtx = mtxFromYaml(directTransferData, directMtx, facIdxTbl, commIdx)
     sclMtx = (float(np.sum(directMtx))/float(np.sum(measDirectMtx))) * measDirectMtx
-    plotImg(sclMtx, 0.0, float(maxVal))
+    #deltaMtx = (2.0*(directMtx - sclMtx)/(directMtx + sclMtx))
+    directDeltaMtx = directMtx - sclMtx
+    #directDeltaMtx[0:100, 0:100] = 0.0
+
+    measIndirectMtx = mtxFromYaml(indirectTransferData, indirectMtx, facIdxTbl, commIdx)
+    sclMtx = (float(np.sum(indirectMtx))/float(np.sum(measIndirectMtx))) * measIndirectMtx
+    #deltaMtx = (2.0*(indirectMtx - sclMtx)/(directMtx + sclMtx))
+    indirectDeltaMtx = indirectMtx - sclMtx
+    #indirectDeltaMtx[0:100, 0:100] = 0.0
+    lim = max(np.max(np.fabs(directDeltaMtx)), np.max(np.fabs(indirectDeltaMtx)))
+
+    ax21 = plt.subplot(2, 2, 3)
+    ax21.set_title('normalized direct delta')
+    plotImg(directDeltaMtx, -lim, lim)
 
     ax22 = plt.subplot(2, 2, 4)
-    ax22.set_title('measured indirect')
+    ax22.set_title('normalized indirect delta')
+    plotImg(indirectDeltaMtx, -lim, lim)
 
-    measIndirectMtx = np.zeros_like(indirectMtx)
-    for dataPth in [pyrheautils.pathTranslate(pth) for pth in indirectTransferData]:
-        with open(dataPth, 'rU') as f:
-            data = yaml.safe_load(f)
-            for srcLoc, dstD in data.items():
-                for dstLoc, ct in dstD.items():
-                    srcIdx = facIdxTbl[srcLoc] if srcLoc in facIdxTbl else commIdx
-                    dstIdx = facIdxTbl[dstLoc] if dstLoc in facIdxTbl else commIdx
-                    measIndirectMtx[srcIdx, dstIdx] += ct
-    plotImg(measIndirectMtx, 0.0, float(maxVal))
-
-    plt.colorbar(ax=[ax11, ax12, ax21, ax22])
+    plt.colorbar(ax=[ax21, ax22])
     plt.show()
 
 if __name__ == "__main__":

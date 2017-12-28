@@ -139,7 +139,10 @@ class LOSPlotter(object):
             else:
                 self.fullCRVs['VSNF'] = fullCRVFromLOSModel(constants['nhLOSModel'])
         elif facToImplDict[descr['category']] == 'COMMUNITY':
-            self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
+            if 'communityLOSModel' in constants:
+                self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
+            else:
+                self.fullCRVs['HOME'] = None
         else:
             raise RuntimeError("facility %s has unknown category %s - cannot plot LOS"
                                % (descr['abbrev'], descr['category']))
@@ -149,11 +152,12 @@ class LOSPlotter(object):
         the bar for integer N at x=N, but that bar really represents the integral of the PDF
         from (N-1) to N and so should be centered at x = (N - 0.5)."""
         if tier in self.fullCRVs:
-            curveX = np.linspace(rMin, rMax, nBins)
-            boundedScale = scale / (self.fullCRVs[tier].cdf(rMax)
-                                    - self.fullCRVs[tier].cdf(rMin))
-            curveY = self.fullCRVs[tier].pdf(curveX - 0.5) * boundedScale
-            axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
+            if self.fullCRVs[tier] is not None:  # meaning we have no LOS model
+                curveX = np.linspace(rMin, rMax, nBins)
+                boundedScale = scale / (self.fullCRVs[tier].cdf(rMax)
+                                        - self.fullCRVs[tier].cdf(rMin))
+                curveY = self.fullCRVs[tier].pdf(curveX - 0.5) * boundedScale
+                axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
 def loadFacilityDescription(abbrev, facilityDirs):

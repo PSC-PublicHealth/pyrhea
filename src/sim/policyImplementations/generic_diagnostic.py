@@ -86,6 +86,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
         """
         This is called on patients when they arrive at a ward.
         """
+        BaseDiagnosticPolicy.handlePatientArrival(self, ward, patient, transferInfoDict, timeNow)
         # Check for any info delivered with the transfer
         if 'carriesPth' in transferInfoDict:
             # Transfer probability was checked on the sending end

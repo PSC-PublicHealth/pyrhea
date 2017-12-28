@@ -33,13 +33,18 @@ _constants = None
 logger = logging.getLogger(__name__)
 
 
-def randomOrderByWt(pairList, tot):
+def randomOrderByWt(pairList, tot, cull=None):
     """
     Given a list of the form [(weight, info), ...] in reverse sorted order
     and a value tot which is the sum of all the weights, return a list of
-    info elements in weighted random order.
+    info elements in weighted random order.  If cull is not None, exclude
+    info[0]b==cull from the randomized list.
     """
-    pairList = deque(pairList)
+    if cull is None:
+        pairList = deque(pairList)
+    else:
+        tot -= sum([wt for wt, info in pairList if info == cull])
+        pairList = deque([(wt, info) for wt, info in pairList if info[0] != cull])
     shuffledList = []
 #    shuffledList_sav = [info for weight, info in pairList]
     try:
@@ -160,7 +165,7 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
 #         print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
 #         print 'newTier: %s' % CareTier.names[newTier]
         try:
-            return [b for a, b in randomOrderByWt(pairList, tot)]
+            return [b for a, b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
                            oldTier, newTier, timeNow)
