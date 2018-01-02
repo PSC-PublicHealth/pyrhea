@@ -52,7 +52,7 @@ LOGGER = None
 
 hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
 
-inputTxt = 'arrivals_year_run_ChicagoLand.txt'
+inputTxt = 'arrivals_year_run_ChicagoLand_directonly.txt'
 
 directTransferData = ['$(MODELDIR)/direct_transfer_counts.yaml']
 # indirectTransferData = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
@@ -322,6 +322,8 @@ def main():
 
     plt.colorbar(ax=[ax21, ax22])
     plt.show()
+    
+    print indirectDeltaMtx[18:23, 20:28]
 
 if __name__ == "__main__":
     main()
