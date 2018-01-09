@@ -19,16 +19,27 @@ import logging
 from typebase import CareTier, PatientDiagnosis, PatientOverallHealth, DiagClassA
 from pathogenbase import PthStatus, defaultPthStatus
 
+from phacsl.utils.classutils import ClassIsInstanceMeta
+
 logger = logging.getLogger(__name__)
 
 
 class Policy(object):
+    
+    __metaclass__ = ClassIsInstanceMeta
+
     def __init__(self, patch, categoryNameMapper):
         self.patch = patch
         self.categoryNameMapper = categoryNameMapper
 
 
 class DiagnosticPolicy(Policy):
+    def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
+        """
+        This is called on patients when they arrive at a ward.
+        """
+        logger.debug('%s arrives %s %s', '%s_%s'%patient.id, ward._name, timeNow)
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
@@ -208,7 +219,7 @@ class TreatmentPolicy(Policy):
 
 
 class TransferDestinationPolicy(Policy):
-    def getOrderedCandidateFacList(self, facility, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier, timeNow):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 class ScenarioPolicy(object):

@@ -97,7 +97,7 @@ class CapacityTransferDestinationPolicy(BaseTransferDestinationPolicy):
         super(CapacityTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = CapacityCore(patch, categoryNameMapper)
 
-    def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
         pairList = deque(self.core.tbl[newTier])
         tot = self.core.totTbl[newTier]
 #         print 'newTier: %s' % CareTier.names[newTier]

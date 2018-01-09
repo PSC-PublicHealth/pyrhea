@@ -173,7 +173,7 @@ def _populate(fac, descr, patch):
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         agentList.append(a)
     return agentList
 

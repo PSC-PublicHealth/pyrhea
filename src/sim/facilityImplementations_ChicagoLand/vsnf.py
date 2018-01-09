@@ -141,9 +141,9 @@ class VentSNF(Facility):
             lclRates, pthRates = tpl
             self.rateD[tier] = (lclRates, None)  # force recalculation of biases
 
-    def getOrderedCandidateFacList(self, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
         """Specialized to prioritize transfers to our own wards if possible"""
-        facAddrList = super(VentSNF, self).getOrderedCandidateFacList(oldTier, newTier,
+        facAddrList = super(VentSNF, self).getOrderedCandidateFacList(patientAgent, oldTier, newTier,
                                                                       timeNow)
         if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]
             and oldTier != newTier):
@@ -223,7 +223,7 @@ def _populate(fac, descr, patch):
             ward.lock(a)
             fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                   fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                                  0)
+                                  None)
             agentList.append(a)
     return agentList
 

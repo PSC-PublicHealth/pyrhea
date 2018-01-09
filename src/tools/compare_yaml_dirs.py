@@ -127,8 +127,10 @@ def loadByFName(dirPath):
                         continue
                     keyS.update(newD.keys())
                     resultD[nm] = newD
-            except:
-                print 'Could not open %s' % fullPath
+            except IOError, e:
+                print 'Could not open %s: %s' % (fullPath, e)
+            except Exception, e:
+                print 'Failed to parse %s: %s' % (fullPath, e)
     return list(keyS), resultD
 
 def main():

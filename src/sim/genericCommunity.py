@@ -18,23 +18,30 @@
 import os.path
 import sys
 import random
-from scipy.stats import expon, binom
 import logging
 import types
 from collections import defaultdict
 
+from phacsl.utils.collections.phacollections import DefaultDict
+import phacsl.utils.collections.interdict as interdict
 
 import cPickle as pickle
 import gzip
+from scipy.stats import expon, binom
 
 import pyrheabase
 import pyrheautils
-from facilitybase import DiagClassA, CareTier, TreatmentProtocol, BirthQueue, HOMEQueue
-from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, PatientStatusSetter
+from typebase import DiagClassA, CareTier, PatientOverallHealth
+from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
+from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
+from facilitybase import MissingPatientRecordError
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
+
+import time
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +60,6 @@ def importCommunity(moduleName):
         '_validator',
         '_constants_values',
         '_constants_schema',
-        '_constants',
         'CommunityWard',
         'CommunityManager',
         'Community',
@@ -65,13 +71,20 @@ def importCommunity(moduleName):
     logger = logging.getLogger(moduleName)
 
     module = sys.modules[moduleName]
-    
+
     curModule = sys.modules[__name__]
     for attr in attrs:
         if not hasattr(module, attr):
             setattr(module, attr, getattr(curModule, attr))
+    ###########
+    # Load constants
+    ###########
+    global _constants
+    _constants = pyrheautils.importConstants(_constants_values,
+                                             _constants_schema)
+    if not hasattr(module, '_constants'):
+        setattr(module, '_constants', _constants)
 
-    
 
 
 def lencode(thing):
@@ -139,6 +152,8 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
+cacheVer = 6
+LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
     pass
@@ -214,16 +229,245 @@ class Freezer(object):
         return agent
 
 
+class InvalidCacheVer(Exception):
+    pass
+
+def mapLMDBAbbrev(abbrev):
+    return 'all'
+
+def mapLMDBSegments(abbrev, iDict):
+    global cacheVer
+    segmentInfoId = 0
+    idsPerFac = 1000000000
+    startId = 100
+
+    try:
+        segmentInfo = iDict[segmentInfoId]
+    except:
+        segmentInfo = [cacheVer, startId, {}]
+        # this will necessarily get written later so don't bother yet.
+
+    if segmentInfo[0] != cacheVer:
+        raise InvalidCacheVer()
+
+    cv, nextId, segmentDict = segmentInfo
+    if abbrev in segmentDict:
+        return segmentDict[abbrev]
+
+    ret = segmentDict[abbrev] = nextId
+    nextId += idsPerFac
+    iDict[segmentInfoId] = [cv, nextId, segmentDict]
+    return ret
+    
+
+class CopyOnWriteLMDBFreezer(Freezer):
+    _AgentListId = 0
+    _SavedInfoListId = 1
+    _SavedWardDataId = 2
+    
+    def __init__(self, ward, orig, changed, infoList, pType):
+        """
+        This is a freezer for community agents that is stored in an LMDB InterDict rather than in memory.
+        It is stored in two parts so that the community agents can be cached and then changed community
+        members are written to a second LMDB file.
+        
+        A given ward can have multiple freezers to store multiple types of community agents but it's useful
+        to have all freezers in one pair of interdicts.  To this end there is an infoPointer which is a list
+        of values that help the multiple freezers interact.
+
+        ward: this is the ward that is associated with the freezer
+        orig: this is the InterDict where the cached community agents are stored.  By default this is not modified.
+        changed: any newly stored agents are saved here
+        infoList: this is a list shared between all freezers using the same pair of interdicts with the following values:
+            origRO: if True (normal usage) write new agents to changed.  For building the cache set to False
+                    and all new members will be written to orig
+            maxOrig: when looking up an agent, any ID less than this will be found in orig, otherwise found in changed
+            nextID: next ID value to write
+        pType: this is the key used for the dict of freezers in the ward
+        """
+        self.ward = ward
+        self.frozenAgentClass = PatientAgent
+        self.frozenAgentLoggerName = None
+        self.frozenAgentTypePattern = None
+        self.orig = orig
+        self.changed = changed
+        self.infoList = infoList
+        self.pType = pType
+        self.iDictOffset = self.ward.iDictOffset
+        try:
+            self.frozenAgentList = self.orig[self._AgentListId+self.iDictOffset][pType]
+        except:
+            self.frozenAgentList = set()
+
+    def freezeAndStore(self, agent):
+        if agent in self.ward._lockingAgentList:
+            self.ward._lockingAgentList.remove(agent)
+        self.ward.suspend(agent)
+        assert agent not in self.ward._lockingAgentList, 'It is still there!'
+        assert agent in self.ward._lockQueue, 'It is not there!'
+        self.ward._lockQueue.remove(agent)
+        d = agent.__getstate__()
+        agent.kill()
+        if d['newLocAddr'] is None or d['newLocAddr'] == self.ward.getGblAddr():
+            del d['newLocAddr']
+        else:
+            raise FreezerError('%s cannot freezedry %s because it is still in motion'
+                               % (self.ward._name, d['name']))
+        if self.frozenAgentLoggerName is None:
+            self.frozenAgentLoggerName = d['loggerName']
+            del d['loggerName']
+        elif d['loggerName'] == self.frozenAgentLoggerName:
+            del d['loggerName']
+        else:
+            raise FreezerError('%s cannot freezedry %s because it has the wrong logger'
+                               % (self.ward._name, d['name']))
+
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            self.changed[nextId] = d
+        else:
+            self.orig[nextId] = d
+            self.infoList[1] = nextId
+        self.frozenAgentList.add(nextId)
+        self.infoList[2] += 1
+
+        
+    def removeAndThaw(self, frozenAgent):
+        self.frozenAgentList.remove(frozenAgent)
+        origRO, maxOrig, nextId = self.infoList
+        if frozenAgent <= maxOrig:
+            d = self.orig[frozenAgent]
+        else:
+            d = self.changed[frozenAgent]
+            del self.changed[frozenAgent]
+
+        d['locAddr'] = self.ward.getGblAddr()
+        d['newLocAddr'] = self.ward.getGblAddr()
+        d['loggerName'] = self.frozenAgentLoggerName
+        agent = self.frozenAgentClass.__new__(self.frozenAgentClass)
+        agent.__setstate__(d)
+        agent.reHome(self.ward.patch)
+        # NEED to check locking agent count
+        self.ward._lockQueue.append(agent)
+        self.ward.awaken(agent)
+        self.ward._lockingAgentList.append(agent)
+        global LastMemCheck
+        if time.time() > 60.0 + LastMemCheck:
+            p = psutil.Process()
+            print p.memory_full_info()
+            LastMemCheck = time.time()
+        return agent
+
+    def saveFreezerData(self):
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
+        try:
+            agentListDict = self.changed[self._AgentListId+self.iDictOffset]
+        except:
+            agentListDict = {}
+        agentListDict[self.pType] = self.frozenAgentList
+        lDict[self._AgentListId+self.iDictOffset] = agentListDict
+
+
+    def saveInfoList(self):
+        # save the infoList
+        # however we should save it with origRO flag set to True
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
+        tmpIL = self.infoList[:]
+        tmpIL[0] = True
+        lDict[self._SavedInfoListId+self.iDictOffset] = tmpIL
+
+    def getInfoList(self, fromOrig=True):
+        if fromOrig:
+            return self.orig[self._SavedInfoListId+self.iDictOffset]
+        else:
+            return self.changed[self._SavedInfoListId+self.iDictOffset]
+            
+    def saveWardData(self, data):
+        origRO, maxOrig, nextId = self.infoList
+        if origRO:
+            lDict = self.changed
+        else:
+            lDict = self.orig
+
+        lDict[self._SavedWardDataId+self.iDictOffset] = data
+
+    def getWardData(self, fromOrig=True):
+        if fromOrig:
+            return self.orig[self._SavedWardDataId+self.iDictOffset]
+        else:
+            return self.changed[self._SavedWardDataId+self.iDictOffset]
+
+def makeLMDBDirs():
+    origDir = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
+    if not os.path.exists(origDir):
+        os.makedirs(origDir)
+
+    changedDir = pyrheautils.pathTranslate('$(AGENTDIR)')
+    if not os.path.exists(changedDir):
+        os.makedirs(changedDir)
+
+def origFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/freezer_%s'%abbrev)
+
+def changedFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/freezer_%s'%abbrev)
+
+def patientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(AGENTDIR)/patientData_%s'%abbrev)
+    
+def cachePatientDataFname(abbrev):
+    abbrev = mapLMDBAbbrev(abbrev)
+    return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/patientData_%s'%abbrev)
+    
+
+InterdictMapping = {}
+
+
+def newFreezer(dd, ward, orig, changed, infoList, key):
+    freezer = CopyOnWriteLMDBFreezer(ward, orig, changed, infoList, key)
+    dd[key] = freezer
+    return freezer
+
 class CommunityWard(Ward):
     """This 'ward' type represents being out in the community"""
-    
-    def __init__(self, name, patch, nBeds):
+    def __init__(self, abbrev, name, patch, nBeds):
         Ward.__init__(self, name, patch, CareTier.HOME, nBeds=nBeds)
         self.checkInterval = 1  # so they get freeze dried promptly
-        self.freezers = defaultdict(lambda: Freezer(self))
+
+        oName = origFname(abbrev)
+        if oName in InterdictMapping:
+            self.orig = InterdictMapping[oName]
+        else:
+            self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
+            InterdictMapping[oName] = self.orig
+
+        self.changed = {}
+
+        try:
+            self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
+        except:
+            self.orig.close()
+            self.orig = interdict.InterDict(oName, overwrite_existing=True,
+                                            convert_int=True, val_serialization='pickle')
+            self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
+
+        self.infoList = [True,1,1]  # we'll overwrite this shortly.  This deals with a chicken/egg problem
+        self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self,
+                                                              self.orig, self.changed, self.infoList, key))
         self.newArrivals = []
 
-    def classify(self, agent):
+    def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent for freeze drying"""
         return "base"
 
@@ -257,7 +501,8 @@ class CommunityManager(FacilityManager):
                     try:
                         nThawed = binom.rvs(nFroz, pThaw)
                     except ValueError:
-                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz, pThaw)
+                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz,
+                                                                         pThaw)
                         raise
                     self.fac.getNoteHolder().addNote({('thawed_%s' % timeNow) : nThawed })
                     changedList = random.sample(freezer.frozenAgentList, nThawed)
@@ -270,7 +515,7 @@ class CommunityManager(FacilityManager):
                 if agent.debug:
                     agent.logger.debug('%s freezedrying %s at %s'
                                        % (ward._name, agent.name, timeNow))
-                ward.freezers[ward.classify(agent)].freezeAndStore(agent)
+                ward.freezers[ward.classify(agent, timeNow)].freezeAndStore(agent)
             ward.newArrivals = []
         self.fac.collectiveStatusStartDate = timeNow
 
@@ -297,9 +542,11 @@ class CommunityManager(FacilityManager):
 
 class Community(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None,
-                 managerClass=None):
+                 managerClass=None, wardClass=None):
         if managerClass is None:
             managerClass = CommunityManager
+        if wardClass is None:
+            wardClass = CommunityWard
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
                           descr, patch,
                           reqQueueClasses=[pyrheabase.FacRequestQueue, BirthQueue, HOMEQueue],
@@ -309,14 +556,29 @@ class Community(Facility):
         descr = self.mapDescrFields(descr)
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
-        losModel = _constants['communityLOSModel']
-        assert losModel['pdf'] == 'expon(lambda=$0)', \
-            "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
-        self.addWard(CommunityWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                                   patch, nBeds))
-        self.setCDFs(losModel)
+        self.setCDFs(_constants['losModelMap'])
+        self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                               patch, nBeds))
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
+
+        pdName = cachePatientDataFname(descr['abbrev'])
+        self.patientDataDict = {}
+        if pdName in InterdictMapping:
+            self.cachePatientDataDict = InterdictMapping[pdName]
+        else:
+            self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False, integer_keys=False,
+                                                            key_serialization='msgpack', val_serialization='pickle')
+            global cacheVer
+            if "cacheVer" not in self.cachePatientDataDict:
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            elif cacheVer != self.cachePatientDataDict["cacheVer"]:
+                self.cachePatientDataDict.close()
+                self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
+                                                                key_serialization='msgpack', val_serialization='pickle')
+                self.cachePatientDataDict["cacheVer"] = cacheVer
+            InterdictMapping[pdName] = self.cachePatientDataDict
+
 
     def flushCaches(self):
         """
@@ -325,14 +587,17 @@ class Community(Facility):
         changed.  This method is called when the environment wants to trigger a cache
         flush.
         """
-        self.treeCache = {}        
+        self.treeCache = {}
 
-    def setCDFs(self, losModel):
-        baseRate = losModel['parms'][0]
-        self.cachedCDFs = {"base": CachedCDFGenerator(expon(scale=1.0/baseRate))}
-        
+    def setCDFs(self, losModelMap):
+        self.cachedCDFs = {}
+        for classKey, losModel in losModelMap.items():
+            assert losModel['pdf'] == 'expon(lambda=$0)', \
+                "Unexpected losModel form %s - only expon is supported" % losModel['pdf']
+            rate = losModel['parms'][0]
+            self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
         careTier = ward.tier
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
@@ -370,8 +635,8 @@ class Community(Facility):
             self.treeCache[key] = tree
             return tree
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
-                  timeNow=None):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
+                  timeNow=None):  # @UnusedVariable
         """This returns a tuple (careTier, patientTreatment)"""
         if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
@@ -396,6 +661,42 @@ class Community(Facility):
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
 
+
+    def getPatientRecord(self, patientId, timeNow=None):
+        k = (self.abbrev, patientId)
+        # get your pickled patient record
+        try:
+            ppr = self.patientDataDict[k]
+        except KeyError:
+            try:
+                ppr = self.cachePatientDataDict[k]
+            except: # (interdict doesn't give keyerrors) KeyError:
+                if timeNow is None:
+                    raise MissingPatientRecordError('Record not found and cannot create a new one')
+                pR = PatientRecord(patientId, timeNow, isFrail=False)
+                self.patientDataDict[k] = pickle.dumps(pR, 2)  # keep a copy
+                pR._owningFac = self
+                return pR
+
+        pR = pickle.loads(ppr)
+        pR._owningFac = self
+        return pR
+
+
+    def mergePatientRecord(self, patientId, newPatientRec, timeNow):
+        patientRec = self.getPatientRecord(patientId, timeNow)
+        patientRec.merge(newPatientRec)
+        delattr(patientRec, '_owningFac')
+        self.patientDataDict[(self.abbrev, patientId)] = pickle.dumps(patientRec, 2)
+
+    def patientRecordExists(self, patientId):
+        k = (self.abbrev, patientId)
+        if k in self.patientDataDict:
+            return True
+        return k in self.cachePatientDataDict
+
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Community description %(abbrev)s is missing the expected field 'meanPop'" % descr
@@ -410,78 +711,128 @@ def _populate(fac, descr, patch):
         a._status = a._status._replace(homeAddr=ward.getGblAddr())
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
-        ward.freezers[ward.classify(a)].freezeAndStore(a)
+        ward.freezers[ward.classify(a, None)].freezeAndStore(a)
     return []
 
+TotalCommunity=0
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
-    cacheVer = 12
+    global cacheVer
+    makeLMDBDirs()
+    global TotalCommunity
 
     if communityClass is None:
         communityClass = Community
     fac = communityClass(facilityDescr, patch, policyClasses=policyClasses,
                          categoryNameMapper=categoryNameMapper)
 
-    fname = 'cache/%s.zkl'%facilityDescr['abbrev']
+
+    # create cache dir    facilityDescr['abbrev']
+    # create facility dir for this instance
+    # integrate everything!!!
+    
+
     wards = fac.getWards()
-    ward = wards[0]
     if len(wards) != 1:
         raise RuntimeError("caching wards assumes 1 ward per community")
+    ward = wards[0]
+
+    orig = ward.orig
+    changed = ward.changed
+    # get myself a freezer to access the metadata
+    tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
 
     try:
-        with gzip.GzipFile(fname) as f:
-            wardInfo = pickle.load(f)
+        ward.infoList = tFreezer.getInfoList()
+        wardInfo = tFreezer.getWardData()
 
         if wardInfo[0] != cacheVer:
-            raise Exception()
+            raise invalidCacheVer()
 
-        ver, fDesc,freezerList,patientDataDict,patientStats = wardInfo
+        ver, fDesc,freezerList,patientStats = wardInfo
         if fDesc != facilityDescr:
             raise Exception()
 
         agentCount = 0
         for freezerData in freezerList:
-            pType, loggerName, typePattern, agentList = freezerData
+            pType, loggerName = freezerData
             freezer = ward.freezers[pType]
             freezer.frozenAgentLoggerName = loggerName
-            freezer.frozenAgentTypePattern = typePattern
-            freezer.frozenAgentList = agentList
-            agentCount += len(agentList)
+            agentCount += len(freezer.frozenAgentList)
 
-        fac.patientDataDict = patientDataDict
+        if agentCount < 1:
+            raise Exception()
+
         fac.patientStats = patientStats
-        logger.info('read population for %s from cache (%s freeze-dried people)'%(fDesc['abbrev'], agentCount))
+        TotalCommunity += agentCount
+        logger.info('read population for %s from cache (%s freeze-dried people, %s)'
+                    %(fDesc['abbrev'], agentCount, TotalCommunity))
 
         return [fac], fac.getWards(), []
 
+    except InvalidCacheVer as e:
+        raise RuntimeError("community cache versions are out of sync within the same file!")
+        #ward.orig.close()
+        #oName = origFname(facilityDescr['abbrev'])
+        #ward.orig = interdict.InterDict(oName, convert_int=True,
+        #                                val_serialization='pickle', overwrite_existing=True)
+        #InterdictMapping[oName] = ward.orig
     except:
+        #import traceback
+        #traceback.print_exc()
         # no cache file or whatever was there wasn't satisfactory for any reason.
         # since if we found a valid cache file we'd have returned already, just
         # fall out of the exception.
         pass
+
+    # at this point we _should_ wipe our section of the interdict
+    # it's not absolutely necessary but it's a big todo
+    #  *** TODO wipe our section of the interdict using a new method keyRange()
+    
+    # Let's write all of our data at once to the interdict, so for now use a normal dict:
+    orig = ward.orig
+    ward.orig = {}
+    # do the same with the patientDataDict
+    realCachePatientDataDict = fac.cachePatientDataDict
+    fac.cachePatientDataDict = {}  # make sure no one is found while writing these
+    # the patient data dict is currently an empty dict where things will be initially written.
+    # just leave this and we'll move things around after everyone is generated.
+
+    
+    ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
     
     pop = _populate(fac, facilityDescr, patch)
 
     freezerList = []
     for pType,freezer in ward.freezers.items():
-        freezerList.append((pType,
-                            freezer.frozenAgentLoggerName,
-                            freezer.frozenAgentTypePattern,
-                            freezer.frozenAgentList))
-    patientDataDict = fac.patientDataDict
+        freezerList.append((pType,freezer.frozenAgentLoggerName))
+        freezer.saveFreezerData()
+    
     patientStats = fac.patientStats
 
-    # presumably we don't use up beds now that we have frozen agents.
+    # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
+    tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
+    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientStats))
+    tFreezer.saveInfoList()
+    
+    orig.mset(ward.orig.items())
+    orig.flush()
+    
+    for k in ward.orig.keys():
+        del(ward.orig[k])
+        
+    ward.orig = orig
+    for f in ward.freezers.values():
+        f.orig = orig
 
-    # pickle the (frozen) agents in the facility
-    if not os.path.exists('cache'):
-        os.makedirs('cache')
-
-    with gzip.GzipFile(fname, "w") as f:
-        pickle.dump((cacheVer,facilityDescr, freezerList, patientDataDict,patientStats), f, 2)
+    realCachePatientDataDict.mset(fac.patientDataDict.items())
+    fac.cachePatientDataDict = realCachePatientDataDict
+    for k in fac.patientDataDict.keys():
+        del(fac.patientDataDict[k])
+    fac.patientDataDict = {}
 
     return [fac], fac.getWards(), pop
 
@@ -497,10 +848,6 @@ def checkSchema(facilityDescr):
     nErrors = sum([1 for e in _validator.iter_errors(facilityDescr)])  # @UnusedVariable
     return nErrors
 
-
-###########
-# Initialize the module
-###########
-_constants = pyrheautils.importConstants(_constants_values,
-                                         _constants_schema)
-
+################
+# Constants are loaded when the client module calls importCommunity()
+################

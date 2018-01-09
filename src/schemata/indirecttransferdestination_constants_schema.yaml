@@ -1,0 +1,26 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/indirecttransferdestination_constants_schema.yaml'
+'title': 'indirect transfer destination constants schema'
+'description': 'indirecttransferdestination constants schema'
+
+'$ref': '#/definitions/indirecttransferdestinationconstants'
+
+'definitions':
+    
+  'indirecttransferdestinationconstants':
+    'type': 'object'
+    'properties':
+      'transferFilePaths':
+        'description': >
+          Paths to YAML files containing weighted transfer data.  Typically the
+          weights correspond to historical transfer count data.
+        'type': 'array'
+        'items': {'type': 'string'}
+      'transferFileSchema':
+        'description': 'Schema for the YAML files containing the transfer count matrices'
+        'type': 'string'
+    'required':
+      - 'transferFilePaths'
+      - 'transferFileSchema'
+      
+      

@@ -44,7 +44,7 @@ class XDRORegistryScenario(BaseScenarioPolicy):
         # the scenario.
         for fac in self.patch.allFacilities:
             if fac.abbrev in self.facSet:
-                if isinstance(fac.diagnosticPolicy, GenericDiagnosticPolicy):
+                if fac.diagnosticPolicy.isinstance(GenericDiagnosticPolicy):
                     #print 'XDRO setting %s' % fac.abbrev
                     fac.diagnosticPolicy.setValue('useCentralRegistry', True)
                     fac.diagnosticPolicy.setValue('pathogenDiagnosticEffectivenessIncreasedAwareness',

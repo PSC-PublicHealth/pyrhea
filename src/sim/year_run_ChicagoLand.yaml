@@ -1,4 +1,6 @@
-'modelDir': '../../../pyrhea/models/ChicagoLand'
+'model': 'ChicagoLand'
+'pathogen': 'CRE'
+'modelDir': '../../models/ChicagoLand'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
@@ -21,24 +23,25 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'pathogenImplementationDir': '../sim/creImplementation'
-
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleDiagnosticPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
-  - 'category': 'scenario'
-    'policyClass': 'FirstExperimentalScenario'
-  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    'policyClass': 'GenericDiagnosticPolicy'
+    
+#  - 'category': 'scenario'
+#    'policyClass': 'XDROPlusCREBundleScenario'
 
 #'runDurationDays': 1095
 'runDurationDays': 365
@@ -46,7 +49,9 @@
 #'burnInDays': 365
 burnInDays: 100
 
-scenarioWaitDays: 10
+notesFileName: 'notes_year_ChicagoLand.pkl'
+
+scenarioWaitDays: 2
 
 'trackedFacilities':
   - 'ADVO_2320_H'

@@ -39,15 +39,20 @@ from registry import Registry
 from policybase import ScenarioPolicy
 import checkpoint
 
-SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
+BASE_DIR = os.path.dirname(__file__)
+SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
-
+PTH_IMPLEMENTATIONS_DIR = os.path.join(BASE_DIR, 'pathogenImplementations/$(PATHOGEN)')
 DEFAULT_OUTPUT_NOTES_NAME = 'notes.json'
 
 _TRACKED_FACILITIES = []
 _TRACKED_FACILITIES_SET = None
 
 logger = None
+
+# make command line data accessible to anyone
+clData = None
+
 
 def buildFacOccupancyDict(patch, timeNow):
     facTypeDict = {'day': timeNow}
@@ -58,24 +63,13 @@ def buildFacOccupancyDict(patch, timeNow):
             facTypeDict[tpName] = 0
             facTypeDict[tpName + '_all'] = 0
 
-        if 0:
-            if hasattr(fac, 'patientDataDict'):
-                patientCount = 0
-                allCount = 0
-                for rec in fac.patientDataDict.values():
-                    rec = pickle.loads(rec)
-                    allCount += 1 + rec.prevVisits
-                    if rec.departureDate is None:
-                        patientCount += 1
-                facTypeDict[tpName] += patientCount
-                facTypeDict[tpName + '_all'] += allCount
-        else:
-            if hasattr(fac, 'patientStats'):
-                patientCount = fac.patientStats.currentOccupancy
-                allCount = fac.patientStats.totalOccupancy
-                facTypeDict[tpName] += patientCount
-                facTypeDict[tpName + '_all'] += allCount
+        if hasattr(fac, 'patientStats'):
+            patientCount = fac.patientStats.currentOccupancy
+            allCount = fac.patientStats.totalOccupancy
+            facTypeDict[tpName] += patientCount
+            facTypeDict[tpName + '_all'] += allCount
 
+    #print 'buildFacOccupancyDict: %s' % facTypeDict
     return facTypeDict
 
 
@@ -108,18 +102,9 @@ def buildLocalOccupancyDict(patch, timeNow):
     facDict = {'day': timeNow}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
     for fac in patch.allFacilities:
-        if 0:
-            if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientDataDict'):
-                patientCount = 0
-                for rec in fac.patientDataDict.values():
-                    rec = pickle.loads(rec)
-                    if rec.departureDate is None:
-                        patientCount += 1
-                facDict[fac.abbrev] = patientCount
-        else:
-            if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
-                patientCount = fac.patientStats.currentOccupancy
-                facDict[fac.abbrev] = patientCount
+        if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
+            patientCount = fac.patientStats.currentOccupancy
+            facDict[fac.abbrev] = patientCount
             
     return facDict
 
@@ -211,7 +196,6 @@ def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
     implList = []
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    #pyrheautils.PATH_STRING_MAP['POLICYDIR'] = implementationDir
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['getPolicyClasses']):
         newPolicyClasses = newMod.getPolicyClasses()
@@ -225,7 +209,6 @@ def loadPolicyImplementations(implementationDir):
 def loadPathogenImplementations(implementationDir):
     logger.info('Loading infectious agent implementations')
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    #pyrheautils.PATH_STRING_MAP['PATHOGENDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['pathogenName',
@@ -242,7 +225,6 @@ def loadFacilityImplementations(implementationDir):
     logger.info('Loading facility implementations')
     # provide some string mapping
     implementationDir = pyrheautils.pathTranslate(implementationDir)
-    #pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implementationDir
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['category',
@@ -504,8 +486,6 @@ def findPolicies(policyClassList,
                     or categoryRegex.match(category)) and classRegex.match(pCl.__name__):
                 l.append(pCl)
                 policyRulesDict[ruleKey] = True  # rule has been used
-    if True:
-        print '%s %s got %s' % (category, abbrev, [cl.__name__ for cl in l])
     return l
 
 
@@ -608,6 +588,8 @@ def main():
         pdb.Pdb().set_trace(frame)
 
     global logger
+    global clData
+    
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
 
@@ -691,13 +673,6 @@ def main():
 
         pyrheautils.prepPathTranslations(clData['input'])
 
-        if 0:
-            if 'modelDir' in clData['input']:
-                pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(clData['input']['modelDir'])
-            if 'pathTranslations' in clData['input']:
-                for elt in clData['input']['pathTranslations']:
-                    pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
-                    
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     
         verbose = clData['verbose']  # @UnusedVariable
@@ -721,9 +696,11 @@ def main():
                 _TRACKED_FACILITIES = inputDict['trackedFacilities'][:]
 
         schemautils.setSchemaBasePath(SCHEMA_DIR)
-        pthImplDict = loadPathogenImplementations(inputDict['pathogenImplementationDir'])
+
+        pthImplDict = loadPathogenImplementations(pyrheautils.pathTranslate(PTH_IMPLEMENTATIONS_DIR))
         assert len(pthImplDict) == 1, 'Simulation currently supports exactly one pathogen'
         PthClass = pthImplDict.values()[0].getPathogenClass()
+        pthName = pthImplDict.values()[0].pathogenName
     
         facImplDict = loadFacilityImplementations(inputDict['facilityImplementationDir'])
         if 'facilitySelectors' in inputDict:

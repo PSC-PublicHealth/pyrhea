@@ -29,7 +29,7 @@ import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
-from facilitybase import PatientStatusSetter
+from facilitybase import PatientStatusSetter, buildTimeTupleList
 from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
 
@@ -42,6 +42,18 @@ _constants_schema = 'nursinghome_ChicagoLand_constants_schema.yaml'
 _constants = None
 _validator = None
 
+
+class NursingWard(Ward):
+    pass
+#     def handlePatientArrival(self, patientAgent, timeNow):
+#         super(NursingWard, self).handlePatientArrival(patientAgent, timeNow)
+#         # Sometimes the transfer tables send a patient in good health- they must
+#         # be here for rehab.
+#         if (patientAgent.getStatus().diagClassA == DiagClassA.HEALTHY
+#                 and not patientAgent.getTreatment('rehab')):
+#             print '######## %s fixed %s %s at %s' % (self._name, patientAgent.name,
+#                                                buildTimeTupleList(patientAgent, timeNow), timeNow)
+#             patientAgent.setTreatment(rehab=True)
 
 class NursingHome(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
@@ -100,8 +112,8 @@ class NursingHome(Facility):
         self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
         self.frailTreeCache = {}
         self.frailRehabTreeCache = {}
-        self.addWard(Ward('%s_%s_%s' % (category, patch.name, descr['abbrev']),
-                          patch, CareTier.NURSING, nBeds))
+        self.addWard(NursingWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
+                                 patch, CareTier.NURSING, nBeds))
 
     def flushCaches(self):
         """
@@ -159,7 +171,7 @@ class NursingHome(Facility):
             else:
                 self.frailTreeCache[key] = tree
             return tree
-        else:
+        else:  # overall HEALTHY
             if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
@@ -206,10 +218,10 @@ class NursingHome(Facility):
                                          self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
-            elif not treatment.rehab:
+            else:  # healthy and not rehab
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
                                                  DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
-                                                 DiagClassA.NEEDSSKILNRS]):
+                                                 DiagClassA.NEEDSSKILNRS, DiagClassA.HEALTHY]):
                     logger.warning('fac %s status: %s careTier %s startTime: %s: '
                                    'this patient should be gone by now'
                                    % (self.name, str(patientStatus), CareTier.names[careTier],
@@ -218,9 +230,6 @@ class NursingHome(Facility):
                 else:
                     raise RuntimeError('Patients with NORMAL overall health should only be'
                                        ' in NURSING care for rehab')
-            else:
-                raise RuntimeError('Nursing homes do not provide treatment protocol %s'
-                                   % treatment)
 
 
 def _populate(fac, descr, patch):
@@ -250,7 +259,7 @@ def _populate(fac, descr, patch):
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         agentList.append(a)
     return agentList
 

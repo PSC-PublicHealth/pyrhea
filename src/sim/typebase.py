@@ -47,10 +47,14 @@ PatientStatus = namedtuple('PatientStatus',
                             'relocateFlag',         # true if patient needs relocation
                             'justArrived',          # true on patient's first day in new location
                             'canClear',             # true if can spontaneously clear infection
-                            'homeAddr'              # GblAddr of patient's home tract or NH
+                            'homeAddr',             # GblAddr of patient's home tract or NH
+#                            'mostRecentHosp',       # Unique abbrev of a hospital, or ''
+#                            'mostRecentHospReleaseTime' # last date in that hospital, or -1 for 'never'
                             ],
                            field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, None,
-                                        bool, bool, bool, GblAddr])
+                                        bool, bool, bool, GblAddr,
+#                                        None, int
+                                        ])
 
 PatientDiagnosis = namedtuple('PatientDiagnosis',
                               ['overall',              # one of PatientOverallHealth

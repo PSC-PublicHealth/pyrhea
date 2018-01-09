@@ -74,7 +74,7 @@ class MinTravelTimeTransferDestinationPolicy(BaseTransferDestinationPolicy):
                          oldFacility.abbrev, CareTier.names[newTier])
             return self.fallbackPolicy.buildCacheEntry(oldFacility, newTier)
 
-    def getOrderedCandidateFacList(self, oldFacility, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
 #         if oldTier == CareTier.HOME or newTier == CareTier.HOME:
 #             # We have no travel time info for Community, so fall back
 #             return (super(MinTravelTimeTransferDestinationPolicy, self)

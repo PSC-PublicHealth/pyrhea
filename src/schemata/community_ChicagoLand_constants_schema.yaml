@@ -6,11 +6,17 @@
 '$ref': '#/definitions/communityconstants'
 
 'definitions':
+
+  'pdfmap':
+    'type': 'object'
+    'description': 'property names are patient classes, values are the associated PDFs'
+    'additionalProperties':
+      '$ref': 'basics_schema.yaml#/definitions/PDF'
     
   'communityconstants':
     'type': 'object'
     'properties':
-      'communityLOSModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'losModelMap': {'$ref': '#/definitions/pdfmap' }
       'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
@@ -26,7 +32,7 @@
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
     'required':
-      - 'communityLOSModel'
+      - 'losModelMap'
       - 'communityDeathRate'
       - 'communityVerySickRate'
       - 'communityNeedsLTACRate'

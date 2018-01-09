@@ -1,3 +1,5 @@
+'model': 'OrangeCounty2013'
+'pathogen': 'MRSA'
 'modelDir': '../../models/OrangeCounty2013'
 
 'pathTranslations':
@@ -18,9 +20,6 @@
     'implementation': 'HOSPITAL'
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
-
-'pathogenImplementationDir': '../sim/mrsaImplementation'
-#'pathogenImplementationDir': '../sim/creImplementation'
 
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
@@ -55,7 +54,15 @@ burnInDays: 2
 scenarioWaitDays: 2
 
 'trackedFacilities':
-  - 'GLEN_22660_V'
-  - 'ADVO_836_H'
-  - 'WASH_11308_S'
-  - 'PRES_100_L'
+  - 'AGEN'
+  - 'AMMC'
+  - 'CHAP'
+  - 'COAS'
+  - 'FVRH'
+  - 'GGMC'
+  - 'HBHO'
+  - 'HOAG'
+  - 'KAIA'
+  - 'LAMC'
+  - 'SCLE'
+  - 'WAMC'

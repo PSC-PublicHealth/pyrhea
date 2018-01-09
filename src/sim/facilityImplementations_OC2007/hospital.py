@@ -230,7 +230,7 @@ def _populate(fac, descr, patch):
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         agentList.append(a)
     for i in xrange(int(round(meanHospPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOSP)
@@ -239,7 +239,7 @@ def _populate(fac, descr, patch):
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
-                              0)
+                              None)
         agentList.append(a)
     return agentList
 

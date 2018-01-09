@@ -139,7 +139,10 @@ class LOSPlotter(object):
             else:
                 self.fullCRVs['VSNF'] = fullCRVFromLOSModel(constants['nhLOSModel'])
         elif facToImplDict[descr['category']] == 'COMMUNITY':
-            self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
+            if 'communityLOSModel' in constants:
+                self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
+            else:
+                self.fullCRVs['HOME'] = None
         else:
             raise RuntimeError("facility %s has unknown category %s - cannot plot LOS"
                                % (descr['abbrev'], descr['category']))
@@ -149,11 +152,12 @@ class LOSPlotter(object):
         the bar for integer N at x=N, but that bar really represents the integral of the PDF
         from (N-1) to N and so should be centered at x = (N - 0.5)."""
         if tier in self.fullCRVs:
-            curveX = np.linspace(rMin, rMax, nBins)
-            boundedScale = scale / (self.fullCRVs[tier].cdf(rMax)
-                                    - self.fullCRVs[tier].cdf(rMin))
-            curveY = self.fullCRVs[tier].pdf(curveX - 0.5) * boundedScale
-            axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
+            if self.fullCRVs[tier] is not None:  # meaning we have no LOS model
+                curveX = np.linspace(rMin, rMax, nBins)
+                boundedScale = scale / (self.fullCRVs[tier].cdf(rMax)
+                                        - self.fullCRVs[tier].cdf(rMin))
+                curveY = self.fullCRVs[tier].pdf(curveX - 0.5) * boundedScale
+                axes.plot(curveX, curveY, pattern, lw=2, alpha=0.6)
 
 
 def loadFacilityDescription(abbrev, facilityDirs):
@@ -587,7 +591,7 @@ def writeTransferMapAsDot(transferDict, fname, facilityDirs, catToImplDict):
         ('LTAC', 'HOSPITAL'),
         ('HOSPITAL', 'LTAC')
         ]
-    
+
     catL = catToImplDict.keys()[:]
     translatedInclusionSet = []
     for src in catL:
@@ -658,7 +662,7 @@ def main():
     global logger
     logging.config.dictConfig(getLoggerConfig())
     logger = logging.getLogger(__name__)
-    
+
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] run_descr.yaml
     """)
@@ -671,7 +675,7 @@ def main():
     parser.destroy()
 
     runDesc = args[0]
-        
+
     schemautils.setSchemaBasePath(SCHEMA_DIR)
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -680,7 +684,7 @@ def main():
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
     pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
     constDir = os.path.join(modelDir, 'constants')
-    
+
     if opts.notes:
         notesFName = opts.notes
     elif 'notesFileName' in inputDict:
@@ -693,14 +697,19 @@ def main():
     specialDict = {}
     for nm, dct in notesDict.items():
         try:
-            if '_' in nm and not nm.startswith('Patch'):
-                category, abbrev = tuple(nm.split('_', 1))
-                abbrev = abbrev.lower()
-                if category not in categoryDict:
-                    categoryDict[category] = {}
-                categoryDict[category][abbrev] = dct
-            else:
+            if '_' not in nm:
                 specialDict[nm] = dct
+                continue
+            if nm.startswith('Patch') and not nm.endswith('Registry'):
+                specialDict[nm] = dct
+                continue
+            if nm.startswith('Patch') and nm.endswith('Registry'):
+                continue
+            category, abbrev = tuple(nm.split('_', 1))
+            abbrev = abbrev.lower()
+            if category not in categoryDict:
+                categoryDict[category] = {}
+            categoryDict[category][abbrev] = dct
         except:
             specialDict[nm] = dct
 
@@ -712,7 +721,7 @@ def main():
             allOfCategoryDict[category].addNote({k: v for k, v in nhDict.items() if k != 'name'})
 
     catNames = allOfCategoryDict.keys()[:]
-    
+
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
     if "ChicagoLand" in runDesc:
         allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
@@ -730,7 +739,7 @@ def main():
     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
                           'sim_transfer_matrix.csv',
                           facDirList, catToImplDict)
-    
+
     countBirthsDeaths(catNames, allOfCategoryDict)
 
     overallLOSFig(catNames, allOfCategoryDict, catToImplDict, implDir)
@@ -741,7 +750,7 @@ def main():
         #singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         #singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         pass
-    
+
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             singleLOSFig(abbrev, notesDict, facDirList, catToImplDict, implDir)
