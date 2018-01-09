@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-from google.protobuf.internal.descriptor_test import NewDescriptorTest
 
 ###################################################################################
 # Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
@@ -120,10 +119,16 @@ def loadByFName(dirPath):
     for nm in os.listdir(dirPath):
         if nm.endswith('.yaml'):
             fullPath = os.path.join(dirPath, nm)
-            with open(fullPath, 'r') as f:
-                newD = yaml.safe_load(f)
-                keyS.update(newD.keys())
-                resultD[nm] = newD
+            try:
+                with open(fullPath, 'r') as f:
+                    newD = yaml.safe_load(f)
+                    if not isinstance(newD, dict):
+                        print "%s is not a dict" % fullPath
+                        continue
+                    keyS.update(newD.keys())
+                    resultD[nm] = newD
+            except:
+                print 'Could not open %s' % fullPath
     return list(keyS), resultD
 
 def main():
