@@ -50,15 +50,17 @@ INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 LOGGER = None
 
-hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
+HOSP_CAT_LIST = ['HOSPITAL', 'LTAC', 'LTACH']
 
-inputTxt = 'arrivals_year_run_ChicagoLand_directonly.txt'
+DEFAULT_INPUT_TXT = 'arrivals_year_run_ChicagoLand.txt'
+DEFAULT_LOW_DATE = 0
+DEFAULT_HIGH_DATE = -1  # meaning include all records
 
-directTransferData = ['$(MODELDIR)/direct_transfer_counts.yaml']
-# indirectTransferData = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
-#                         '$(MODELDIR)/constants/nh_readmit_transfer_matrix.yaml']
-indirectTransferData = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
-                        '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
+DIRECT_TRANSFER_DATA = ['$(MODELDIR)/direct_transfer_counts.yaml']
+# INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
+#                           '$(MODELDIR)/constants/nh_readmit_transfer_matrix.yaml']
+INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
+                          '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
 
 def allVisible(loc, facDict, patName):
     return True
@@ -66,7 +68,6 @@ def allVisible(loc, facDict, patName):
 def isVisibleDirect(loc, facDict, patName):
     """Return True if the given facility name is visible for direct transfers.  Loc may be None."""
     return (loc is not None and facDict[loc]['category'] != 'COMMUNITY')
-
 
 def isVisibleIndirect(loc, facDict, patName):
     """Return True if the given facility name is visible for direct transfers.  Loc may be None."""
@@ -140,13 +141,13 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
     counts = 0
     if len(tplL) > 1:
         oldLoc, oldArrive, oldDepart = tplL[0]
-        oldInHosp = (facDict[oldLoc]['category'] in hospCatList)
+        oldInHosp = (facDict[oldLoc]['category'] in HOSP_CAT_LIST)
         if oldInHosp:
             lastHospDate = oldDepart
         else:
             lastHospDate = None
         for newLoc, newArrive, newDepart in tplL[1:]:
-            newInHosp = (facDict[newLoc]['category'] in hospCatList)
+            newInHosp = (facDict[newLoc]['category'] in HOSP_CAT_LIST)
     #             if (newInHosp and lastHospDate is not None and (newDate - lastHospDate) <= 365):
     #                 print 'hosp-to-hosp transfer %s -> %s' % (oldLoc, newLoc)
             delta = newArrive - oldDepart
@@ -210,12 +211,26 @@ def main():
     parser = optparse.OptionParser(usage="""
     %prog run_descr.yaml
     """)
+    
+    parser.add_option('-i', '--input', action='store', type='string',
+                      help=('The file of text records to be parsed (default %s)'
+                            % DEFAULT_INPUT_TXT),
+                      default=DEFAULT_INPUT_TXT)
+    parser.add_option('-L', '--low', action='store', type='int',
+                      help='minimum date to include',
+                      default=DEFAULT_LOW_DATE)
+    parser.add_option('-H', '--high', action='store', type='int',
+                      help='maximum date to include',
+                      default=DEFAULT_HIGH_DATE)
 
     opts, args = parser.parse_args()
     if len(args) != 1:
         parser.error('An input yaml file matching %s is required' % INPUT_SCHEMA)
 
     parser.destroy()
+    inputTxt = opts.input
+    lowDate = opts.low
+    highDate = opts.high
 
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
@@ -249,12 +264,22 @@ def main():
         for line in f.readlines():
             if 'birth' in line: print line
             words =  line.split()
-            if len(words) != 6 or words[3] != 'arrives':
+            if len(words) == 6:
+                assert words[3] == 'arrives', 'Bad line format: %s' % line
+                patName = words[2]
+                dstName = words[4]
+                date = int(words[5])
+            elif len(words) == 7:
+                assert words[4] == 'arrives', 'Bad line format: %s' % line
+                assert words[2] == '-', 'Bad line format: %s' % line
+                patName = words[3]
+                dstName = words[5]
+                date = int(words[6])
+            else:
                 print 'Bad line format: %s' % line
                 continue
-            patName = words[2]
-            dstName = words[4]
-            date = int(words[5])
+            if date < lowDate or (highDate > lowDate and date > highDate):
+                continue
             if patName in patientLocs:
                 bits = dstName.split('_')
                 newLoc = '_'.join(bits[4:7])
@@ -299,13 +324,13 @@ def main():
 
     plt.colorbar(ax=[ax11, ax12])
 
-    measDirectMtx = mtxFromYaml(directTransferData, directMtx, facIdxTbl, commIdx)
+    measDirectMtx = mtxFromYaml(DIRECT_TRANSFER_DATA, directMtx, facIdxTbl, commIdx)
     sclMtx = (float(np.sum(directMtx))/float(np.sum(measDirectMtx))) * measDirectMtx
     #deltaMtx = (2.0*(directMtx - sclMtx)/(directMtx + sclMtx))
     directDeltaMtx = directMtx - sclMtx
     #directDeltaMtx[0:100, 0:100] = 0.0
 
-    measIndirectMtx = mtxFromYaml(indirectTransferData, indirectMtx, facIdxTbl, commIdx)
+    measIndirectMtx = mtxFromYaml(INDIRECT_TRANSFER_DATA, indirectMtx, facIdxTbl, commIdx)
     sclMtx = (float(np.sum(indirectMtx))/float(np.sum(measIndirectMtx))) * measIndirectMtx
     #deltaMtx = (2.0*(indirectMtx - sclMtx)/(directMtx + sclMtx))
     indirectDeltaMtx = indirectMtx - sclMtx
@@ -322,7 +347,7 @@ def main():
 
     plt.colorbar(ax=[ax21, ax22])
 
-    plt.savefig('arrival_time_plots.pdf', bbox_inches='tight')
+    plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
    
     np.savez('arrival_time_arrays.npz', 
             indirect_simulated=indirectMtx,
