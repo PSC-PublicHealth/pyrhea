@@ -123,13 +123,14 @@ def loadByFName(dirPath):
                 with open(fullPath, 'r') as f:
                     newD = yaml.safe_load(f)
                     if not isinstance(newD, dict):
-                        print '%s is not a dict' % fullPath
+                        print "%s is not a dict" % fullPath
                         continue
                     keyS.update(newD.keys())
                     resultD[nm] = newD
+            except IOError, e:
+                print 'Could not open %s: %s' % (fullPath, e)
             except Exception, e:
                 print 'Failed to parse %s: %s' % (fullPath, e)
-                
     return list(keyS), resultD
 
 def main():

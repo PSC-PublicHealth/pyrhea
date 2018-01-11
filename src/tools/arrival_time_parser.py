@@ -52,7 +52,7 @@ LOGGER = None
 
 hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
 
-inputTxt = 'arrivals_year_run_ChicagoLand.txt'
+inputTxt = 'arrivals_year_run_ChicagoLand_directonly.txt'
 
 directTransferData = ['$(MODELDIR)/direct_transfer_counts.yaml']
 # indirectTransferData = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
@@ -321,7 +321,7 @@ def main():
     plotImg(indirectDeltaMtx, -lim, lim)
 
     plt.colorbar(ax=[ax21, ax22])
-#    plt.show()
+
     plt.savefig('arrival_time_plots.pdf', bbox_inches='tight')
    
     np.savez('arrival_time_arrays.npz', 
@@ -329,6 +329,8 @@ def main():
             direct_simulated=directMtx,
             indirect_measured=measIndirectMtx,
             direct_measured=measDirectMtx)
+    
+    print indirectDeltaMtx[18:23, 20:28]
 
 if __name__ == "__main__":
     main()
