@@ -321,7 +321,14 @@ def main():
     plotImg(indirectDeltaMtx, -lim, lim)
 
     plt.colorbar(ax=[ax21, ax22])
-    plt.show()
+#    plt.show()
+    plt.savefig('arrival_time_plots.pdf', bbox_inches='tight')
+   
+    np.savez('arrival_time_arrays.npz', 
+            indirect_simulated=indirectMtx,
+            direct_simulated=directMtx,
+            indirect_measured=measIndirectMtx,
+            direct_measured=measDirectMtx)
 
 if __name__ == "__main__":
     main()
