@@ -167,10 +167,10 @@ class Freezer(object):
         self.frozenAgentList = []
 
     def freezeAndStore(self, agent):
-        if agent in self.ward._lockingAgentList:
-            self.ward._lockingAgentList.remove(agent)
+        if agent in self.ward.lockingAgentSet:
+            self.ward.lockingAgentSet.remove(agent)
         self.ward.suspend(agent)
-        assert agent not in self.ward._lockingAgentList, 'It is still there!'
+        assert agent not in self.ward.lockingAgentSet, 'It is still there!'
         assert agent in self.ward._lockQueue, 'It is not there!'
         self.ward._lockQueue.remove(agent)
         d = agent.__getstate__()
@@ -225,7 +225,7 @@ class Freezer(object):
         # NEED to check locking agent count
         self.ward._lockQueue.append(agent)
         self.ward.awaken(agent)
-        self.ward._lockingAgentList.append(agent)
+        self.ward.lockingAgentSet.add(agent)
         return agent
 
 
@@ -300,10 +300,10 @@ class CopyOnWriteLMDBFreezer(Freezer):
             self.frozenAgentList = set()
 
     def freezeAndStore(self, agent):
-        if agent in self.ward._lockingAgentList:
-            self.ward._lockingAgentList.remove(agent)
+        if agent in self.ward.lockingAgentSet:
+            self.ward.lockingAgentSet.remove(agent)
         self.ward.suspend(agent)
-        assert agent not in self.ward._lockingAgentList, 'It is still there!'
+        assert agent not in self.ward.lockingAgentSet, 'It is still there!'
         assert agent in self.ward._lockQueue, 'It is not there!'
         self.ward._lockQueue.remove(agent)
         d = agent.__getstate__()
@@ -350,7 +350,7 @@ class CopyOnWriteLMDBFreezer(Freezer):
         # NEED to check locking agent count
         self.ward._lockQueue.append(agent)
         self.ward.awaken(agent)
-        self.ward._lockingAgentList.append(agent)
+        self.ward.lockingAgentSet.add(agent)
         global LastMemCheck
         if time.time() > 60.0 + LastMemCheck:
             p = psutil.Process()
