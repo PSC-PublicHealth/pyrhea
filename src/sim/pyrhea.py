@@ -260,6 +260,7 @@ def overrideTaus(patch, tauDict):
             if key in tauDict:
                 if not flushedFac:
                     fac.flushCaches()
+                    flushedFac = True
                 ward.iA.flushCaches()
                 ward.iA.tau = tauDict[key]
 
