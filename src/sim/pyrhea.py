@@ -21,6 +21,7 @@ import yaml
 from imp import load_source
 from random import seed
 from collections import defaultdict
+from array import array
 import optparse
 import logging
 import logging.config
@@ -37,6 +38,8 @@ import schemautils
 import pyrheautils
 from registry import Registry
 from policybase import ScenarioPolicy
+from pathogenbase import PthStatus
+from facilitybase import CareTier
 import checkpoint
 
 BASE_DIR = os.path.dirname(__file__)
@@ -190,6 +193,75 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierpatientsOnCP': generateLocalTierDictBuilder('newPatientsOnCP'),
 
                           }
+
+
+class Monitor:
+    def __init__(self, patch, totalRunDays, stopFn = None, nextStop = None):
+        self.patch = patch
+        self.nextStop = nextStop
+        self.stopFn = stopFn
+        self.pthData = defaultdict(lambda: defaultdict(lambda: array('I', [0 for i in xrange(totalRunDays+1)])))
+
+
+    def getPthData(self, timeNow):
+        """
+        traverses each ward of each facility and updates pthData
+        """
+
+        for fac in self.patch.allFacilities:
+            for ward in fac.getWards():
+                pPC = ward.iA.getPatientPthCounts(timeNow)
+                for pthStatusEnum, count in pPC.items():
+                    pthStatus = PthStatus.names[pthStatusEnum]
+                    self.pthData[fac.abbrev][pthStatus][timeNow] += count
+                    self.pthData[fac.abbrev]['total'][timeNow] += count
+
+    def setStopTimeFn(self, when, fn):
+        """
+        set a time on the simulation when we should stop and wait for an update
+        """
+        self.nextStop = when
+        self.stopFn = fn
+    
+    def daily(self, timeNow):
+        #td = getTauDict(self.patch)
+        #print td
+        #for k,v in td.items():
+        #    td[k] = v + .0001
+        #
+        #overrideTaus(self.patch, td)
+        
+        self.getPthData(timeNow)
+        if self.nextStop is not None:
+            if timeNow >= self.nextStop:
+                self.nextStop = self.stopFn(timeNow, self.pthData)
+                
+
+    def createDailyCallbackFn(self):
+        def fn(loop, timeNow):
+            self.daily(timeNow)
+        return fn
+    
+monitorList = []
+
+def getTauDict(patch):
+    ret = {}
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.tau
+    return ret
+    
+
+def overrideTaus(patch, tauDict):
+    for fac in patch.allFacilities:
+        flushedFac = False
+        for ward in fac.getWards():
+            key = (fac.abbrev, CareTier.names[ward.tier])
+            if key in tauDict:
+                if not flushedFac:
+                    fac.flushCaches()
+                ward.iA.flushCaches()
+                ward.iA.tau = tauDict[key]
 
 
 def loadPolicyImplementations(implementationDir):
@@ -577,6 +649,12 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
         for key, genFun in PER_DAY_NOTES_GEN_DICT.items():
             initialNote[key] = [genFun(patch, 0)]
         patchNH.addNote(initialNote)
+
+    global monitorList
+    for patch in patchList:
+        m = Monitor(patch, totalRunDays)
+        monitorList.append(m)
+        patch.loop.addPerDayCallback(m.createDailyCallbackFn())
 
 
 def main():
