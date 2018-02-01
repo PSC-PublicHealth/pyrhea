@@ -41,6 +41,8 @@ from policybase import ScenarioPolicy
 from pathogenbase import PthStatus
 from facilitybase import CareTier
 import checkpoint
+import numpy as np
+import bcolz as bz
 
 BASE_DIR = os.path.dirname(__file__)
 SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
@@ -200,8 +202,37 @@ class Monitor:
         self.patch = patch
         self.nextStop = nextStop
         self.stopFn = stopFn
-        self.pthData = defaultdict(lambda: defaultdict(lambda: array('I', [0 for i in xrange(totalRunDays+1)])))
+        dtype = [('fac', 'S20'), ('tier', 'S10'), ('ward', 'uint32'), ('day', 'uint32')]
+        for i in xrange(len(PthStatus.names)):
+            dtype.append((PthStatus.names[i], 'uint32'))
+        dtype.append(('TOTAL', 'uint32'))
+        ra = np.recarray((0,), dtype = dtype)
+        self.pthData = bz.ctable(ra)
+#        ra = np.recarray((0,), dtype=[('fac', 'S20', 
+#        
+#        self.pthData = defaultdict(lambda:
+#                                   defaultdict(lambda:
+#                                               defaultdict(lambda
+#                                                           :defaultdict(lambda: 
+#                                                                        array('I', [0 for i in xrange(totalRunDays+1)])))))
+#        self.pthData = defaultdict(lambda: defaultdict(lambda: array('I', [0 for i in xrange(totalRunDays+1)])))
 
+
+    def XXXgetPthData(self, timeNow):
+        """
+        traverses each ward of each facility and updates pthData
+        """
+
+        for fac in self.patch.allFacilities:
+            for ward in fac.getWards():
+                # for now let's drop any "HOME" wards
+                if ward.tier == CareTier.HOME:
+                    continue
+                pPC = ward.iA.getPatientPthCounts(timeNow)
+                for pthStatusEnum, count in pPC.items():
+                    pthStatus = PthStatus.names[pthStatusEnum]
+                    self.pthData[fac.abbrev][pthStatus][timeNow] += count
+                    self.pthData[fac.abbrev]['total'][timeNow] += count
 
     def getPthData(self, timeNow):
         """
@@ -210,11 +241,19 @@ class Monitor:
 
         for fac in self.patch.allFacilities:
             for ward in fac.getWards():
+                # for now let's drop any "HOME" wards
+                if ward.tier == CareTier.HOME:
+                    continue
                 pPC = ward.iA.getPatientPthCounts(timeNow)
-                for pthStatusEnum, count in pPC.items():
-                    pthStatus = PthStatus.names[pthStatusEnum]
-                    self.pthData[fac.abbrev][pthStatus][timeNow] += count
-                    self.pthData[fac.abbrev]['total'][timeNow] += count
+                counts = []
+                total = 0
+                for i in xrange(len(PthStatus.names)):
+                    counts.append(pPC[i])
+                    total += pPC[i]
+                counts.append(total)
+                row = [fac.abbrev, CareTier.names[ward.tier], ward.wardNum, timeNow] + counts
+                self.pthData.append(row)
+        #print self.pthData
 
     def setStopTimeFn(self, when, fn):
         """
@@ -225,16 +264,16 @@ class Monitor:
     
     def daily(self, timeNow):
         #td = getTauDict(self.patch)
-        #print td
+        # print td
         #for k,v in td.items():
         #    td[k] = v + .0001
         #
         #overrideTaus(self.patch, td)
-        
         self.getPthData(timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
-                self.nextStop = self.stopFn(timeNow, self.pthData)
+                self.nextStop = self.stopFn(timeNow, self)
+        adjustTaus(timeNow, self);
                 
 
     def createDailyCallbackFn(self):
@@ -248,9 +287,12 @@ def getTauDict(patch):
     ret = {}
     for fac in patch.allFacilities:
         for ward in fac.getWards():
+            # for now let's drop any "HOME" wards
+            if ward.tier == CareTier.HOME:
+                continue
             ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.tau
     return ret
-    
+
 
 def overrideTaus(patch, tauDict):
     for fac in patch.allFacilities:
@@ -265,6 +307,110 @@ def overrideTaus(patch, tauDict):
                 ward.iA.tau = tauDict[key]
 
 
+overridePrevalence = {
+    ('ALL','HOSP'):0.005,
+    ('ALL','ICU'):0.03,
+    ('ALL', 'NURSING'): 1.5,
+    ('ALL', 'SKILNRS'): 1.5,
+    }
+
+def getColonizedTargets(patch):
+    ret = {}
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            # for now let's drop any "HOME" wards
+            if ward.tier == CareTier.HOME:
+                continue
+            ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.initialFracColonized
+    return ret
+    
+expectedPrevalence = None
+
+def getExpected(fac, tier):
+    global expectedPrevalence
+    global overridePrevalence
+    
+    if (fac,tier) in overridePrevalence:
+        return overridePrevalence[(fac,tier)]
+    if ('ALL', tier) in overridePrevalence:
+        return overridePrevalence[('ALL',tier)]
+
+    return expectedPrevalence[(fac, tier)]
+
+def adjustTaus(timeNow, mon):
+    global expectedPrevalence
+    if expectedPrevalence is None:
+        expectedPrevalence = getColonizedTargets(mon.patch)
+        
+    tauDict = getTauDict(mon.patch)
+    pthData = mon.pthData.todataframe()
+
+    #print pthData
+    tierSums = pthData.groupby(['day', 'tier']).sum()
+    for tier in ['HOSP', 'ICU', 'LTAC', 'NURSING', 'SKILNRS', 'VENT']:
+        print "%s Prevalence: %s"%(tier, float(tierSums['COLONIZED'][(timeNow, tier)]) / tierSums['TOTAL'][(timeNow, tier)])
+    
+    facSums = pthData[pthData.day==timeNow].groupby(['tier', 'fac']).sum()
+
+
+    diffTiersSum = defaultdict(float)
+    diffTiersDiv = defaultdict(float)
+    weightedDiffTiersSum = defaultdict(float)
+    weightedDiffTiersDiv = defaultdict(float)
+    for key,colonized in facSums['COLONIZED'].to_dict().items():
+        try:
+            tier,fac = key
+            total = facSums['TOTAL'][key]
+            #print key, total
+            if total:
+                prevalence = float(colonized)/total
+            else:
+                prevalence = 0
+            
+            expected = getExpected(fac, tier)
+            if expected == 0:
+                print "expected is 0!"
+                import pdb
+                pdb.set_trace()
+               
+
+            diff = ((prevalence - expected)/expected) * ((prevalence - expected)/expected)
+            diffTiersSum[tier] += diff
+            diffTiersDiv[tier] += 1
+            weightedDiffTiersSum[tier] += diff * total
+            weightedDiffTiersDiv[tier] += total
+
+        except:
+            import pdb
+            pdb.set_trace()
+            
+            #print "%s %s: expected %s, actual %s"%(fac, tier, expected, prevalence)
+
+        
+    for tier in diffTiersSum.keys():
+        print "%s: prevalenceDiff %s, weightedDiff %s"%(tier,
+                                                        diffTiersSum[tier] / diffTiersDiv[tier],
+                                                        weightedDiffTiersSum[tier] / weightedDiffTiersDiv[tier])
+
+
+
+
+        
+    
+
+        
+    if timeNow == -1:
+        import pdb
+        pdb.set_trace()
+    
+    #update taus?
+    
+    return timeNow + 20
+
+
+    
+    
+                
 def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
     implList = []

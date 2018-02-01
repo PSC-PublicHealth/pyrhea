@@ -78,7 +78,14 @@ class Ward(pyrheabase.Ward):
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
-
+#        print "ward name: %s"%name
+#        print "tier: %s"%tier
+        try:
+            self.wardNum = int(name.split('_')[-1])
+        except:
+            self.wardNum = 0
+#        print "ward num: %s"%self.wardNum
+        
     def getPatientList(self):
         return self.getLiveLockedAgents()
 
