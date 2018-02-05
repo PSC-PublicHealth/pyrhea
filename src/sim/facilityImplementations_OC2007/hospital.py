@@ -172,7 +172,7 @@ class Hospital(Facility):
                                                       (((self.fracTransferNH
                                                          + self.fracDischargeHealthy)
                                                         * (1.0 - rehabFrac)),
-                                                       ClassASetter(DiagClassA.HEALTHY))])
+                                                       ClassASetter(DiagClassA.WELL))])
                 tree = BayesTree(changeTree,
                                  PatientStatusSetter(),
                                  changeProb)
@@ -197,7 +197,7 @@ class Hospital(Facility):
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
                   timeNow=None):
         """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
+        if patientDiagnosis.diagClassA == DiagClassA.WELL:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
                 return (CareTier.HOME, patientTreatment._replace(rehab=False))
             else:

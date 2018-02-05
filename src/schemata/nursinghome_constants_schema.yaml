@@ -68,6 +68,10 @@
       'residentVerySickRate': {'$ref': '#/definitions/fraction'}
       'residentReturnToCommunityRate': {'$ref': '#/definitions/fraction'}
       'residentNeedsLTACRate': {'$ref': '#/definitions/fraction'}
+      'initialUnhealthyFrac': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'description': 'Fraction of non-long-term-resident patients who are initially UNHEALTHY rather than HEALTHY'
+      }
     'required':
       - 'nhLOSModel'
       - 'rehabDeathRate'
@@ -79,5 +83,6 @@
       - 'residentVerySickRate'
       - 'residentReturnToCommunityRate'
       - 'residentNeedsLTACRate'
+      - 'initialUnhealthyFrac'
       
       

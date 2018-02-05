@@ -67,10 +67,16 @@ class VentSNF(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         _c = _constants
-        
+
         losModel = descr['losModel']
         assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
+
+        self.initialResidentFrac = (1.0 - losModel['parms'][0])
+        self.initialUnhealthyFracByTier = {}
+        nameToTierD = {val:key for key,val in CareTier.names.items()}
+        for ent in _c['initialUnhealthyFracByTier']:
+            self.initialUnhealthyFracByTier[nameToTierD[ent['tier']]] = ent['frac']['value']
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -106,7 +112,7 @@ class VentSNF(Facility):
         # is actually just nursing.
         lclRates['nursinghome'] += lclRates['vsnf']
         lclRates['vsnf'] = 0.0
-        
+
         # The second element of the tuples built below is the pthRates for each tier.
         # pthRates is the equivalent of lclRates but for pathogen carriers.  It must
         # be initialized lazily because the pathogen has not yet been defined.
@@ -190,6 +196,17 @@ class VentSNF(Facility):
             self.treeCache[key] = tree
             return tree
 
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        tier = ward.tier
+        if random() <= self.initialResidentFrac:
+            return PatientOverallHealth.FRAIL
+        else:
+            if random() <= self.initialUnhealthyFracByTier[tier]:
+                return PatientOverallHealth.UNHEALTHY
+            else:
+                return PatientOverallHealth.HEALTHY
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Nursing home description %(abbrev)s is missing the expected field 'meanPop'" % descr
@@ -218,8 +235,6 @@ def _populate(fac, descr, patch):
                 break
             a = PatientAgent('PatientAgent_%s_%s_%d' % (CareTier.names[tier], ward._name, i),
                              patch, ward)
-            if random() <= residentFrac:
-                a._status = a._status._replace(overall=PatientOverallHealth.FRAIL)
             ward.lock(a)
             fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                   fac.getMsgPayload(pyrheabase.ArrivalMsg, a),

@@ -21,9 +21,9 @@ from pathogenbase import PthStatus
 
 CareTier = enum('HOME', 'NURSING', 'LTAC', 'HOSP', 'ICU', 'VENT', 'SKILNRS')
 
-PatientOverallHealth = enum('HEALTHY', 'FRAIL')
+PatientOverallHealth = enum('HEALTHY', 'FRAIL', 'UNHEALTHY')
 
-DiagClassA = enum('HEALTHY', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH',
+DiagClassA = enum('WELL', 'NEEDSREHAB', 'NEEDSLTAC', 'SICK', 'VERYSICK', 'DEATH',
                   'NEEDSVENT', 'NEEDSSKILNRS')
 
 TreatmentProtocol = namedtuple('TreatmentProtocol',

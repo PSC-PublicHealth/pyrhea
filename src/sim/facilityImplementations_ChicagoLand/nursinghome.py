@@ -49,7 +49,7 @@ class NursingWard(Ward):
 #         super(NursingWard, self).handlePatientArrival(patientAgent, timeNow)
 #         # Sometimes the transfer tables send a patient in good health- they must
 #         # be here for rehab.
-#         if (patientAgent.getStatus().diagClassA == DiagClassA.HEALTHY
+#         if (patientAgent.getStatus().diagClassA == DiagClassA.WELL
 #                 and not patientAgent.getTreatment('rehab')):
 #             print '######## %s fixed %s %s at %s' % (self._name, patientAgent.name,
 #                                                buildTimeTupleList(patientAgent, timeNow), timeNow)
@@ -68,6 +68,9 @@ class NursingHome(Facility):
         losModel = descr['losModel']
         assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
             "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
+
+        self.initialResidentFrac = (1.0 - losModel['parms'][0])
+        self.initialUnhealthyFrac = _c['initialUnhealthyFrac']['value'] # frac of non-residents
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -138,7 +141,7 @@ class NursingHome(Facility):
                     return self.frailRehabTreeCache[key]
                 else:
                     # If no major changes happen, allow for the patient's completing rehab
-                    innerTree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
+                    innerTree = BayesTree(ClassASetter(DiagClassA.WELL),
                                           PatientStatusSetter(),
                                           self.rehabCachedCDF.intervalProb(*key))
             else:
@@ -208,12 +211,12 @@ class NursingHome(Facility):
                                                                 ClassASetter(DiagClassA.VERYSICK))],
                                                               tag='FATE')
                         tree = BayesTree(BayesTree(adverseTree,
-                                                   ClassASetter(DiagClassA.HEALTHY),
+                                                   ClassASetter(DiagClassA.WELL),
                                                    adverseProb),
                                          PatientStatusSetter(),
                                          self.rehabCachedCDF.intervalProb, tag='LOS')
                     else:
-                        tree = BayesTree(ClassASetter(DiagClassA.HEALTHY),
+                        tree = BayesTree(ClassASetter(DiagClassA.WELL),
                                          PatientStatusSetter(),
                                          self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
@@ -221,7 +224,7 @@ class NursingHome(Facility):
             else:  # healthy and not rehab
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
                                                  DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
-                                                 DiagClassA.NEEDSSKILNRS, DiagClassA.HEALTHY]):
+                                                 DiagClassA.NEEDSSKILNRS, DiagClassA.WELL]):
                     logger.warning('fac %s status: %s careTier %s startTime: %s: '
                                    'this patient should be gone by now'
                                    % (self.name, str(patientStatus), CareTier.names[careTier],
@@ -231,6 +234,14 @@ class NursingHome(Facility):
                     raise RuntimeError('Patients with NORMAL overall health should only be'
                                        ' in NURSING care for rehab')
 
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        if random() <= self.initialResidentFrac:
+            return PatientOverallHealth.FRAIL
+        else:
+            if random() <= self.initialUnhealthyFrac:
+                return PatientOverallHealth.UNHEALTHY
+            else:
+                return PatientOverallHealth.HEALTHY
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
@@ -250,12 +261,10 @@ def _populate(fac, descr, patch):
         ward = fac.manager.allocateAvailableBed(CareTier.NURSING)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
-        if random() <= residentFrac:
-            a._status = (a._status._replace(overall=PatientOverallHealth.FRAIL)
-                         ._replace(homeAddr=ward.getGblAddr()))  # They live here
-        else:  # They must be here for rehab
-            a._status = a._status._replace(diagClassA=DiagClassA.NEEDSREHAB)
-            a._treatment = a._treatment._replace(rehab=True)
+        if a.getStatus().overall == PatientOverallHealth.FRAIL:
+            a.setStatus(homeAddr=ward.getGblAddr())  # They live here
+        else:
+            a.setTreatment(rehab=True)  # They must be here for rehab
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),

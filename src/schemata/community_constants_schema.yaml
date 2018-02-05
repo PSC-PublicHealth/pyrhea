@@ -17,6 +17,10 @@
     'type': 'object'
     'properties':
       'losModelMap': {'$ref': '#/definitions/pdfmap' }
+      'initialUnhealthyFrac': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'description': 'Fraction of residents who are initially UNHEALTHY rather than HEALTHY'
+      }
       'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
@@ -39,5 +43,6 @@
       - 'communityNeedsRehabRate'
       - 'communityNeedsSkilNrsRate'
       - 'communityPatientCheckInterval'
+      - 'initialUnhealthyFrac'
       
       

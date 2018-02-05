@@ -149,7 +149,7 @@ class NursingHome(Facility):
                                                             / adverseProb,
                                                             ClassASetter(DiagClassA.VERYSICK))])
                     tree = BayesTree(BayesTree(adverseTree,
-                                               ClassASetter(DiagClassA.HEALTHY),
+                                               ClassASetter(DiagClassA.WELL),
                                                adverseProb),
                                      PatientStatusSetter(),
                                      changeProb)
@@ -173,7 +173,7 @@ class NursingHome(Facility):
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
                   timeNow=None):
         """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
+        if patientDiagnosis.diagClassA == DiagClassA.WELL:
             if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
                 return (CareTier.HOME, patientTreatment._replace(rehab=False))
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:

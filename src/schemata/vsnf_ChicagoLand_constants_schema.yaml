@@ -73,10 +73,15 @@
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to another VSNF will require SKILNRS care'
       }
+      'initialUnhealthyFracByTier': {
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTier',
+        'description': 'Fraction of initial occupants by tier who have overall health UNHEALTHY rather than HEALTHY'
+      }
     'required':
       - 'deathRate'
       - 'hospTransferToICURate'
       - 'vsnfTransferToVentRate'
       - 'vsnfTransferToSkilNrsRate'
+      - 'initialUnhealthyFracByTier'
       
       

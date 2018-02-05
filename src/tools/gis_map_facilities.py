@@ -21,6 +21,7 @@ import signal
 import optparse
 import yaml
 import cPickle as pickle
+import matplotlib.cm as pltcm
 
 import schemautils
 import pyrheautils
@@ -112,11 +113,35 @@ def drawMap(geoDataPathList, locRecs, stateFIPSRE, countyFIPSRE, countySet):
                        mrkSzDict={'*': 15, '+': 15, 'o': 10})
     clrTupleSeq = [(LTRED, RED), (LTMAGENTA, MAGENTA), (LTBLUE, BLUE),
                    (LTCYAN, CYAN), (LTGREEN, GREEN), (LTYELLOW, YELLOW)]
+    censusTractFacD = {r['censusTract']:r for r in locRecs if 'censusTract' in r}
+    minPopDensity = None
+    maxPopDensity = None
+    for geoID in myMap.tractIDList():
+        propRec = myMap.getTractProperties(geoID)
+        area = propRec['CENSUSAREA']
+        if propRec['TRACT'] in censusTractFacD and area >= 0.1:  # exclude tiny tracts
+            popDens = censusTractFacD[propRec['TRACT']]['meanPop']['value']/propRec['CENSUSAREA']
+            if not minPopDensity or minPopDensity > popDens:
+                minPopDensity = popDens
+            if not maxPopDensity or maxPopDensity < popDens:
+                maxPopDensity = popDens
+    cmap = pltcm.get_cmap('plasma')
     for geoID in myMap.tractIDList():
         propRec = myMap.getTractProperties(geoID)
         countyKey = (int(propRec['STATE']), int(propRec['COUNTY']))
         if countyKey in countySet:
-            clr, dummy = clrTupleSeq[int(propRec['COUNTY']) % len(clrTupleSeq)]
+            # This block controls coloring of census tracts
+            # To color according to the color tuple sequence:
+            # clr, dummy = clrTupleSeq[int(propRec['COUNTY']) % len(clrTupleSeq)]
+            #
+            # To color according to population density:
+            if propRec['TRACT'] in censusTractFacD:
+                popDens = censusTractFacD[propRec['TRACT']]['meanPop']['value']/propRec['CENSUSAREA']
+                clr = cmap(popDens/maxPopDensity)
+            else:
+                clr = cmap(0.0)
+            # End of block controlling coloring of census tracts
+                
             myMap.plotTract(geoID, clr)
 
     for r in locRecs:

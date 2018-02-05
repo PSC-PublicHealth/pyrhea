@@ -347,7 +347,8 @@ def main():
 
     plt.colorbar(ax=[ax21, ax22])
 
-    plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
+    #plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
+    plt.show()
    
     np.savez('arrival_time_arrays.npz', 
             indirect_simulated=indirectMtx,

@@ -21,6 +21,7 @@ from scipy.stats import expon
 from phacsl.utils.collections.phacollections import enum, SingletonMetaClass
 from stats import CachedCDFGenerator
 from pathogenbase import PthStatus
+from typebase import PatientOverallHealth
 import facilitybase
 import genericCommunity
 
@@ -96,16 +97,11 @@ class CommunityManager(genericCommunity.CommunityManager):
 class CommunityWard(genericCommunity.CommunityWard):
     def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent"""
-        timeTupleL = facilitybase.buildTimeTupleList(agent, 
-                                                     (timeNow if timeNow is not None else 0))
-        if len(timeTupleL) < 2:
-            cameFrom = 'COMMUNITY'
-        else:
-            cameFrom = timeTupleL[1][2]
+        health = PatientOverallHealth.names[agent.getStatus().overall]
         if agent._status.pthStatus == PthStatus.COLONIZED:
-            return '%s_colonized' % cameFrom
+            return '%s_colonized' % health
         elif agent._status.pthStatus == PthStatus.CLEAR:
-            return '%s_base' % cameFrom
+            return '%s_base' % health
         else:
             raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
                                                 (agent.name,

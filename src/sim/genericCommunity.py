@@ -638,8 +638,9 @@ class Community(Facility):
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
                   timeNow=None):  # @UnusedVariable
         """This returns a tuple (careTier, patientTreatment)"""
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
+        if patientDiagnosis.diagClassA == DiagClassA.WELL:
+            if (patientDiagnosis.overall == PatientOverallHealth.HEALTHY
+                or patientDiagnosis.overall == PatientOverallHealth.UNHEALTHY):
                 return (CareTier.HOME, patientTreatment._replace(rehab=False))
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
                 return (CareTier.NURSING, patientTreatment._replace(rehab=False))
@@ -695,6 +696,12 @@ class Community(Facility):
             return True
         return k in self.cachePatientDataDict
 
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        fracUnhealthy = _constants['initialUnhealthyFrac']
+        if random.random() <= fracUnhealthy:
+            return PatientOverallHealth.UNHEALTHY
+        else:
+            return PatientOverallHealth.HEALTHY
 
 
 def _populate(fac, descr, patch):
@@ -791,7 +798,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # at this point we _should_ wipe our section of the interdict
     # it's not absolutely necessary but it's a big todo
     #  *** TODO wipe our section of the interdict using a new method keyRange()
-    
+
     # Let's write all of our data at once to the interdict, so for now use a normal dict:
     orig = ward.orig
     ward.orig = {}
@@ -801,29 +808,29 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # the patient data dict is currently an empty dict where things will be initially written.
     # just leave this and we'll move things around after everyone is generated.
 
-    
+
     ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
-    
+
     pop = _populate(fac, facilityDescr, patch)
 
     freezerList = []
     for pType,freezer in ward.freezers.items():
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
-    
+
     patientStats = fac.patientStats
 
     # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
     tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
     tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientStats))
     tFreezer.saveInfoList()
-    
+
     orig.mset(ward.orig.items())
     orig.flush()
-    
+
     for k in ward.orig.keys():
         del(ward.orig[k])
-        
+
     ward.orig = orig
     for f in ward.freezers.values():
         f.orig = orig

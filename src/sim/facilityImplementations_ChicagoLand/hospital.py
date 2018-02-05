@@ -73,7 +73,7 @@ def buildChangeTree(lclRates):
                                           (lclRates['skilnrs'],
                                            ClassASetter(DiagClassA.NEEDSSKILNRS)),
                                           (lclRates['home'],
-                                           ClassASetter(DiagClassA.HEALTHY)),
+                                           ClassASetter(DiagClassA.WELL)),
                                           ], tag='FATE')
     return changeTree
         
@@ -223,7 +223,7 @@ class Hospital(Facility):
         # is actually just nursing.
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
-        
+
         # pthRates is the equivalent of lclRates but for pathogen carriers.  It must
         # be initialized lazily because the pathogen has not yet been defined.
         self.pthRates = None
@@ -341,6 +341,11 @@ class Hospital(Facility):
                 return tree
         else:
             raise RuntimeError('Hospitals do not provide care tier %s' % careTier)
+
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        # Hospital patients have by definition been in a hospital in the last year.
+        return PatientOverallHealth.UNHEALTHY
+
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \

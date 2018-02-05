@@ -156,6 +156,11 @@ class LTAC(Facility):
         else:
             raise RuntimeError('LTACs do not provide care tier %s' % ward.tier)
 
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        # LTAC patients have by definition been in a hospital in the last year.
+        return PatientOverallHealth.UNHEALTHY
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "LTAC description %(abbrev)s is missing the expected field 'meanPop'" % descr

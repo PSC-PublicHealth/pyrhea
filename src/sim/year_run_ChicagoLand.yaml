@@ -27,9 +27,10 @@
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'IndirectTransferDestinationPolicy'
+    #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
-    #'policyClass': 'CapacityTransferDestinationPolicy'
+    #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
     'policyClass': 'IndirectTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
@@ -49,6 +50,7 @@
 #'burnInDays': 365
 burnInDays: 100
 
+#notesFileName: 'notes_year_ChicagoLand_directonly.pkl'
 notesFileName: 'notes_year_ChicagoLand.pkl'
 
 scenarioWaitDays: 2

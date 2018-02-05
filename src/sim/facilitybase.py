@@ -259,7 +259,7 @@ class PatientRecord(object):
         return '<patient %s, %s -> %s, %s, %s>' % (self.patientId,
                                                    self.arrivalDate,
                                                    self.departureDate,
-                                                   'Frail' if self.isFrail else 'Healthy',
+                                                   'Frail' if self.isFrail else 'not frail',
                                                    ('Contagious' if self.isContagious 
                                                     else 'NonContagious'))
 
@@ -555,12 +555,30 @@ class Facility(pyrheabase.Facility):
             careTier = newTier
         return (careTier, patientTreatment, modifierList)
 
-    def diagnosisFromCareTier(self, careTier, timeNow):
+    def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
+        """
+        To support multiple patient categories in the general population, this allows the
+        facility to randomly assign an overall health category (HEALTHY, UNHEALTHY, ...)
+        in accordance with a model for the facility population at simulation start time.
+        Returns a PatientOverallHealth
+        """
+        return PatientOverallHealth.HEALTHY
+
+    def diagnosisFromCareTier(self, careTier, overallHealth, timeNow):
         """
         If I look at a patient under a given care tier, what would I expect their diagnostic class
         to be?  This is used for patient initialization purposes.
         """
-        return self.diagnosticPolicy.initializePatientDiagnosis(careTier, timeNow)
+        return self.diagnosticPolicy.initializePatientDiagnosis(careTier, overallHealth, timeNow)
+
+    def statusFromCareTier(self, careTier, overallHealth, patientDiagnosis, timeNow):  # @UnusedVariable
+        return PatientStatus(overallHealth,
+                             patientDiagnosis.diagClassA, 0,
+                             patientDiagnosis.pthStatus, 0,
+                             False, True, True, None,
+#                            '', -1
+                             )
+
 
     def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
         """
@@ -633,13 +651,9 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
-        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, timeNow)
-        self._status = PatientStatus(PatientOverallHealth.HEALTHY,
-                                     self._diagnosis.diagClassA, 0,
-                                     self._diagnosis.pthStatus, 0,
-                                     False, True, True, None,
-#                                     '', -1
-                                     )
+        pOH = self.ward.fac.getInitialOverallHealth(ward, timeNow)
+        self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, pOH, timeNow)
+        self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self._diagnosis, timeNow)
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
@@ -667,6 +681,13 @@ class PatientAgent(pyrheabase.PatientAgent):
     def getStatus(self):
         """Accessor for private status"""
         return self._status
+    
+    def setStatus(self, **kwargs):
+        """
+        keyword arguments are elements of PatientStatus, for example 'overall'.  The
+        associated values must match the keyword type.
+        """
+        self._status = self._status._replace(**kwargs)
 
     def getPthStatus(self):
         """Accessor for private status pathogen info"""

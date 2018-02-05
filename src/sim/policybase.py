@@ -51,27 +51,27 @@ class DiagnosticPolicy(Policy):
                                 PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
         
-    def initializePatientDiagnosis(self, careTier, timeNow):
+    def initializePatientDiagnosis(self, careTier, overallHealth, timeNow):
         if careTier == CareTier.HOME:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
-                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
+            return PatientDiagnosis(overallHealth,
+                                    DiagClassA.WELL, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.NURSING:
-            return PatientDiagnosis(PatientOverallHealth.FRAIL,
-                                    DiagClassA.HEALTHY, timeNow, defaultPthStatus, False)
+            return PatientDiagnosis(overallHealth,
+                                    DiagClassA.WELL, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.LTAC:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+            return PatientDiagnosis(overallHealth,
                                     DiagClassA.NEEDSLTAC, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.HOSP:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+            return PatientDiagnosis(overallHealth,
                                     DiagClassA.SICK, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.ICU:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+            return PatientDiagnosis(overallHealth,
                                     DiagClassA.VERYSICK, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.VENT:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+            return PatientDiagnosis(overallHealth,
                                     DiagClassA.NEEDSVENT, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.SKILNRS:
-            return PatientDiagnosis(PatientOverallHealth.HEALTHY,
+            return PatientDiagnosis(overallHealth,
                                     DiagClassA.NEEDSSKILNRS, timeNow, defaultPthStatus, False)
         else:
             raise RuntimeError('Unknown care tier %s' % careTier)
@@ -135,8 +135,9 @@ class TreatmentPolicy(Policy):
         modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
         and is not generally relevant to the decisions made by this method.
         """
-        if patientDiagnosis.diagClassA == DiagClassA.HEALTHY:
-            if patientDiagnosis.overall == PatientOverallHealth.HEALTHY:
+        if patientDiagnosis.diagClassA == DiagClassA.WELL:
+            if (patientDiagnosis.overall == PatientOverallHealth.HEALTHY
+                or patientDiagnosis.overall == PatientOverallHealth.UNHEALTHY):
                 return (CareTier.HOME, patientTreatment._replace(rehab=False))
             elif patientDiagnosis.overall == PatientOverallHealth.FRAIL:
                 return (CareTier.NURSING, patientTreatment._replace(rehab=False))
