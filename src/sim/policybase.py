@@ -50,7 +50,7 @@ class DiagnosticPolicy(Policy):
                                 patientStatus.startDateA,
                                 PthStatus.CLEAR,
                                 patientStatus.relocateFlag)
-        
+
     def initializePatientDiagnosis(self, careTier, overallHealth, timeNow):
         if careTier == CareTier.HOME:
             return PatientDiagnosis(overallHealth,
@@ -85,13 +85,13 @@ class DiagnosticPolicy(Policy):
         the transferInfoDict.
         """
         return transferInfoDict
-    
+
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         The base class doesn't know how to set any values.
         """
         raise RuntimeError('Class %s does not know how to set the value %s'
@@ -127,7 +127,7 @@ class TreatmentPolicy(Policy):
         the transferInfoDict.
         """
         return transferInfoDict
-    
+
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
                   timeNow=None):
         """

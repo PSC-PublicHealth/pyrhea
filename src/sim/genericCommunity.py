@@ -491,6 +491,7 @@ class CommunityManager(FacilityManager):
 
     def perTickActions(self, timeNow):
         dT = timeNow - self.fac.collectiveStatusStartDate
+        countD = defaultdict(lambda: 0)
         for ward in self.fac.getWards():
             if dT != 0:
                 for patCat, freezer in ward.freezers.items():
@@ -511,12 +512,16 @@ class CommunityManager(FacilityManager):
                         if thawedAgent.debug:
                             thawedAgent.logger.debug('%s unfreezedried %s at %s'
                                                      % (ward._name, thawedAgent.name, timeNow))
+                        countD[thawedAgent.getStatus().overall] += 1
             for agent in ward.newArrivals:
                 if agent.debug:
                     agent.logger.debug('%s freezedrying %s at %s'
                                        % (ward._name, agent.name, timeNow))
                 ward.freezers[ward.classify(agent, timeNow)].freezeAndStore(agent)
             ward.newArrivals = []
+        if dT != 0:
+            logger.debug('%s at time %s thawed by category %s', self.fac.name, timeNow,
+                         {PatientOverallHealth.names[k]: v for k, v in countD.items()})
         self.fac.collectiveStatusStartDate = timeNow
 
 

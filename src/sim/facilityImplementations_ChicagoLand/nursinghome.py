@@ -149,7 +149,7 @@ class NursingHome(Facility):
                     return self.frailTreeCache[key]
                 else:
                     innerTree = PatientStatusSetter()  # No change of state
-            healthySetter = OverallHealthSetter(PatientOverallHealth.HEALTHY)
+            unhealthySetter = OverallHealthSetter(PatientOverallHealth.UNHEALTHY)
             changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                    ClassASetter(DiagClassA.DEATH)),
                                                   (self.lclRates['nursinghome'],
@@ -165,7 +165,7 @@ class NursingHome(Facility):
                                                   (self.lclRates['icu'],
                                                    ClassASetter(DiagClassA.VERYSICK)),
                                                   (self.lclRates['home'],
-                                                   healthySetter)], tag='FATE')
+                                                   unhealthySetter)], tag='FATE')
 
             tree = BayesTree(changeTree, innerTree,
                              self.frailCachedCDF.intervalProb, tag='LOS')
@@ -174,7 +174,7 @@ class NursingHome(Facility):
             else:
                 self.frailTreeCache[key] = tree
             return tree
-        else:  # overall HEALTHY
+        else:  # overall non-FRAIL
             if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
@@ -231,7 +231,7 @@ class NursingHome(Facility):
                                       startTime))
                     return BayesTree(PatientStatusSetter())
                 else:
-                    raise RuntimeError('Patients with NORMAL overall health should only be'
+                    raise RuntimeError('Patients with non-FRAIL overall health should only be'
                                        ' in NURSING care for rehab')
 
     def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable

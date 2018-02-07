@@ -76,7 +76,7 @@ def buildChangeTree(lclRates):
                                            ClassASetter(DiagClassA.WELL)),
                                           ], tag='FATE')
     return changeTree
-        
+
 
 def biasTransfers(lclRates, infectiousAgent, scaleThisTier,
                   fromAbbrev, fromCategory, fromTier):
@@ -187,14 +187,14 @@ class Hospital(Facility):
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
         bedsPerICUWard = _constants['bedsPerWard']['value']
-        
+
         _c = _constants
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
         ttoD = {elt['category']: elt['count']['value'] for elt in descr['totalTransfersOut']}
         fracNotTransferred = (float(totDsch) - float(totTO)) / float(totDsch)
         assert fracNotTransferred >= 0.0, '%s has more transfers than discharges' % self.name
-        
+
         self.lclRates = {}
         self.lclRates['death'] = _c['hospDischargeViaDeathFrac']['value']
         assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'

@@ -9,11 +9,11 @@ filters:
   addRank:
     '()': 'pyrhea.RankLoggingFilter'
 handlers:
-  rabbitmq:
-    '()': 'pyrhea.PikaLogHandler'
-    formatter: raw
-    level: DEBUG
-    filters: ['addRank']
+  #rabbitmq:
+  #  '()': 'pyrhea.PikaLogHandler'
+  #  formatter: raw
+  #  level: DEBUG
+  #  filters: ['addRank']
   console:
     class: logging.StreamHandler
     level: INFO
@@ -54,9 +54,9 @@ loggers:
     level: WARNING
   pyrheautils:
     level: WARNING
-  policybase:
-    level: DEBUG
-    handlers: [rabbitmq]
+  #policybase:
+  #  level: DEBUG
+  #  handlers: [rabbitmq]
 root:
   level: WARNING
   handlers: [console]

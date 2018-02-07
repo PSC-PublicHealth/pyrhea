@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+bb#! /usr/bin/env python
 
 ###################################################################################
 # Copyright   2015, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
