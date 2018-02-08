@@ -266,18 +266,11 @@ class Monitor(object):
         self.stopFn = fn
     
     def daily(self, timeNow):
-        #td = getTauDict(self.patch)
-        # print td
-        #for k,v in td.items():
-        #    td[k] = v + .0001
-        #
-        #overrideTaus(self.patch, td)
         self.collectPthData(timeNow)
         print "next stop: %s, timeNow: %s"%(self.nextStop, timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
                 self.nextStop = self.stopFn(timeNow, self)
-#        adjustTaus(timeNow, self);
                 
 
     def createDailyCallbackFn(self):
@@ -317,6 +310,7 @@ class TauAdjuster(object):
         self.patch = monitor.patch
         self.monitor = monitor
         self.expectedPrevalence = self.getColonizedTargets()
+        self.tauHistory = {}
         
         self.overridePrevalence = {
             ('ALL','HOSP'):0.005,
@@ -345,17 +339,12 @@ class TauAdjuster(object):
 
 
     def isAdjustable(self, fac, tier):
-        if tier == 'ICU':
+        if tier == 'LTAC':
             return True
         return False
 
     def generateStatistics(self, timeNow):
         pthData = self.monitor.getPthData()
-
-        if timeNow % 20 == 9:
-            fName = "cre_prev_%s.mpk"%self.monitor.uniqueID
-            pthData.to_msgpack(fName, compress="zlib")
-
 
         #print pthData
         tierSums = pthData.groupby(['day', 'tier']).sum()
@@ -411,23 +400,30 @@ class TauAdjuster(object):
 
         #update taus?
 
-        if timeNow % 3 == 0:
+        if timeNow % 25 == 0:
             self.updateTaus(timeNow)
+
+
+
+
+
 
     def updateTaus(self, timeNow):
 
         minRatio = 0.5
         maxRatio = 2.0
-        adjFactor = 0.1
-        dayList = [0,1]
+        adjFactor = 0.05
+        dayList = [0,4,8,12]
 
         tauDict = getTauDict(self.monitor.patch)
 
         days = [timeNow - d for d in dayList]
         pthData = self.monitor.getPthData()
 
-        import pdb
-        pdb.set_trace()
+
+
+#        import pdb
+#        pdb.set_trace()
 
         facSums = pthData[pthData.day.isin(days)].groupby(['tier', 'fac']).sum()
 
@@ -445,17 +441,28 @@ class TauAdjuster(object):
             expected = self.getExpected(fac, tier)
 
             if prevalence == 0:
-                ratio = minRatio
+                ratio = maxRatio
             else:
-                ratio = expected/prevalence
+                ratio = expected / prevalence
                 if ratio > maxRatio:
                     ratio = maxRatio
                 elif ratio < minRatio:
                     ratio = minRatio
 
+            newTau = ((ratio - 1) * adjFactor + 1) * tauDict[(fac, tier)]
 
-            print "%s: prevalence %s, expected %s, ratio %s, tau %s"%(fac, prevalence, expected, ratio, tauDict[(fac,tier)])
 
+            print "%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"%(fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau)
+            tauDict[(fac,tier)] = newTau
+
+
+        overrideTaus(self.monitor.patch, tauDict)
+        self.tauHistory[timeNow] = tauDict
+        fName = "tau_hist_%s.pkl"%self.monitor.uniqueID
+        with open(fName, "wb") as f:
+            pickle.dump(self.tauHistory, f, 2)
+        fName = "cre_prev_%s.mpk"%self.monitor.uniqueID
+        pthData.to_msgpack(fName, compress="zlib")
 
 
     def daily(self, timeNow):
@@ -472,89 +479,6 @@ class TauAdjuster(object):
 
 monitorList = []
 tauAdjusterList = []
-
-
-def XXXadjustTau(patch, fac, tier, tau):
-    for f in patch.allFacilities:
-        if f.abbrev != fac:
-            continue
-        for ward in fac.getWards():
-            if CareTier.names[ward.tier] != tier:
-                continue
-            
-
-
-def XXXadjustTaus(timeNow, mon):
-    tauDict = getTauDict(mon.patch)
-    pthData = mon.pthData.todataframe()
-                                                     
-    if timeNow % 20 == 9:
-        fName = "cre_prev_%s.mpk"%mon.uniqueID
-        pthData.to_msgpack(fName, compress="zlib")
-        
-
-    #print pthData
-    tierSums = pthData.groupby(['day', 'tier']).sum()
-    for tier in ['HOSP', 'ICU', 'LTAC', 'NURSING', 'SKILNRS', 'VENT']:
-        print "%s Prevalence: %s"%(tier, float(tierSums['COLONIZED'][(timeNow, tier)]) / tierSums['TOTAL'][(timeNow, tier)])
-    
-    facSums = pthData[pthData.day==timeNow].groupby(['tier', 'fac']).sum()
-
-
-    diffTiersSum = defaultdict(float)
-    diffTiersDiv = defaultdict(float)
-    weightedDiffTiersSum = defaultdict(float)
-    weightedDiffTiersDiv = defaultdict(float)
-    for key,colonized in facSums['COLONIZED'].to_dict().items():
-        try:
-            tier,fac = key
-            total = facSums['TOTAL'][key]
-            #print key, total
-            if total:
-                prevalence = float(colonized)/total
-            else:
-                prevalence = 0
-            
-            expected = getExpected(fac, tier)
-            if expected == 0:
-                print "expected is 0!"
-                import pdb
-                pdb.set_trace()
-               
-
-            diff = ((prevalence - expected)/expected) * ((prevalence - expected)/expected)
-            diffTiersSum[tier] += diff
-            diffTiersDiv[tier] += 1
-            weightedDiffTiersSum[tier] += diff * total
-            weightedDiffTiersDiv[tier] += total
-
-        except:
-            import pdb
-            pdb.set_trace()
-            
-            #print "%s %s: expected %s, actual %s"%(fac, tier, expected, prevalence)
-
-        
-    for tier in diffTiersSum.keys():
-        print "%s: prevalenceDiff %s, weightedDiff %s"%(tier,
-                                                        diffTiersSum[tier] / diffTiersDiv[tier],
-                                                        weightedDiffTiersSum[tier] / weightedDiffTiersDiv[tier])
-
-
-
-
-        
-    
-
-        
-    if timeNow == -1:
-        import pdb
-        pdb.set_trace()
-    
-    #update taus?
-    
-    return timeNow + 20
-
 
     
     
