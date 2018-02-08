@@ -43,6 +43,7 @@ from facilitybase import CareTier
 import checkpoint
 import numpy as np
 import bcolz as bz
+import time
 
 BASE_DIR = os.path.dirname(__file__)
 SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
@@ -197,7 +198,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           }
 
 
-class Monitor:
+class Monitor(object):
     def __init__(self, patch, totalRunDays, stopFn = None, nextStop = None):
         self.patch = patch
         self.nextStop = nextStop
@@ -208,14 +209,9 @@ class Monitor:
         dtype.append(('TOTAL', 'uint32'))
         ra = np.recarray((0,), dtype = dtype)
         self.pthData = bz.ctable(ra)
-#        ra = np.recarray((0,), dtype=[('fac', 'S20', 
-#        
-#        self.pthData = defaultdict(lambda:
-#                                   defaultdict(lambda:
-#                                               defaultdict(lambda
-#                                                           :defaultdict(lambda: 
-#                                                                        array('I', [0 for i in xrange(totalRunDays+1)])))))
-#        self.pthData = defaultdict(lambda: defaultdict(lambda: array('I', [0 for i in xrange(totalRunDays+1)])))
+        self.pthDataDF = None    # pthData as a pandas dataframe
+        self.uniqueID = str(os.getpid()) + "_" + str(time.time())
+        
 
 
     def XXXgetPthData(self, timeNow):
@@ -234,7 +230,7 @@ class Monitor:
                     self.pthData[fac.abbrev][pthStatus][timeNow] += count
                     self.pthData[fac.abbrev]['total'][timeNow] += count
 
-    def getPthData(self, timeNow):
+    def collectPthData(self, timeNow):
         """
         traverses each ward of each facility and updates pthData
         """
@@ -253,7 +249,14 @@ class Monitor:
                 counts.append(total)
                 row = [fac.abbrev, CareTier.names[ward.tier], ward.wardNum, timeNow] + counts
                 self.pthData.append(row)
-        #print self.pthData
+
+        self.pthDataDF = None
+
+    def getPthData(self):
+        if self.pthDataDF is None:
+            self.pthDataDF = self.pthData.todataframe()
+        return self.pthDataDF
+
 
     def setStopTimeFn(self, when, fn):
         """
@@ -269,11 +272,12 @@ class Monitor:
         #    td[k] = v + .0001
         #
         #overrideTaus(self.patch, td)
-        self.getPthData(timeNow)
+        self.collectPthData(timeNow)
+        print "next stop: %s, timeNow: %s"%(self.nextStop, timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
                 self.nextStop = self.stopFn(timeNow, self)
-        adjustTaus(timeNow, self);
+#        adjustTaus(timeNow, self);
                 
 
     def createDailyCallbackFn(self):
@@ -281,7 +285,6 @@ class Monitor:
             self.daily(timeNow)
         return fn
     
-monitorList = []
 
 def getTauDict(patch):
     ret = {}
@@ -307,43 +310,188 @@ def overrideTaus(patch, tauDict):
                 ward.iA.tau = tauDict[key]
 
 
-overridePrevalence = {
-    ('ALL','HOSP'):0.005,
-    ('ALL','ICU'):0.03,
-    ('ALL', 'NURSING'): 1.5,
-    ('ALL', 'SKILNRS'): 1.5,
-    }
-
-def getColonizedTargets(patch):
-    ret = {}
-    for fac in patch.allFacilities:
-        for ward in fac.getWards():
-            # for now let's drop any "HOME" wards
-            if ward.tier == CareTier.HOME:
-                continue
-            ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.initialFracColonized
-    return ret
-    
-expectedPrevalence = None
-
-def getExpected(fac, tier):
-    global expectedPrevalence
-    global overridePrevalence
-    
-    if (fac,tier) in overridePrevalence:
-        return overridePrevalence[(fac,tier)]
-    if ('ALL', tier) in overridePrevalence:
-        return overridePrevalence[('ALL',tier)]
-
-    return expectedPrevalence[(fac, tier)]
-
-def adjustTaus(timeNow, mon):
-    global expectedPrevalence
-    if expectedPrevalence is None:
-        expectedPrevalence = getColonizedTargets(mon.patch)
+# mydf = pd.read_msgpack("~/projects/pyrhea/repo/pyrhea/src/sim/cre_prev_9736_1517525811.99.mpk")
+                
+class TauAdjuster(object):
+    def __init__(self, monitor):
+        self.patch = monitor.patch
+        self.monitor = monitor
+        self.expectedPrevalence = self.getColonizedTargets()
         
+        self.overridePrevalence = {
+            ('ALL','HOSP'):0.005,
+            ('ALL','ICU'):0.03,
+            ('ALL', 'NURSING'): 1.5,
+            ('ALL', 'SKILNRS'): 1.5,
+        }
+        
+    def getColonizedTargets(self):
+        ret = {}
+        for fac in self.patch.allFacilities:
+            for ward in fac.getWards():
+                # for now let's drop any "HOME" wards
+                if ward.tier == CareTier.HOME:
+                    continue
+                ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.initialFracColonized
+        return ret
+    
+    def getExpected(self, fac, tier):
+        if (fac,tier) in self.overridePrevalence:
+            return self.overridePrevalence[(fac,tier)]
+        if ('ALL', tier) in self.overridePrevalence:
+            return self.overridePrevalence[('ALL',tier)]
+
+        return self.expectedPrevalence[(fac, tier)]
+
+
+    def isAdjustable(self, fac, tier):
+        if tier == 'ICU':
+            return True
+        return False
+
+    def generateStatistics(self, timeNow):
+        pthData = self.monitor.getPthData()
+
+        if timeNow % 20 == 9:
+            fName = "cre_prev_%s.mpk"%self.monitor.uniqueID
+            pthData.to_msgpack(fName, compress="zlib")
+
+
+        #print pthData
+        tierSums = pthData.groupby(['day', 'tier']).sum()
+        for tier in ['HOSP', 'ICU', 'LTAC', 'NURSING', 'SKILNRS', 'VENT']:
+            print "%s Prevalence: %s"%(tier, float(tierSums['COLONIZED'][(timeNow, tier)]) / tierSums['TOTAL'][(timeNow, tier)])
+
+        facSums = pthData[pthData.day==timeNow].groupby(['tier', 'fac']).sum()
+
+
+        diffTiersSum = defaultdict(float)
+        diffTiersDiv = defaultdict(float)
+        weightedDiffTiersSum = defaultdict(float)
+        weightedDiffTiersDiv = defaultdict(float)
+        for key,colonized in facSums['COLONIZED'].to_dict().items():
+            try:
+                tier,fac = key
+                total = facSums['TOTAL'][key]
+                #print key, total
+                if total:
+                    prevalence = float(colonized)/total
+                else:
+                    prevalence = 0
+
+                expected = self.getExpected(fac, tier)
+                if expected == 0:
+                    print "expected is 0!"
+                    import pdb
+                    pdb.set_trace()
+
+
+                diff = ((prevalence - expected)/expected) * ((prevalence - expected)/expected)
+                diffTiersSum[tier] += diff
+                diffTiersDiv[tier] += 1
+                weightedDiffTiersSum[tier] += diff * total
+                weightedDiffTiersDiv[tier] += total
+
+            except:
+                import pdb
+                pdb.set_trace()
+
+                #print "%s %s: expected %s, actual %s"%(fac, tier, expected, prevalence)
+
+
+        for tier in diffTiersSum.keys():
+            print "%s: prevalenceDiff %s, weightedDiff %s"%(tier,
+                                                            diffTiersSum[tier] / diffTiersDiv[tier],
+                                                            weightedDiffTiersSum[tier] / weightedDiffTiersDiv[tier])
+
+
+        if timeNow == -1:
+            import pdb
+            pdb.set_trace()
+
+        #update taus?
+
+        if timeNow % 3 == 0:
+            self.updateTaus(timeNow)
+
+    def updateTaus(self, timeNow):
+
+        minRatio = 0.5
+        maxRatio = 2.0
+        adjFactor = 0.1
+        dayList = [0,1]
+
+        tauDict = getTauDict(self.monitor.patch)
+
+        days = [timeNow - d for d in dayList]
+        pthData = self.monitor.getPthData()
+
+        import pdb
+        pdb.set_trace()
+
+        facSums = pthData[pthData.day.isin(days)].groupby(['tier', 'fac']).sum()
+
+        for key,colonized in facSums['COLONIZED'].to_dict().items():
+            tier,fac = key
+            if not self.isAdjustable(fac, tier):
+                continue
+            total = facSums['TOTAL'][key]
+            #print key, total
+            if total:
+                prevalence = float(colonized)/total
+            else:
+                prevalence = 0
+
+            expected = self.getExpected(fac, tier)
+
+            if prevalence == 0:
+                ratio = minRatio
+            else:
+                ratio = expected/prevalence
+                if ratio > maxRatio:
+                    ratio = maxRatio
+                elif ratio < minRatio:
+                    ratio = minRatio
+
+
+            print "%s: prevalence %s, expected %s, ratio %s, tau %s"%(fac, prevalence, expected, ratio, tauDict[(fac,tier)])
+
+
+
+    def daily(self, timeNow):
+        self.generateStatistics(timeNow)
+        return timeNow + 1
+
+    def createCallbackFn(self):
+        def fn(timeNow, mon):
+            return self.daily(timeNow)
+        return fn
+    
+
+
+
+monitorList = []
+tauAdjusterList = []
+
+
+def XXXadjustTau(patch, fac, tier, tau):
+    for f in patch.allFacilities:
+        if f.abbrev != fac:
+            continue
+        for ward in fac.getWards():
+            if CareTier.names[ward.tier] != tier:
+                continue
+            
+
+
+def XXXadjustTaus(timeNow, mon):
     tauDict = getTauDict(mon.patch)
     pthData = mon.pthData.todataframe()
+                                                     
+    if timeNow % 20 == 9:
+        fName = "cre_prev_%s.mpk"%mon.uniqueID
+        pthData.to_msgpack(fName, compress="zlib")
+        
 
     #print pthData
     tierSums = pthData.groupby(['day', 'tier']).sum()
@@ -798,11 +946,14 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
         patchNH.addNote(initialNote)
 
     global monitorList
+    global tauAdjusterList
     for patch in patchList:
         m = Monitor(patch, totalRunDays)
         monitorList.append(m)
         patch.loop.addPerDayCallback(m.createDailyCallbackFn())
-
+        ta = TauAdjuster(m)
+        tauAdjusterList.append(ta)
+        m.setStopTimeFn(1, ta.createCallbackFn())
 
 def main():
 
