@@ -49,7 +49,7 @@
 #'burnInDays': 365
 burnInDays: 100
 
-notesFileName: 'notes_year_ChicagoLand.pkl'
+notesFileName: 'notes_twoyear_ChicagoLand.pkl'
 
 scenarioWaitDays: 2
 
@@ -58,4 +58,5 @@ scenarioWaitDays: 2
   - 'ADVO_836_H'
   - 'BETH_5025_H'
   - 'COMM_5645_H'
+  
   
