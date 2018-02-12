@@ -16,8 +16,8 @@ handlers:
   #  filters: ['addRank']
   console:
     class: logging.StreamHandler
-    level: INFO
-    #level: DEBUG
+    #level: INFO
+    level: DEBUG
     formatter: simple
     stream: ext://sys.stdout
     filters: ['addRank']
@@ -49,14 +49,16 @@ loggers:
   indirecttransferdestination:
     level: INFO
   community:
-    level: INFO
+    level: DEBUG
   netinterface:
     level: WARNING
   pyrheautils:
     level: WARNING
-  #policybase:
-  #  level: DEBUG
-  #  handlers: [rabbitmq]
+  genericCommunity:
+    level: DEBUG
+#  policybase:
+#    level: DEBUG
+#    handlers: [rabbitmq]
 root:
   level: WARNING
   handlers: [console]

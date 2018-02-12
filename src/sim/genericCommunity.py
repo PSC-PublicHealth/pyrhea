@@ -207,7 +207,7 @@ class Freezer(object):
         else:
             self.frozenAgentList.append(valL)
 
-    def removeAndThaw(self, frozenAgent):
+    def removeAndThaw(self, frozenAgent, timeNow):
         self.frozenAgentList.remove(frozenAgent)
         if 0:
             valL = list(frozenAgent)
@@ -332,7 +332,7 @@ class CopyOnWriteLMDBFreezer(Freezer):
         self.infoList[2] += 1
 
         
-    def removeAndThaw(self, frozenAgent):
+    def removeAndThaw(self, frozenAgent, timeNow):
         self.frozenAgentList.remove(frozenAgent)
         origRO, maxOrig, nextId = self.infoList
         if frozenAgent <= maxOrig:
@@ -502,17 +502,19 @@ class CommunityManager(FacilityManager):
                     try:
                         nThawed = binom.rvs(nFroz, pThaw)
                     except ValueError:
-                        print 'ValueError for %s: nFroz=%s, pThaw=%s' % (self.fac.name, nFroz,
-                                                                         pThaw)
+                        logger.error('ValueError for %s: nFroz=%s, pThaw=%s',
+                                     self.fac.name, nFroz, pThaw)
                         raise
                     self.fac.getNoteHolder().addNote({('thawed_%s' % timeNow) : nThawed })
                     changedList = random.sample(freezer.frozenAgentList, nThawed)
                     for a in changedList:
-                        thawedAgent = freezer.removeAndThaw(a)
+                        thawedAgent = freezer.removeAndThaw(a, timeNow)
                         if thawedAgent.debug:
                             thawedAgent.logger.debug('%s unfreezedried %s at %s'
                                                      % (ward._name, thawedAgent.name, timeNow))
                         countD[thawedAgent.getStatus().overall] += 1
+                    ward.miscCounters['nThawed'] += nThawed
+
             for agent in ward.newArrivals:
                 if agent.debug:
                     agent.logger.debug('%s freezedrying %s at %s'
@@ -702,7 +704,7 @@ class Community(Facility):
         return k in self.cachePatientDataDict
 
     def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
-        fracUnhealthy = _constants['initialUnhealthyFrac']
+        fracUnhealthy = _constants['initialUnhealthyFrac']['value']
         if random.random() <= fracUnhealthy:
             return PatientOverallHealth.UNHEALTHY
         else:
@@ -820,6 +822,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
     freezerList = []
     for pType,freezer in ward.freezers.items():
+        logger.debug('Ward %s has %d %s', ward._name, len(freezer.frozenAgentList), pType)
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
 

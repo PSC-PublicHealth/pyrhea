@@ -5,6 +5,10 @@
 
 '$ref': '#/definitions/communityconstants'
 
+# Because the logic flow of the main program no longer includes it, but the
+# filename still makes it seem relevant...
+THIS LINE IS INSERTED TO MAKE THIS FILE UNPARSEABLE
+
 'definitions':
 
   'pdfmap':

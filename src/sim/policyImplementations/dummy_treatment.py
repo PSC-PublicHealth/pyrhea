@@ -37,8 +37,8 @@ class DummyTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
-        pass
-    
+        super(DummyTreatmentPolicy, self).initializePatientTreatment(ward, patient)
+
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.

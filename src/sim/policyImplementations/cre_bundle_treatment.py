@@ -58,6 +58,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
+        super(CREBundleTreatmentPolicy, self).initializePatientTreatment(ward, patient)
         try:
             patient.setTreatment(creBundle=self.active)
         except Exception, e:

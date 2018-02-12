@@ -651,9 +651,11 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
+        
         pOH = self.ward.fac.getInitialOverallHealth(ward, timeNow)
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, pOH, timeNow)
-        self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self._diagnosis, timeNow)
+        self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self._diagnosis,
+                                                        timeNow)
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
         PatientAgent.idCounters[abbrev] += 1
@@ -695,7 +697,7 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def getDiagnosis(self):
         """Accessor for private diagnosis"""
-        return self._diagnosis.pthStatus
+        return self._diagnosis
 
     def getPthDiagnosis(self):
         """Accessor for private diagnosis pathogen info"""
@@ -753,27 +755,33 @@ class PatientAgent(pyrheabase.PatientAgent):
                 self.ward.miscCounters['creBundlesHandedOut'] += 1
 
     def updateEverything(self, timeNow):
-        self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
-        if self._status.diagClassA == DiagClassA.DEATH:
-            return None, []
-        self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self._status, self._diagnosis,
-                                                 timeNow=timeNow)
-        tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment,
-                                      timeNow=timeNow)
-        newTier, self._treatment = tpl[0:2]
-        self._status = self._status._replace(justArrived=False)
-        modifierList = (tpl[2] if len(tpl) == 3 else [])
-        if self.debug:
-            self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s'
-                              % (self.name, self._status, self._diagnosis,
-                                 self._treatment))
-            self.logger.debug('%s: record at %s is %s',
-                              self.name, self.ward._name, self.ward.fac.getPatientRecord(self.id))
-            self.logger.debug('%s: modifiers are %s',
-                              self.name,
-                              [pyrheabase.TierUpdateModFlag.names[flg] for flg in modifierList])
-        self.lastUpdateTime = timeNow
-        return newTier, modifierList
+#         if self.lastUpdateTime != timeNow:
+        if True:
+            self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
+            if self._status.diagClassA == DiagClassA.DEATH:
+                return None, []
+            self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self._status,
+                                                     self._diagnosis, timeNow=timeNow)
+            tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment,
+                                          timeNow=timeNow)
+            newTier, self._treatment = tpl[0:2]
+            self._status = self._status._replace(justArrived=False)
+            modifierList = (tpl[2] if len(tpl) == 3 else [])
+            if self.debug:
+                self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s',
+                                  self.name, self._status, self._diagnosis,
+                                  self._treatment)
+                self.logger.debug('%s: record at %s is %s',
+                                  self.name, self.ward._name,
+                                  self.ward.fac.getPatientRecord(self.id))
+                self.logger.debug('%s: modifiers are %s',
+                                  self.name,
+                                  [pyrheabase.TierUpdateModFlag.names[flg]
+                                   for flg in modifierList])
+            self.lastUpdateTime = timeNow
+            return newTier, modifierList
+        else:
+            return self.ward.tier, []
 
     def getPostArrivalPauseTime(self, timeNow):  # @UnusedVariable
         if self.ward.checkInterval > 1:

@@ -83,6 +83,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
+        super(ContactPrecautionsTreatmentPolicy, self).initializePatientTreatment(ward, patient)
         pthStatus = patient.getPthStatus()
         cat = ward.fac.category
         tier = ward.tier

@@ -496,7 +496,7 @@ def pathogenTimeFig(specialDict):
                             l = fields[key]
                             assert len(l) == len(dayList), (('field %s is the wrong length in special'
                                                              ' data %s (%d vs. %d)')
-                                                            % (k, patchName, len(l), len(dayList)))
+                                                            % (key, patchName, len(l), len(dayList)))
                             curvesThisCat[pthLvl] = np.array(l)
                     totsThisCat = sum(curvesThisCat.values())
                     for pthLvl, lVec in curvesThisCat.items():
@@ -518,6 +518,66 @@ def pathogenTimeFig(specialDict):
     except KeyError as e:
         if e.message == 'pathogen':
             print('pathogen data not available; skipping time history of infection status')
+
+
+def thawsTimeFig(specialDict):
+    try:
+        patchList = specialDict.keys()[:]
+        patchList.sort()
+        catList = []
+        for patchName, data in specialDict.items():
+            pthDataList = data['localtiernthawed']
+            assert isinstance(pthDataList, types.ListType), ('Special data %s is not a list'
+                                                             % patchName)
+            for d in pthDataList:
+                for k in d.keys():
+                    if k != 'day':
+                        cat = k.split('_')[0]
+                        if cat not in catList:
+                            catList.append(cat)
+        catList.sort()
+        figsThaw, axesThaw = plt.subplots(nrows=len(catList), ncols=len(patchList))
+        axesThaw.reshape((len(catList), len(patchList)))
+        if len(catList) == 1:
+            axesThaw = axesThaw[np.newaxis, :]
+        if len(patchList) == 1:
+            axesThaw = axesThaw[:, np.newaxis]
+        for colOff, patchName in enumerate(patchList):
+            try:
+                pthDataList = specialDict[patchName]['localtiernthawed']
+                assert isinstance(pthDataList, types.ListType), \
+                    'Special data %s is not a list' % patchName
+                fields = {}
+                for d in pthDataList:
+                    for k, v in d.items():
+                        if k not in fields:
+                            fields[k] = []
+                        fields[k].append(v)
+                assert 'day' in fields, 'Date field is missing for special data %s' % patchName
+                dayList = fields['day']
+                dayVec = np.array(dayList)
+                del fields['day']
+
+                for rowOff, cat in enumerate(catList):
+                    if cat in fields:
+                        l = fields[cat]
+                        assert len(l) == len(dayList), (('field %s is the wrong length in special'
+                                                         ' data %s (%d vs. %d)')
+                                                         % (cat, patchName, len(l), len(dayList)))
+                        curve = np.array(l)
+                        lbl = 'nThaws'
+                        if np.count_nonzero(curve):
+                            axesThaw[rowOff, colOff].plot(dayVec, curve, label=lbl)
+                    axesThaw[rowOff, colOff].set_xlabel('Days')
+                    axesThaw[rowOff, colOff].set_ylabel('Number of thaws')
+                    axesThaw[rowOff, colOff].set_title(cat)
+            except Exception, e:
+                print e
+        figsThaw.tight_layout()
+        figsThaw.canvas.set_window_title("Time History of Thaws")
+    except KeyError as e:
+        if e.message == 'localtiernthawed':
+            print('localtiernthawed data not available; skipping time history of thaws')
 
 
 def countBirthsDeaths(catNames, allOfCategoryDict):
@@ -764,6 +824,7 @@ def main():
     else:
         occupancyTimeFig(specialDict) #, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
+    thawsTimeFig(specialDict)
 
     plt.show()
 

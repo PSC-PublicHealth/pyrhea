@@ -56,8 +56,13 @@ class DiagnosticPolicy(Policy):
             return PatientDiagnosis(overallHealth,
                                     DiagClassA.WELL, timeNow, defaultPthStatus, False)
         elif careTier == CareTier.NURSING:
-            return PatientDiagnosis(overallHealth,
-                                    DiagClassA.WELL, timeNow, defaultPthStatus, False)
+            if overallHealth == PatientOverallHealth.FRAIL:
+                return PatientDiagnosis(overallHealth, DiagClassA.WELL, timeNow,
+                                        defaultPthStatus, False)
+            else:
+                # the patient must be here for rehab
+                return PatientDiagnosis(overallHealth, DiagClassA.NEEDSREHAB, timeNow,
+                                        defaultPthStatus, False)
         elif careTier == CareTier.LTAC:
             return PatientDiagnosis(overallHealth,
                                     DiagClassA.NEEDSLTAC, timeNow, defaultPthStatus, False)
@@ -104,7 +109,9 @@ class TreatmentPolicy(Policy):
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
-        raise RuntimeError('Base TreatmentPolicy was called for %s' % ward._name)
+        if (ward.tier == CareTier.NURSING
+                and patient.getDiagnosis().diagClassA == DiagClassA.NEEDSREHAB):
+            patient.setTreatment(rehab=True)
 
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """

@@ -171,6 +171,21 @@ def generateLocalTierDictBuilder(counterKey):
         return facTrtDict
     return buildDict
 
+def generateFacTypeDictBuilder(counterKey):
+    def buildDict(patch, timeNow):
+        facTypeDict = {'day': timeNow}
+        assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
+                                                 % patch.name)
+        for fac in patch.allFacilities:
+            tpName = type(fac).__name__
+            if tpName not in facTypeDict:
+                facTypeDict[tpName] = 0
+            for ward in fac.getWards():
+                facTypeDict[tpName] += ward.miscCounters[counterKey]
+                ward.miscCounters[counterKey] = 0.0
+        return facTypeDict
+    return buildDict
+
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
@@ -188,6 +203,7 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierotherCP': generateLocalTierDictBuilder('otherDaysOnCP'),
                           'localtierxdroCP': generateLocalTierDictBuilder('xdroDaysOnCP'),
                           'localtierpatientsOnCP': generateLocalTierDictBuilder('newPatientsOnCP'),
+                          'localtiernthawed': generateFacTypeDictBuilder('nThawed')
 
                           }
 
