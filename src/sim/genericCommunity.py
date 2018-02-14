@@ -365,7 +365,7 @@ class CopyOnWriteLMDBFreezer(Freezer):
         else:
             lDict = self.orig
         try:
-            agentListDict = self.changed[self._AgentListId+self.iDictOffset]
+            agentListDict = lDict[self._AgentListId+self.iDictOffset]
         except:
             agentListDict = {}
         agentListDict[self.pType] = self.frozenAgentList
