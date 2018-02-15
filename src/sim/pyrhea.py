@@ -45,6 +45,8 @@ import numpy as np
 import bcolz as bz
 import time
 
+import taumod
+
 BASE_DIR = os.path.dirname(__file__)
 SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
@@ -305,7 +307,7 @@ def overrideTaus(patch, tauDict):
 
 # mydf = pd.read_msgpack("~/projects/pyrhea/repo/pyrhea/src/sim/cre_prev_9736_1517525811.99.mpk")
                 
-class TauAdjuster(object):
+class SingleProcessTauAdjuster(object):
     def __init__(self, monitor):
         self.patch = monitor.patch
         self.monitor = monitor
@@ -473,7 +475,63 @@ class TauAdjuster(object):
         def fn(timeNow, mon):
             return self.daily(timeNow)
         return fn
+
+
+class TauAdjuster(object):
+    def __init__(self, monitor):
+        self.patch = monitor.patch
+        self.monitor = monitor
+        self.expectedPrevalence = self.getColonizedTargets()
+        self.tauHistory = {}
+
+        self.nextDate, tauDict = taumod.getNewTauDict(-1)
+        overrideTaus(self.patch, tauDict)
+
+    def getColonizedTargets(self):
+        ret = {}
+        for fac in self.patch.allFacilities:
+            for ward in fac.getWards():
+                # for now let's drop any "HOME" wards
+                if ward.tier == CareTier.HOME:
+                    continue
+                ret[(fac.abbrev, CareTier.names[ward.tier])] = ward.iA.initialFracColonized
+        return ret
     
+
+    def processPrevData(self):
+        pthData = self.monitor.getPthData()
+        pthDataName = "cre_prev_%s.mpk"%self.monitor.uniqueID
+        pthData.to_msgpack(pthDataName, compress="zlib")
+
+        tauDataName = "tau_data_%s.pkl"%self.monitor.uniqueID
+        tauDict = getTauDict(self.patch)
+        with open(tauDataName, "wb") as f:
+            pickle.dump(tauDict, f, 2)
+
+        expectedName = "expected_data_%s.pkl"%self.monitor.uniqueID
+        with open(expectedName, "wb") as f:
+            pickle.dump(self.expectedPrevalence, f, 2)
+
+        taumod.updateInfo(self.monitor.uniqueID, pthDataName, tauDataName, expectedName)
+        self.nextDate, tauDict = taumod.getNewTauDict(self.nextDate)
+        overrideTaus(self.patch, tauDict)
+
+        
+    
+    
+    def daily(self, timeNow):
+        if timeNow < self.nextDate:
+            return self.nextDate
+
+        self.processPrevData()
+        
+        return self.nextDate
+
+    def createCallbackFn(self):
+        def fn(timeNow, mon):
+            return self.daily(timeNow)
+        return fn
+
 
 
 
