@@ -171,8 +171,7 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                                    oldTier, newTier, timeNow):  # @UnusedVariable
         timeTupleL = facilitybase.buildTimeTupleList(patientAgent, timeNow)
         transType, rootFac, daysSince = self.classifyTrans(newTier, timeTupleL)
-        #if transType == TransType.OTHER:
-        if True:
+        if transType == TransType.OTHER:
             return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
                                                                   oldTier, newTier, timeNow)
         else:
