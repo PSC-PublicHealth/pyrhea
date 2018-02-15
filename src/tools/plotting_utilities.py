@@ -17,7 +17,6 @@ from pyrhea import checkInputFileSchema
 from map_transfer_matrix import parseFacilityData
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
-INPUT_YAML = '../sim/twoyear_run_ChicagoLand.yaml'
 
 # Constants for bootstrap sampling
 BOOTSTRAP_SIZE = 1000
@@ -103,14 +102,15 @@ def bootstrap_test(ma, mb, bootstrap_size=10000, num_samples=1000):
              scipy.stats.entropy(softmax(null_a).flatten(),softmax(null_b).flatten())))
     return pd.DataFrame(result, columns=['test','null'])
 
-def sampleAndPlot(m1, m2, title):
+def sampleAndPlot(m1, m2, title, bootstrap_size=BOOTSTRAP_SIZE,
+                  total_samples=TOTAL_SAMPLES, num_workers=NUM_WORKERS):
     futures = []
-    with concurrent.futures.ProcessPoolExecutor(NUM_WORKERS) as executor:
-        for s in range(0,TOTAL_SAMPLES,(TOTAL_SAMPLES // NUM_WORKERS)):
+    with concurrent.futures.ProcessPoolExecutor(num_workers) as executor:
+        for s in range(0,TOTAL_SAMPLES,(total_samples // num_workers)):
             futures.append(
                 executor.submit(
                     bootstrap_test,
-                    m1, m2, BOOTSTRAP_SIZE, (TOTAL_SAMPLES // NUM_WORKERS)))
+                    m1, m2, bootstrap_size, (total_samples // num_workers)))
     df_direct = pd.concat([future.result() for future in futures])
     return ggplot(df_direct, aes()) \
         + xlab('Summary Statistic Distribution') \
@@ -399,6 +399,7 @@ def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facD
     myBars(indirectMxList, idx, ax2, colLabels, idxFacTbl, facDict)
 
 def main():
+    input_yaml = '../sim/twoyear_run_ChicagoLand.yaml'
     allD = {}
     for dataCase in ['indirect_0_830_case0', 'indirect_0_830_case1',
                      'indirect_100_465_case0', 'indirect_100_465_case1',
@@ -409,24 +410,25 @@ def main():
                      'directonly_466_830_case0', 'directonly_466_830_case1',
                      'indirect_466_830_42abc723_case0', 'indirect_466_830_42abc723_case1',
                      'indirect_466_830_42abc723_case2', 'indirect_466_830_42abc723_case3',
-                     'indirect_466_830_42abc723_case4'
+                     'indirect_466_830_42abc723_case4', 'indirect_0_465_2a2a0ef',
+                     'indirect_0_830_2a2a0ef', 'indirect_466_830_2a2a0ef'
                     ]:
         d = np.load('arrays_%s.npz' % dataCase)
         allD[dataCase] = d
 
-    print os.path.abspath(INPUT_YAML)
+    print os.path.abspath(input_yaml)
     schemautils.setSchemaBasePath(SCHEMA_DIR)
-    inputDict = checkInputFileSchema(INPUT_YAML,
+    inputDict = checkInputFileSchema(input_yaml,
                                      #os.path.join(SCHEMA_DIR,'rhea_input_schema.yaml'),
                                      'rhea_input_schema.yaml',
-                                    comm=None)
+                                     comm=None)
     if 'modelDir' in inputDict:
         pyrheautils.PATH_STRING_MAP['MODELDIR'] = pyrheautils.pathTranslate(inputDict['modelDir'])
     if 'pathTranslations' in inputDict:
         for elt in inputDict['pathTranslations']:
             pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
-    pathPrefix = os.path.dirname(os.path.abspath(INPUT_YAML))
+    pathPrefix = os.path.dirname(os.path.abspath(input_yaml))
     facDirs = [os.path.join(pathPrefix, fD) for fD in facDirs]
     facDict = parseFacilityData(facDirs)
     print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
@@ -457,9 +459,10 @@ def main():
     siMx1 = allD['directonly_466_830_case1']['indirect_simulated']
 
     # The following is done as a test of partition
+    print 'partition test matrix:'
     print partition(mMx, facL, facDict)
 
-    sampleAndPlot(mMx, sMx0, 'test of sampleAndPlot')
+    sampleAndPlot(mMx, sMx0, 'test of sampleAndPlot').show()
 
     drawAllFour('FRAN_20201_H', mMx, miMx, sMx0+sMx1, siMx0+siMx1, idxFacTbl, facDict)
     drawAllFour('FRAN_1423_H', mMx, miMx, sMx0+sMx1, siMx0+siMx1, idxFacTbl, facDict)
