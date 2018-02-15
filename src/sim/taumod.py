@@ -60,7 +60,7 @@ def getNewTauDict(lastDate):
 # it's really dumb having the taufile and the expected prevalences being passed in this way but
 # it's easier to get them from a running instance of pyrhea than to generate them in a separate process.
 def updateInfo(uid, prevStatsFile, tauFile, expectedFile):
-    s = "%s %s %s %s"%(uid, prevStatsFile, tauFile, expectedFile)
+    s = "%s %s %s %s\n"%(uid, prevStatsFile, tauFile, expectedFile)
     appendDateFile(s)
 
 
