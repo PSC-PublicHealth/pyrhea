@@ -22,7 +22,7 @@ from phacsl.utils.collections.phacollections import SingletonMetaClass, enum
 from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 import facilitybase
-import transferbydrawwithreplacement
+import transferbydrawwithreplacement, categorydrawwithreplacement
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/indirecttransferdestination_constants.yaml'
@@ -115,8 +115,8 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
         super(IndirectTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
         self.core = IndirectTransferCore(patch)
         self.cache = {}
-        self.fallbackPolicy = (transferbydrawwithreplacement.
-                               DrawWithReplacementTransferDestinationPolicy(patch,
+        self.fallbackPolicy = (categorydrawwithreplacement.
+                               CategoryDrawWithReplacementTransferDestinationPolicy(patch,
                                                                             categoryNameMapper))
 
     def classifyTrans(self, newTier, timeTupleL):

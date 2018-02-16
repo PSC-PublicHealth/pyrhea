@@ -83,6 +83,7 @@ class DWRCore(object):
 
     def __init__(self, patch):
         self.patch = patch
+        self.transferFilePaths = _constants['transferFilePaths']
         self.tierAddrMap = None
         self.tbl = None
         self.totTbl = None
@@ -110,7 +111,7 @@ class DWRCore(object):
         pairsSeen = set()
         self.tbl = {}
         self.totTbl = {}
-        for transferMatrixFilePath in _constants['transferFilePaths']:
+        for transferMatrixFilePath in self.transferFilePaths:
             logger.info('Importing the weight data file %s', transferMatrixFilePath)
             rawTbl = pyrheautils.importConstants(transferMatrixFilePath,
                                                  _constants['transferFileSchema'])
@@ -137,7 +138,7 @@ class DWRCore(object):
                     self.totTbl[srcName][tier] = wtSum
             logger.info('Import complete.')
         for srcName, subTbl in self.tbl.items():
-            for wtL in subTbl.values():     
+            for wtL in subTbl.values():
                 wtL.sort(reverse=True)
         logger.info('Post-processing of weight data files is complete.')
 
