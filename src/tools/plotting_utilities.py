@@ -8,6 +8,7 @@ import scipy.sparse
 from ggplot import *
 import concurrent.futures
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import os.path
 
@@ -398,6 +399,64 @@ def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facD
     #ax2.set_aspect('equal', 'datalim')
     myBars(indirectMxList, idx, ax2, colLabels, idxFacTbl, facDict)
 
+def plotLogImg(mtx, minVal, maxVal):
+    fltIm = np.log10(mtx.astype(np.float32) + 1.0)
+    myMin = np.log10(float(minVal) + 1.0)
+    myMax = np.log10(float(maxVal) + 1.0)
+#     fltIm = mtx.astype(np.float32)
+#     myMin, myMax = minVal, maxVal
+    return plt.imshow(fltIm,
+#                       cmap=cm.RdYlGn,
+                      cmap=cm.viridis,
+                      vmin=myMin, vmax=myMax,
+#                       interpolation='bilinear',
+#                       origin='lower',
+#                       extent=[-3, 3, -3, 3]
+               )
+
+def plotImg(mtx, minVal, maxVal):
+    fltIm = mtx.astype(np.float32)
+    myMin, myMax = minVal, maxVal
+    return plt.imshow(fltIm,
+                      cmap=cm.bwr,
+                      vmin=myMin, vmax=myMax,
+                      )
+
+def pltMtxImageFig(directMtx, measDirectMtx, indirectMtx, measIndirectMtx):
+    maxVal = max(np.max(directMtx), np.max(indirectMtx))
+
+    ax11 = plt.subplot(2, 2, 1)
+    ax11.set_title('log direct')
+    plotLogImg(directMtx, 0.0, float(maxVal))
+
+    ax12 = plt.subplot(2, 2, 2)
+    ax12.set_title('log indirect')
+    plotLogImg(indirectMtx, 0.0, float(maxVal))
+
+    plt.colorbar(ax=[ax11, ax12])
+
+    sclMtx = (float(np.sum(directMtx))/float(np.sum(measDirectMtx))) * measDirectMtx
+    #deltaMtx = (2.0*(directMtx - sclMtx)/(directMtx + sclMtx))
+    directDeltaMtx = directMtx - sclMtx
+    #directDeltaMtx[0:100, 0:100] = 0.0
+
+    sclMtx = (float(np.sum(indirectMtx))/float(np.sum(measIndirectMtx))) * measIndirectMtx
+    #deltaMtx = (2.0*(indirectMtx - sclMtx)/(directMtx + sclMtx))
+    indirectDeltaMtx = indirectMtx - sclMtx
+    #indirectDeltaMtx[0:100, 0:100] = 0.0
+    lim = max(np.max(np.fabs(directDeltaMtx)), np.max(np.fabs(indirectDeltaMtx)))
+
+    ax21 = plt.subplot(2, 2, 3)
+    ax21.set_title('normalized direct delta')
+    plotImg(directDeltaMtx, -lim, lim)
+
+    ax22 = plt.subplot(2, 2, 4)
+    ax22.set_title('normalized indirect delta')
+    plotImg(indirectDeltaMtx, -lim, lim)
+
+    plt.colorbar(ax=[ax21, ax22])
+
+
 def main():
     input_yaml = '../sim/twoyear_run_ChicagoLand.yaml'
     allD = {}
@@ -462,7 +521,7 @@ def main():
     print 'partition test matrix:'
     print partition(mMx, facL, facDict)
 
-    sampleAndPlot(mMx, sMx0, 'test of sampleAndPlot').show()
+    #sampleAndPlot(mMx, sMx0, 'test of sampleAndPlot').show()
 
     drawAllFour('FRAN_20201_H', mMx, miMx, sMx0+sMx1, siMx0+siMx1, idxFacTbl, facDict)
     drawAllFour('FRAN_1423_H', mMx, miMx, sMx0+sMx1, siMx0+siMx1, idxFacTbl, facDict)
@@ -477,6 +536,9 @@ def main():
                ],
                ['measured', 'run0', 'run1', 'run2', 'run3'],
                idxFacTbl, facDict)
+    
+    pltMtxImageFig(sMx0, mMx, siMx0, miMx)
+
     plt.show()
 
 if __name__ == "__main__":

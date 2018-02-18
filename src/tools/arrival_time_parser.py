@@ -29,7 +29,6 @@ import yaml
 from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from scipy.stats import norm
 import logging
 import logging.config
@@ -41,6 +40,7 @@ import pyrheautils
 from pyrhea import getLoggerConfig, checkInputFileSchema, loadPathogenImplementations
 from facilitybase import CareTier, PthStatus
 from map_transfer_matrix import parseFacilityData
+from plotting_utilities import pltMtxImageFig
 
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.formats.yaml_tools as yaml_tools
@@ -159,29 +159,20 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
             oldLoc, oldArrive, oldDepart, oldInHosp = newLoc, newArrive, newDepart, newInHosp
     return counts
 
+def countVisits(tplL, rangeLow, rangeHigh):
+#     nVisits = 0
+#     nDays = 0
+#     oldLoc, oldArrive, oldDepart = tplL[0]
+#     oldInHosp = (facDict[oldLoc]['category'] in HOSP_CAT_LIST)
+#     if len(tplL) > 1:
+#         pass
+#     else:
+#         if oldInHosp:
+#              if (oldArrive <= rangeHigh and oldDepart >= rangeLow)
+    return 0
+        
+    
 
-def plotLogImg(mtx, minVal, maxVal):
-    fltIm = np.log10(mtx.astype(np.float32) + 1.0)
-    myMin = np.log10(float(minVal) + 1.0)
-    myMax = np.log10(float(maxVal) + 1.0)
-#     fltIm = mtx.astype(np.float32)
-#     myMin, myMax = minVal, maxVal
-    return plt.imshow(fltIm,
-#                       cmap=cm.RdYlGn,
-                      cmap=cm.viridis,
-                      vmin=myMin, vmax=myMax,
-#                       interpolation='bilinear',
-#                       origin='lower',
-#                       extent=[-3, 3, -3, 3]
-               )
-
-def plotImg(mtx, minVal, maxVal):
-    fltIm = mtx.astype(np.float32)
-    myMin, myMax = minVal, maxVal
-    return plt.imshow(fltIm,
-                      cmap=cm.bwr,
-                      vmin=myMin, vmax=myMax,
-                      )
 
 def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
     mtx = np.zeros_like(protoMtx)
@@ -194,7 +185,6 @@ def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
                     dstIdx = facIdxTbl[dstLoc] if dstLoc in facIdxTbl else commIdx
                     mtx[srcIdx, dstIdx] += ct
     return mtx
-
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -209,7 +199,7 @@ def main():
     LOGGER = logging.getLogger(__name__)
 
     parser = optparse.OptionParser(usage="""
-    %prog run_descr.yaml
+    %prog --input recs.txt [-L low_date] [-H high_date] run_descr.yaml
     """)
     
     parser.add_option('-i', '--input', action='store', type='string',
@@ -312,51 +302,22 @@ def main():
     print 'indirectCounts = %s' % indirectCounts
     print 'indirect transfer matrix follows'
     print indirectMtx
-    maxVal = max(np.max(directMtx), np.max(indirectMtx))
 
-    ax11 = plt.subplot(2, 2, 1)
-    ax11.set_title('log direct')
-    plotLogImg(directMtx, 0.0, float(maxVal))
-
-    ax12 = plt.subplot(2, 2, 2)
-    ax12.set_title('log indirect')
-    plotLogImg(indirectMtx, 0.0, float(maxVal))
-
-    plt.colorbar(ax=[ax11, ax12])
 
     measDirectMtx = mtxFromYaml(DIRECT_TRANSFER_DATA, directMtx, facIdxTbl, commIdx)
-    sclMtx = (float(np.sum(directMtx))/float(np.sum(measDirectMtx))) * measDirectMtx
-    #deltaMtx = (2.0*(directMtx - sclMtx)/(directMtx + sclMtx))
-    directDeltaMtx = directMtx - sclMtx
-    #directDeltaMtx[0:100, 0:100] = 0.0
 
     measIndirectMtx = mtxFromYaml(INDIRECT_TRANSFER_DATA, indirectMtx, facIdxTbl, commIdx)
-    sclMtx = (float(np.sum(indirectMtx))/float(np.sum(measIndirectMtx))) * measIndirectMtx
-    #deltaMtx = (2.0*(indirectMtx - sclMtx)/(directMtx + sclMtx))
-    indirectDeltaMtx = indirectMtx - sclMtx
-    #indirectDeltaMtx[0:100, 0:100] = 0.0
-    lim = max(np.max(np.fabs(directDeltaMtx)), np.max(np.fabs(indirectDeltaMtx)))
 
-    ax21 = plt.subplot(2, 2, 3)
-    ax21.set_title('normalized direct delta')
-    plotImg(directDeltaMtx, -lim, lim)
+    pltMtxImageFig(directMtx, measDirectMtx, indirectMtx, measIndirectMtx)
 
-    ax22 = plt.subplot(2, 2, 4)
-    ax22.set_title('normalized indirect delta')
-    plotImg(indirectDeltaMtx, -lim, lim)
-
-    plt.colorbar(ax=[ax21, ax22])
-
-    #plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
-    plt.show()
+    plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
    
-    np.savez('arrival_time_arrays.npz', 
+    np.savez('arrival_time_arrays.npz',
             indirect_simulated=indirectMtx,
             direct_simulated=directMtx,
             indirect_measured=measIndirectMtx,
             direct_measured=measDirectMtx)
-    
-    print indirectDeltaMtx[18:23, 20:28]
+
 
 if __name__ == "__main__":
     main()
