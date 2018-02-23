@@ -312,8 +312,10 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     colors = prop_cycle.by_key()['color']
     # cannot use a completion here because of semantics of generator
     normRwL = []
+    totRwL = []
     for mx in mxList:
         normRwL.append(normalize(mx[rowIdx,:]))
+        totRwL.append(np.sum(mx[rowIdx,:]))
     catClrMap = {ctg: colors[i] for i,ctg in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
     segTbl = {key: [] for key in catClrMap.keys()}
     for idx, val in enumerate(normRwL[0].flatten()):
@@ -350,6 +352,7 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
             labels.append('%d Other %ss' % (otherCt, category[:4]))
             sizeLL.append(otherSzL)
             cL.append(curClr)
+    ax.set_xlim(0.0, 3.0 + len(normRwL))
     xL = np.arange(len(normRwL)) + 2
     zOff = 0.1
     baseL = [zOff for _ in normRwL]
@@ -359,45 +362,42 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
         ax.text(2.4 + offset, 0.0, colLabelL[offset],
                 horizontalalignment='center', verticalalignment='bottom')
     for szL,clr,lbl in zip(sizeLL, cL, labels):
-        artists = ax.bar(xL, szL, color=clr, bottom=baseL)
-        ax.text(1.8, baseL[0] + 0.5*szL[0], lbl,
+        rects = ax.bar(xL, szL, color=clr, edgecolor='k', bottom=baseL)
+        for sz, tot, rect in zip(szL, totRwL, rects):
+            yOff = (0.5 * rect.get_height()) + rect.get_y()
+            if sz > 0.0:
+                ax.text(rect.get_x() + rect.get_width()/2., yOff,
+                        '%d' % int(round(sz*tot)),
+                        ha='center', va='center')
+        ax.text(1.5, baseL[0] + 0.5*szL[0], lbl,
                 horizontalalignment='right', verticalalignment='center', fontsize=6)
-        ax.text(2.0+len(normRwL), baseL[-1] + 0.5*szL[-1], lbl,
+        ax.text(1.5+len(normRwL), baseL[-1] + 0.5*szL[-1], lbl,
                 horizontalalignment='left', verticalalignment='center', fontsize=6)
         #print lbl, xL, yL, clr, baseL
         baseL = [a + b for a, b in zip(szL, baseL)]
         for offset in xrange(len(normRwL) - 1):
-            ax.plot([2.8 + offset, 3.0 + offset],baseL[offset:offset+2], color='k')
-    #ax.set_xlim((0.0, len(mxList) + 2.0))
-    #ax.set_xticks(np.arange(len(mxList)) + 2.4)
-    #ax.set_xticklabels(colLabelL)
+            ax.plot([2.4 + offset, 2.6 + offset],baseL[offset:offset+2], color='k')
+    # Draw totals above each column, using the last set of rectangles to get coordinates
+    for tot, base, rect in zip(totRwL, baseL, rects):
+        ax.text(rect.get_x() + rect.get_width()/2.0,
+                base,
+                '%d' % tot, ha='center', va='bottom')
     ax.set_xticks([])
+    #ax.set_xticks(np.arange(len(normRwL)+2))
     ax.set_yticks([])
     
 def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facDict):
     facIdxTbl = {val: key for key, val in idxFacTbl.items()}
     idx = facIdxTbl[abbrev]
-    
-    outerFig = plt.figure()
-    outerAx = outerFig.gca()
-    outerAx.axis('off')
-    outerAx.set_title(abbrev)
-    outerAx.set_aspect('equal', 'datalim')
-    outerAx.set_ylim(0.0,2.0)
-    #outerAx.set_yticks([1.0, 3.0])
-    #outerAx.set_yticklabels(['Measured', 'Simulated'])
-    #outerAx.set_xlim(0.0,4.0)
-    #outerAx.set_xticks([1.0, 3.0])
-    #outerAx.set_xticklabels(['Direct', 'Indirect'])
-    ax1 = inset_axes(outerAx, width='90%', height='40%', loc=2, borderpad=0.0)
-    ax1.axis('off')
-    #ax1.set_aspect('equal', 'datalim')
-    myBars(directMxList, idx, ax1, colLabels, idxFacTbl, facDict)
 
-    ax2 = inset_axes(outerAx, width='90%', height='40%', loc=3, borderpad=0.0)
-    ax2.axis('off')
-    #ax2.set_aspect('equal', 'datalim')
-    myBars(indirectMxList, idx, ax2, colLabels, idxFacTbl, facDict)
+    figs, axisL = plt.subplots(nrows=2, ncols=1)
+    axisL[0].set_title(abbrev)
+    myBars(directMxList, idx, axisL[0], colLabels, idxFacTbl, facDict)
+    axisL[0].axis('off')
+    myBars(indirectMxList, idx, axisL[1], colLabels, idxFacTbl, facDict)
+    axisL[1].axis('off')
+    figs.tight_layout(h_pad=2)
+    figs.canvas.set_window_title(abbrev)
 
 def plotLogImg(mtx, minVal, maxVal):
     fltIm = np.log10(mtx.astype(np.float32) + 1.0)
