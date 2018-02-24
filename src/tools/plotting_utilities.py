@@ -359,7 +359,7 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     for offset in xrange(len(normRwL) - 1):
         ax.plot([2.8 + offset, 3.0 + offset],[zOff, zOff], color='k')
     for offset in xrange(len(normRwL)):
-        ax.text(2.4 + offset, 0.0, colLabelL[offset],
+        ax.text(2.0 + offset, 0.0, colLabelL[offset],
                 horizontalalignment='center', verticalalignment='bottom')
     for szL,clr,lbl in zip(sizeLL, cL, labels):
         rects = ax.bar(xL, szL, color=clr, edgecolor='k', bottom=baseL)
