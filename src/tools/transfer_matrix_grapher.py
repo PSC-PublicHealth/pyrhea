@@ -36,7 +36,6 @@ def expandGlobbedList(pathList):
     for fName in pathList:
         print '%s yields %s' % (fName, glob.glob(fName))
         newPathList += glob.glob(fName)
-    newPathList.sort()
     return newPathList
 
 def main():

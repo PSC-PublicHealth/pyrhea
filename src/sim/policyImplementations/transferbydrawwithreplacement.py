@@ -125,7 +125,7 @@ class DWRCore(object):
                                            (srcName, destName))
                     else:
                         pairsSeen.add((srcName, destName))
-                for tier in nmDict.keys():
+                for tier in nmDict:
                     if tier not in self.tbl[srcName]:
                         self.tbl[srcName][tier] = []
                         self.totTbl[srcName][tier] = 0.0
@@ -137,6 +137,36 @@ class DWRCore(object):
                             wtSum += ct
                     self.totTbl[srcName][tier] = wtSum
             logger.info('Import complete.')
+
+        # Let's try adding some options for rare facilities
+        # - say if there are fewer than 3%
+        totNumFacs = sum([len(fS) for tier, fS in tierFacSets.items()
+                          if tier != CareTier.HOME])
+        thresh = int(round(0.03 * totNumFacs))
+        adjustThese = set()
+        for tier, fS in tierFacSets.items():
+            if len(fS) <= thresh:
+                adjustThese.add(tier)
+        for tier in adjustThese:
+            fS = tierFacSets[tier]
+            addrMap = self.getTierAddrMap(tier)
+            for srcName in self.tbl:
+                if tier in self.tbl[srcName]:
+                    oldL = self.tbl[srcName][tier]
+                    if oldL and len(oldL) < 3:
+                        dct = {}
+                        for ct, (nm, addr) in oldL:
+                            dct[nm] = ct
+                        oldTot = sum(dct.values())
+                        otherNmL = [nm for nm in addrMap if nm not in dct]
+                        if otherNmL:
+                            delta = (0.1 * oldTot)/len(otherNmL)
+                            dct.update({nm: delta for nm in otherNmL})
+                        newL = [(ct, (nm, addrMap[nm])) for nm, ct in dct.items()]
+                        newTot = sum(dct.values())
+                        self.tbl[srcName][tier] = newL
+                        self.totTbl[srcName][tier] = newTot
+
         for srcName, subTbl in self.tbl.items():
             for wtL in subTbl.values():
                 wtL.sort(reverse=True)
@@ -155,17 +185,21 @@ class DWRCore(object):
 
 class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy):
     def __init__(self, patch, categoryNameMapper):
-        super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch,
-                                                                           categoryNameMapper)
+#         super(DrawWithReplacementTransferDestinationPolicy, self).__init__(patch,
+#                                                                            categoryNameMapper)
+        BaseTransferDestinationPolicy.__init__(self, patch, categoryNameMapper)
         self.core = DWRCore(patch)
 
     def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
         pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
-#         print '%s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier],
-#                                        CareTier.names[newTier], tot)
-#         print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
-#         print 'newTier: %s' % CareTier.names[newTier]
+        if oldFacility.abbrev=='FRAN_1423_H' and newTier == CareTier.HOSP:
+            print '#!#!#! %s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier],
+                                                  CareTier.names[newTier], tot)
+            print '#!#!#!pairList: %s' % str([(a, b[0]) for a, b in pairList])
+#             print 'newTier: %s' % CareTier.names[newTier]
         try:
+            if oldFacility.abbrev=='FRAN_1423_H' and newTier in [CareTier.HOSP, CareTier.ICU]:
+                print '#!#!#! shuffled: %s' % [a for a,b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
             return [b for a, b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
