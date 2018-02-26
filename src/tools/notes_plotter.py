@@ -209,7 +209,7 @@ def collectBarSamples(histoVal):
     quantum = histoVal.d['quantum']
     barWidth = 1.6 * quantum
     for b, c in pairList:
-        bins.append(b - 0.5*(quantum + barWidth))
+        bins.append(b - 0.5*quantum)
         counts.append(c)
     return bins, counts, barWidth
 
