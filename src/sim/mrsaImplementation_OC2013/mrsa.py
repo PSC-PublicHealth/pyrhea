@@ -123,7 +123,10 @@ class MRSA(Pathogen):
             self.patientPthTime = timeNow
         return self.patientPth
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()        
         if patientStatus.pthStatus == PthStatus.CLEAR:
             pP = self.getPatientPthCounts(timeNow)
             nExposures = pP[PthStatus.COLONIZED] + pP[PthStatus.INFECTED] + pP[PthStatus.CHRONIC]

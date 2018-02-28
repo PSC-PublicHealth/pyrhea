@@ -41,11 +41,10 @@ class Pathogen(object):
         """
         pass
 
-    def getStatusChangeTree(self, patientStatus, careTier, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         raise RuntimeError('Pathogen base class getStatusChangeTree was called.')
 
-    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime,
-                                timeNow):
+    def filterStatusChangeTrees(self, treeList, patientAgent, startTime, timeNow):
         return treeList[:]
 
     def initializePatientState(self, patient):

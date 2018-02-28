@@ -177,6 +177,9 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
         else:
             if transType in (TransType.HOSP_INDIRECT, TransType.NH_READMIT):
                 pairList, tot = self.core.getWeightedList(rootFac, newTier)
+                if rootFac in ['INTE_4815_S', 'CALI_2829_S']:
+                    print '!$!$!$ at %s %s yields %s' % (rootFac, thisFacility.abbrev,
+                                                         [(wt, tpl[0]) for wt, tpl in pairList])
             else:
                 raise RuntimeError('Unknown transfer type %s' % transType)
 #             print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],

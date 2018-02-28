@@ -48,6 +48,10 @@ loggers:
     level: INFO
   indirecttransferdestination:
     level: INFO
+  transferbydrawwithreplacement:
+    level: INFO
+  categorydrawwithreplacement:
+    level: INFO
   community:
     level: DEBUG
   netinterface:
@@ -56,8 +60,8 @@ loggers:
     level: WARNING
   genericCommunity:
     level: DEBUG
-#  policybase:
-#    level: DEBUG
+  policybase:
+    level: DEBUG
 #    handlers: [rabbitmq]
 root:
   level: WARNING

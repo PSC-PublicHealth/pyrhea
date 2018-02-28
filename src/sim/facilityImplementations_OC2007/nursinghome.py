@@ -80,7 +80,10 @@ class NursingHome(Facility):
         self.frailRehabTreeCache = {}        
         self.frailTreeCache = {}        
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
         assert careTier == CareTier.NURSING, \
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier

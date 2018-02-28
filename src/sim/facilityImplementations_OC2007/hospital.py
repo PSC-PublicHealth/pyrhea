@@ -149,7 +149,10 @@ class Hospital(Facility):
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants

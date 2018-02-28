@@ -306,7 +306,10 @@ class CRE(Pathogen):
             self.treatmentProbModifierDict = dct
         return self.treatmentProbModifierDict
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         if patientStatus.pthStatus == PthStatus.CLEAR:
             pI, pIKey = self.getPropogationInfo(timeNow)
             dT = timeNow - startTime
@@ -353,8 +356,11 @@ class CRE(Pathogen):
             else:
                 return BayesTree(PatientStatusSetter())
 
-    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment, startTime, timeNow):
+    def filterStatusChangeTrees(self, treeList, patientAgent, startTime, timeNow):
         # Find and edit any trees containing the 'LOS' tag
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         newTreeList = []
         if patientStatus.pthStatus == PthStatus.CLEAR:
             key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)

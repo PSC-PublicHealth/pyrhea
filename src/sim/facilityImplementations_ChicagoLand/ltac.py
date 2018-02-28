@@ -125,7 +125,10 @@ class LTAC(Facility):
         """
         self.treeCache = {}        
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         if not self.pthRates:
             # Lazy initialization
             infectiousAgent = self.getWards(CareTier.LTAC)[0].iA

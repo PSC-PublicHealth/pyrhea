@@ -101,7 +101,10 @@ class LTAC(Facility):
         """
         self.treeCache = {}        
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()        
         assert not treatment.rehab, \
             "LTACs do not offer rehab treatment; found %s" % treatment
         careTier = ward.tier

@@ -159,7 +159,10 @@ class VentSNF(Facility):
             facAddrList = lclList + facAddrList
         return facAddrList
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
         assert careTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT],\
             "VSNFs do not provide this CareTier: found %s" % careTier

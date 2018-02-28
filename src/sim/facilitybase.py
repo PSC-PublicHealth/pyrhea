@@ -74,7 +74,7 @@ class PthStatusSetter(PatientStatusSetter):
 
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
-        pyrheabase.Ward.__init__(self, name, patch, tier, nBeds)
+        pyrheabase.Ward.__init__(self, name, patch, tier, 2*nBeds)
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
@@ -497,6 +497,9 @@ class Facility(pyrheabase.Facility):
             assert 'patientId' in transferInfoDict, 'Transfer info lacks patientId'
             pId = transferInfoDict['patientId']
             self.arrivingPatientTransferInfoDict[pId] = transferInfoDict.copy()
+        else:
+            if self.abbrev=='FRAN_20201_H' and oldSenderAbbrev=='FRAN_1423_H':
+                print '#!#!#! %s is full; rejected transfer' % self.abbrev
         # updated number of bounces and sender
         return (nBounces + 1, tier, self.abbrev, transferInfoDict)
 
@@ -580,7 +583,7 @@ class Facility(pyrheabase.Facility):
                              )
 
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):  # @UnusedVariable
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
         """
         Return a Bayes tree the traversal of which yields a patientStatus.
 
@@ -717,6 +720,12 @@ class PatientAgent(pyrheabase.PatientAgent):
         """
         return self._treatment._asdict()[key]
 
+    def getTreatmentProtocol(self):
+        """
+        Return the whole TreatmentProtocol instance for this patient.
+        """
+        return self._treatment
+
     def updateDiseaseState(self, treatment, facility, timeNow):  # @UnusedVariable
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
@@ -725,16 +734,14 @@ class PatientAgent(pyrheabase.PatientAgent):
             treeL = []
             try:
                 for src in [self.ward.fac, self.ward.iA]:
-                    tree = src.getStatusChangeTree(self._status, self.ward, self._treatment,
-                                                   self.lastUpdateTime, timeNow)
+                    tree = src.getStatusChangeTree(self, self.lastUpdateTime, timeNow)
                     treeL.append(tree)
             except Exception, e:
                 self.logger.critical('Got exception %s on patient %s (id %s) for from %s'
                                      % (str(e), self.name, self.id, str(src)))
                 raise
             try:
-                treeL = self.ward.iA.filterStatusChangeTrees(treeL, self._status, self.ward,
-                                                             self._treatment,
+                treeL = self.ward.iA.filterStatusChangeTrees(treeL, self,
                                                              self.lastUpdateTime, timeNow)
             except Exception, e:
                 self.logger.critical('Got exception %s on patient %s (id %s) filtering trees'

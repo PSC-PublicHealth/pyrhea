@@ -374,7 +374,10 @@ class MRSA(Pathogen):
             self.treatmentProbModifierDict = dct
         return self.treatmentProbModifierDict
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         if patientStatus.pthStatus in [PthStatus.CLEAR, PthStatus.UNDETCOLONIZED]:
             pI, pIKey = self.getPropogationInfo(timeNow)
             dT = timeNow - startTime
@@ -444,9 +447,11 @@ class MRSA(Pathogen):
             raise RuntimeError('patient has unexpected PthStatus %s' %
                                PthStatus.names[patientStatus.pthStatus])
 
-    def filterStatusChangeTrees(self, treeList, patientStatus, careTier, treatment,
-                                startTime, timeNow):
+    def filterStatusChangeTrees(self, treeList, patientAgent, startTime, timeNow):
         # Find and edit any trees containing the 'LOS' tag
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         newTreeList = []
         if patientStatus.pthStatus in [PthStatus.CLEAR, PthStatus.UNDETCOLONIZED]:
             key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)

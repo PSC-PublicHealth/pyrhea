@@ -169,7 +169,8 @@ class HospitalManager(FacilityManager):
         if strict:
             tier = requestedTier
         else:
-            if requestedTier == CareTier.HOSP and random() < _constants['fracTriageHOSPToICU']['value']:
+            if (requestedTier == CareTier.HOSP
+                and random() < _constants['fracTriageHOSPToICU']['value']):
                 tier = CareTier.ICU
             else:
                 tier = requestedTier
@@ -297,7 +298,10 @@ class Hospital(Facility):
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList
 
-    def getStatusChangeTree(self, patientStatus, ward, treatment, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        treatment = patientAgent.getTreatmentProtocol()
         if not self.pthRates:
             # Lazy initialization
             infectiousAgent = self.getWards(CareTier.HOSP)[0].iA

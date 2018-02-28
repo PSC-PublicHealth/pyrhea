@@ -192,14 +192,8 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
 
     def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
         pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
-        if oldFacility.abbrev=='FRAN_1423_H' and newTier == CareTier.HOSP:
-            print '#!#!#! %s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier],
-                                                  CareTier.names[newTier], tot)
-            print '#!#!#!pairList: %s' % str([(a, b[0]) for a, b in pairList])
 #             print 'newTier: %s' % CareTier.names[newTier]
         try:
-            if oldFacility.abbrev=='FRAN_1423_H' and newTier in [CareTier.HOSP, CareTier.ICU]:
-                print '#!#!#! shuffled: %s' % [a for a,b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
             return [b for a, b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,

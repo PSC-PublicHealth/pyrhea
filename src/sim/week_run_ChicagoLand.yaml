@@ -26,8 +26,7 @@
 'policyImplementationDir': '../sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
-    #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
-    'policyClass': 'IndirectTransferDestinationPolicy'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
   - 'category': 'COMMUNITY'
     'policyClass': 'IndirectTransferDestinationPolicy'
     #'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
