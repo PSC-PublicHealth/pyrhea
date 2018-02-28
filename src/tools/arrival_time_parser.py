@@ -70,7 +70,7 @@ def isVisibleDirect(loc, facDict, patName):
     return (loc is not None and facDict[loc]['category'] != 'COMMUNITY')
 
 def isVisibleIndirect(loc, facDict, patName):
-    """Return True if the given facility name is visible for direct transfers.  Loc may be None."""
+    """Return True if the given facility name is visible for indirect transfers.  Loc may be None."""
     return isVisibleDirect(loc, facDict, patName)
 
 INVISIBLE_HOSP_PATIENTS = set()
@@ -159,20 +159,30 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
             oldLoc, oldArrive, oldDepart, oldInHosp = newLoc, newArrive, newDepart, newInHosp
     return counts
 
-def countVisits(tplL, rangeLow, rangeHigh):
-#     nVisits = 0
-#     nDays = 0
-#     oldLoc, oldArrive, oldDepart = tplL[0]
-#     oldInHosp = (facDict[oldLoc]['category'] in HOSP_CAT_LIST)
-#     if len(tplL) > 1:
-#         pass
-#     else:
-#         if oldInHosp:
-#              if (oldArrive <= rangeHigh and oldDepart >= rangeLow)
-    return 0
-        
-    
+def overlapsRange(arrive, depart, low, high):
+    return (arrive <= high and depart >= low)
 
+def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct):
+    assert rangeLow <= rangeHigh, 'cutoff dates are not in order'
+    if tplL:
+        dct = defaultdict(lambda: 0)
+        foundOverlap = False
+        for loc, arrive, depart in tplL:
+            if overlapsRange(arrive, depart, rangeLow, rangeHigh):
+                ctg = facDict[loc]['category']
+                dct[ctg] += 1
+                foundOverlap = True
+            else:
+                if foundOverlap:
+                    # We're out of time
+                    break
+        effectiveStart = max(rangeLow, tplL[0][1])
+        effectiveEnv = min(rangeHigh, tplL[-1][2])
+        for ctg, val in dct.items():
+            accumCountsDct[ctg] += val
+        return dict(dct), effectiveStart, effectiveEnv
+    else:
+        return {}, rangeLow, rangeHigh
 
 def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
     mtx = np.zeros_like(protoMtx)
@@ -195,7 +205,7 @@ def main():
     signal.signal(signal.SIGUSR1, handle_pdb)
 
     global LOGGER
-    #logging.config.dictConfig(getLoggerConfig())
+    logging.config.dictConfig(getLoggerConfig())
     LOGGER = logging.getLogger(__name__)
 
     parser = optparse.OptionParser(usage="""
@@ -245,8 +255,6 @@ def main():
     facL = [fac for facCat, fac in facL]
     facIdxTbl = {key:idx for idx, key in enumerate(facL)}
     commIdx = len(facL)
-    directMtx = np.zeros([commIdx+1, commIdx+1], dtype=np.int32)
-    indirectMtx = np.zeros_like(directMtx)
 
     patientLocs = {}
 
@@ -284,11 +292,22 @@ def main():
 
     directCounts = 0
     indirectCounts = 0
+    directMtx = np.zeros([commIdx+1, commIdx+1], dtype=np.int32)
+    indirectMtx = np.zeros_like(directMtx)
+    accumCountsD = defaultdict(lambda:0)
+    netEffStart = None
+    netEffEnd = None
     for patName, tupleL in patientLocs.items():
 
         #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleDirect, facDict, patName)
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
         filtTupleL = mergeSelfTransfers(filtTupleL)
+        countD, effStart, effEnd = countVisits(filtTupleL, lowDate, highDate, facDict,
+                                               accumCountsD)
+        if netEffStart is None or effStart < netEffStart:
+            netEffStart = effStart
+        if netEffEnd is None or effEnd > netEffEnd:
+            netEffEnd = effEnd
         directCounts += accumulate(directMtx, filtTupleL, 0, 3, facIdxTbl, facDict, commIdx)
 
         #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleIndirect, facDict, patName)
@@ -296,6 +315,11 @@ def main():
         filtTupleL = mergeSelfTransfers(filtTupleL)
         indirectCounts += accumulate(indirectMtx, filtTupleL, 4, 365, facIdxTbl, facDict, commIdx)
 
+    print 'distinct patients: %s' % len(patientLocs)
+    print 'visits in date range %s to %s:' % (netEffStart, netEffEnd)
+    for k, v in accumCountsD.items():
+        ratio = (float(v) * 365.)/(float(len(patientLocs)) * (netEffEnd + 1 - netEffStart))
+        print '   %8s: %d = %f per patient year' % (k, v, ratio)
     print 'directCounts = %s' % directCounts
     print 'direct transfer matrix follows'
     print directMtx

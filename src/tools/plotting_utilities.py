@@ -305,7 +305,8 @@ def myBars_old(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     ax.set_xticklabels(colLabelL)
     ax.set_yticks([])
     
-def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
+def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict,
+           hideThisIdx=None):
     assert len(colLabelL) == len(mxList), 'number of labels does not match number of columns'
     facIdxTbl = {val: key for key, val in idxFacTbl.items()}
     prop_cycle = plt.rcParams['axes.prop_cycle']
@@ -314,9 +315,16 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     normRwL = []
     totRwL = []
     for mx in mxList:
-        normRwL.append(normalize(mx[rowIdx,:]))
-        totRwL.append(np.sum(mx[rowIdx,:]))
-    catClrMap = {ctg: colors[i] for i,ctg in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
+        rw = mx[rowIdx,:]
+        if hideThisIdx is not None:
+            rw[hideThisIdx] = 0
+        normRwL.append(normalize(rw))
+        totRw = np.sum(mx[rowIdx,:])
+        if hideThisIdx is not None:
+            totRw -= mx[rowIdx, hideThisIdx]
+        totRwL.append(totRw)
+    catClrMap = {ctg: colors[i] for i,ctg
+                 in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
     segTbl = {key: [] for key in catClrMap.keys()}
     for idx, val in enumerate(normRwL[0].flatten()):
         abbrev = idxFacTbl[idx]
@@ -324,7 +332,8 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
             category = 'COMMUNITY'
         else:
             category = facDict[abbrev]['category']
-        segTbl[category].append((val, abbrev))
+        if idx != hideThisIdx:
+            segTbl[category].append((val, abbrev))
     kL = segTbl.keys()
     kL.sort()
     labels = []
@@ -359,8 +368,12 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     for offset in xrange(len(normRwL) - 1):
         ax.plot([2.8 + offset, 3.0 + offset],[zOff, zOff], color='k')
     for offset in xrange(len(normRwL)):
-        ax.text(2.0 + offset, 0.0, colLabelL[offset],
-                horizontalalignment='center', verticalalignment='bottom')
+        colLbl = colLabelL[offset]
+        if len(colLbl) > 12:
+            colLbl = '...' + colLbl[-10:]
+        ax.text(2.0 + offset, 0.0, colLbl,
+                horizontalalignment='center', verticalalignment='bottom',
+                fontsize=6)
     for szL,clr,lbl in zip(sizeLL, cL, labels):
         rects = ax.bar(xL, szL, color=clr, edgecolor='k', bottom=baseL)
         for sz, tot, rect in zip(szL, totRwL, rects):
@@ -385,16 +398,23 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     ax.set_xticks([])
     #ax.set_xticks(np.arange(len(normRwL)+2))
     ax.set_yticks([])
-    
-def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facDict):
+
+def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facDict,
+                hideDirectTransfersToSelf=False):
     facIdxTbl = {val: key for key, val in idxFacTbl.items()}
     idx = facIdxTbl[abbrev]
 
     figs, axisL = plt.subplots(nrows=2, ncols=1)
     axisL[0].set_title(abbrev)
-    myBars(directMxList, idx, axisL[0], colLabels, idxFacTbl, facDict)
+    if hideDirectTransfersToSelf:
+        hideThisIdx = idx
+    else:
+        hideThisIdx = None
+    myBars(directMxList, idx, axisL[0], colLabels, idxFacTbl, facDict,
+           hideThisIdx=hideThisIdx)
     axisL[0].axis('off')
-    myBars(indirectMxList, idx, axisL[1], colLabels, idxFacTbl, facDict)
+    myBars(indirectMxList, idx, axisL[1], colLabels, idxFacTbl, facDict,
+           hideThisIdx=None)
     axisL[1].axis('off')
     figs.tight_layout(h_pad=2)
     figs.canvas.set_window_title(abbrev)

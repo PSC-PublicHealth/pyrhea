@@ -82,7 +82,7 @@ def main():
     #
     # End boilerplate to import run information
     #
-    
+
     print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
     facDict['WAUK_2615_H'] = {'category':'HOSPITAL'}
     print 'FIND OUT THE REAL ANSWER AND DELETE THIS!'
@@ -101,6 +101,8 @@ def main():
         mtxFileL = expandGlobbedList(mtxFileL)
     allD = {os.path.splitext(os.path.basename(fname))[0]: loadMtxFile(fname)
             for fname in mtxFileL}
+    mtxNameL = [os.path.splitext(os.path.basename(fname))[0]
+                for fname in mtxFileL]
 
     sampM = None
     for key, mD in allD.items():
@@ -120,8 +122,6 @@ def main():
 
     assert plotThese, 'No facilities to plot'
 
-    mtxNameL = allD.keys()[:]
-    mtxNameL.sort()
     directL = [allD[mtxNameL[0]]['direct_measured']]
     indirectL = [allD[mtxNameL[0]]['indirect_measured']]
     labelL = ['measured']
@@ -131,7 +131,8 @@ def main():
         labelL.append(mtxName)
 
     for abbrev in plotThese:
-        drawBarSets(abbrev, directL, indirectL, labelL, idxFacTbl, facDict)
+        drawBarSets(abbrev, directL, indirectL, labelL, idxFacTbl, facDict,
+                    hideDirectTransfersToSelf=True)
     plt.show()
 
 if __name__ == "__main__":
