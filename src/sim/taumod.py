@@ -4,27 +4,32 @@ import time
 import cPickle as pickle
 import pandas as pd
 
-from fcntl import lockf, LOCK_UN, LOCK_EX
+if 0:
+    from fcntl import lockf, LOCK_UN, LOCK_EX
 
-LockFile = "date.lock"
-DateFile = "date.info"
+    LockFile = "date.lock"
+    DateFile = "date.info"
 
-def initLock():
-    with open(LockFile, "w") as f:
-        pass
+    def initLock():
+        with open(LockFile, "w") as f:
+            pass
 
-class Lock(object):
-    def __init__(self):
-        self.f = open(LockFile, "w")
-        lockf(self.f.fileno(), LOCK_EX)
+    class Lock(object):
+        def __init__(self):
+            self.f = open(LockFile, "w")
+            lockf(self.f.fileno(), LOCK_EX)
 
-    def __enter__(self):
-        return self
+        def __enter__(self):
+            return self
 
-    def __exit__(self, type, value, traceback):
-        lockf(self.f.fileno(), LOCK_UN)
-        self.f.close()
-    
+        def __exit__(self, type, value, traceback):
+            lockf(self.f.fileno(), LOCK_UN)
+            self.f.close()
+else:
+    from lockserver import Lock:
+
+
+            
 def writeDateFile(s):
     with Lock():
         with open(DateFile, "w") as f:
@@ -39,7 +44,6 @@ def readDateFile():
     with Lock():
         with open(DateFile, "r") as f:
             return f.readlines()
-
 
 
 
@@ -150,7 +154,20 @@ class TauMod(object):
 
     def collatePrev(self, prevStats):
         days = [self.nextDay - d for d in self.dayList]
+        
         s = pd.concat(prevStats, ignore_index=True)
+
+        # print overall stats
+        tierSums = s[s.day.isin(days)].groupby(['tier']).sum()
+        for tier in ['HOSP', 'ICU', 'LTAC', 'NURSING', 'SKILNRS', 'VENT']:
+            print "%s Prevalence: %s, (colonized %s, total %s)"%(tier,
+                                                                 float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)],
+                                                                 tierSums['COLONIZED'][(tier)],
+                                                                 tierSums['TOTAL'][(tier)])
+
+        
+
+
         facSums = s[s.day.isin(days)].groupby(['tier', 'fac']).sum()
         return facSums
 
