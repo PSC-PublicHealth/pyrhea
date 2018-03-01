@@ -27,7 +27,7 @@ if 0:
             self.f.close()
 
             
-from lockserver import Lock:
+from lockserver import Lock
 
 
             
