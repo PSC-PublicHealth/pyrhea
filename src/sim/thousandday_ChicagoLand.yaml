@@ -1,0 +1,62 @@
+'model': 'ChicagoLand'
+'pathogen': 'CRE'
+'modelDir': '../../models/ChicagoLand'
+
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
+'facilityDirs':
+  - '$(MODELDIR)/facilityfacts'
+  - '$(MODELDIR)/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilitySelectors':
+  - 'category': 'SNF'
+    'implementation': 'NURSINGHOME'
+  - 'category': 'VSNF'
+    'implementation': 'VSNF'
+  - 'category': 'LTACH'
+    'implementation': 'LTAC'
+  - 'category': 'HOSPITAL'
+    'implementation': 'HOSPITAL'
+  - 'category': 'COMMUNITY'
+    'implementation': 'COMMUNITY'
+
+'policyImplementationDir': '../sim/policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'IndirectTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'CapacityTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleTreatmentPolicy'
+  - 'category': '((HOSPITAL)|(SNF)|(VSNF)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'CREBundleDiagnosticPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+    
+#  - 'category': 'scenario'
+#    'policyClass': 'XDROPlusCREBundleScenario'
+
+#'runDurationDays': 1095
+'runDurationDays': 1000
+
+#'burnInDays': 365
+burnInDays: 1
+
+notesFileName: 'notes_twoyear_ChicagoLand.pkl'
+
+scenarioWaitDays: 1
+
+'trackedFacilities':
+  - 'ADVO_2320_H'
+  - 'ADVO_836_H'
+  - 'BETH_5025_H'
+  - 'COMM_5645_H'
+  
+  

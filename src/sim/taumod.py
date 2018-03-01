@@ -223,7 +223,7 @@ class TauMod(object):
 
 
 def main():
-    tm = TauMod(workerCount=5, updatePeriod=50, dayList=[0,5,10,15,20,25,30,35])
+    tm = TauMod(workerCount=50, updatePeriod=50, dayList=[0,5,10,15,20,25,30,35])
 
     while(1):
         tm.process()
