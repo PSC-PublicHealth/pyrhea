@@ -64,7 +64,7 @@ def getNewTauDict(lastDate):
 # it's really dumb having the taufile and the expected prevalences being passed in this way but
 # it's easier to get them from a running instance of pyrhea than to generate them in a separate process.
 def updateInfo(uid, prevStatsFile, tauFile, expectedFile):
-    s = "%s %s %s %s"%(uid, prevStatsFile, tauFile, expectedFile)
+    s = "%s %s %s %s\n"%(uid, prevStatsFile, tauFile, expectedFile)
     appendDateFile(s)
 
 
@@ -149,6 +149,8 @@ class TauMod(object):
         # this is something that should be passed in but for now:
         if tier == 'LTAC':
             return True
+        if tier == 'ICU':
+            return True
         return False
 
 
@@ -220,7 +222,7 @@ class TauMod(object):
 
 
 def main():
-    tm = TauMod(workerCount=1, updatePeriod=5, dayList=[0,2])
+    tm = TauMod(workerCount=5, updatePeriod=50, dayList=[0,5,10,15,20,25,30,35])
 
     while(1):
         tm.process()
