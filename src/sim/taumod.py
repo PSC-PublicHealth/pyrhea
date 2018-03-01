@@ -25,23 +25,24 @@ if 0:
         def __exit__(self, type, value, traceback):
             lockf(self.f.fileno(), LOCK_UN)
             self.f.close()
-else:
-    from lockserver import Lock:
+
+            
+from lockserver import Lock:
 
 
             
 def writeDateFile(s):
-    with Lock():
+    with Lock('taumod'):
         with open(DateFile, "w") as f:
             f.write(s)
 
 def appendDateFile(s):
-    with Lock():
+    with Lock('taumod'):
         with open(DateFile, "a") as f:
             f.write(s)
 
 def readDateFile():
-    with Lock():
+    with Lock('taumod'):
         with open(DateFile, "r") as f:
             return f.readlines()
 
