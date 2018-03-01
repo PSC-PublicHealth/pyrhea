@@ -125,9 +125,9 @@ class NursingHome(Facility):
         changed.  This method is called when the environment wants to trigger a cache
         flush.
         """
-        self.rehabTreeCache = {}        
-        self.frailRehabTreeCache = {}        
-        self.frailTreeCache = {}        
+        self.rehabTreeCache = {}
+        self.frailRehabTreeCache = {}
+        self.frailTreeCache = {}
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()

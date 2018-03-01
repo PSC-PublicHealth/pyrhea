@@ -88,7 +88,7 @@ class Ward(pyrheabase.Ward):
     def initializePatientPthState(self):
         for p in self.getPatientList():
             self.iA.initializePatientState(p)
-            
+
     def initializePatientTreatment(self):
         for p in self.getPatientList():
             for tP in self.fac.treatmentPolicies:
