@@ -1,0 +1,19 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/src_to_category_transfer_map_schema.yaml'
+'title': 'source to category transfer map schema'
+'description': 'schema for facility-to-category transfer weights'
+
+'$ref': '#/definitions/transfertocategorymap'
+
+'definitions':
+  'toentries':
+    'type': 'object'
+    'description': 'property names are destinition categories, values are transfer counts'
+    'additionalProperties':
+      'type': 'number'
+
+  'transfertocategorymap':
+    'type': 'object'
+    'description': 'property names are origin locations'
+    'additionalProperties': { '$ref': '#/definitions/toentries' }
+      

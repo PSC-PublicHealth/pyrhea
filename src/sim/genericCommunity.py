@@ -35,7 +35,7 @@ from typebase import DiagClassA, CareTier, PatientOverallHealth
 from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
 from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
-from facilitybase import MissingPatientRecordError
+from facilitybase import MissingPatientRecordError, decodeHistoryEntry
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
@@ -604,32 +604,53 @@ class Community(Facility):
             rate = losModel['parms'][0]
             self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
+    def calcTierRateConstants(self, prevFacAbbrev):
+        """
+        These constants represent the fraction of the newly-sick that die, that
+        need rehab as a (v)SNF, and that need care at the HOSP, ICU, LTAC, SKILNRS,
+        and VENT tiers respectively.
+        """
+        deathRate = _constants['communityDeathRate']['value']
+        needsICURate = _constants['communityVerySickRate']['value']
+        needsLTACRate = _constants['communityNeedsLTACRate']['value']
+        needsRehabRate = _constants['communityNeedsRehabRate']['value']
+        needsSkilNrsRate = _constants['communityNeedsSkilNrsRate']['value']
+        needsVentRate = (_constants['communityNeedsVentRate']['value']
+                         if 'communityNeedsVentRate' in _constants else 0.0)
+        needsHospRate = 1.0 - (deathRate + needsICURate + needsLTACRate + needsRehabRate
+                               + needsSkilNrsRate + needsVentRate)
+        return (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
+                needsSkilNrsRate, needsVentRate)
+
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
         patientStatus = patientAgent.getStatus()
         ward = patientAgent.ward
-        treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
+        for ent in reversed(patientAgent.agentHistory):
+            if decodeHistoryEntry(ent)['category'] != 'COMMUNITY':
+                prevFacAbbrev = decodeHistoryEntry(ent)['abbrev']
+                break
+        else:
+            prevFacAbbrev = None
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
-        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        key = (prevFacAbbrev, startTime - patientStatus.startDateA,
+               timeNow - patientStatus.startDateA)
         if key in self.treeCache:
             return self.treeCache[key]
         else:
             changeProb = 1.0  # since the agent was already randomly chosen to be un-frozen
-            deathRate = _constants['communityDeathRate']['value']
-            verySickRate = _constants['communityVerySickRate']['value']
-            needsLTACRate = _constants['communityNeedsLTACRate']['value']
-            needsRehabRate = _constants['communityNeedsRehabRate']['value']
-            needsSkilNrsRate = _constants['communityNeedsSkilNrsRate']['value']
-            needsVentRate = (_constants['communityNeedsVentRate']['value']
-                             if 'communityNeedsVentRate' in _constants else 0.0)
-            sickRate = 1.0 - (deathRate + verySickRate + needsLTACRate + needsRehabRate
-                              + needsSkilNrsRate + needsVentRate)
+            try:
+                (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
+                 needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(prevFacAbbrev)
+            except:
+                print 'exception on historyL %s' % historyL
+                raise
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),
-                                                      (sickRate,
+                                                      (needsHospRate,
                                                        ClassASetter(DiagClassA.SICK)),
-                                                      (verySickRate,
+                                                      (needsICURate,
                                                        ClassASetter(DiagClassA.VERYSICK)),
                                                       (needsRehabRate,
                                                        ClassASetter(DiagClassA.NEEDSREHAB)),
@@ -750,7 +771,6 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # create cache dir    facilityDescr['abbrev']
     # create facility dir for this instance
     # integrate everything!!!
-    
 
     wards = fac.getWards()
     if len(wards) != 1:

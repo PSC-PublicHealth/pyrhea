@@ -29,6 +29,16 @@
       'communityNeedsVentRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
       'communityColonizedReadmissionRateScale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
+      'srcToCategoryMapFilePaths':
+        'description': >
+          Paths to YAML files containing weighted data mapping facility abbrevs
+          to destination categories.  Typically the weights correspond to historical
+          indirect transfer count data marginalized over destinations
+        'type': 'array'
+        'items': {'type': 'string'}
+      'srcToCategoryMapFileSchema':
+        'description': 'Schema for the YAML files containing the source to category maps'
+        'type': 'string'
       'kalmanQ':
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
