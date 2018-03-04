@@ -168,7 +168,8 @@ class NursingHome(Facility):
                                                   (self.lclRates['icu'],
                                                    ClassASetter(DiagClassA.VERYSICK)),
                                                   (self.lclRates['home'],
-                                                   unhealthySetter)], tag='FATE')
+                                                   ClassASetter(DiagClassA.WELL))],
+                                                 tag='FATE')
 
             tree = BayesTree(changeTree, innerTree,
                              self.frailCachedCDF.intervalProb, tag='LOS')

@@ -1,11 +1,15 @@
 #! /usr/bin/env python
 
+"""
+Generate diagnostic graphs for measured vs. simulated transfer matrices
+"""
+
 from optparse import OptionParser
 import glob
+import os.path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import os.path
 
 import schemautils
 import pyrheautils
@@ -24,9 +28,9 @@ def loadMtxFile(fname):
     and if so return its contents as a dict.
     """
     assert fname.endswith('.npz'), '%s is not a numpy matrix file?' % fname
-    d = np.load(fname)
-    assert set(d.keys()) == EXPECTED_MTX_KEYS, '%s has the wrong matrix names' % fname
-    return d
+    mtxD = np.load(fname)
+    assert set(mtxD.keys()) == EXPECTED_MTX_KEYS, '%s has the wrong matrix names' % fname
+    return mtxD
 
 def expandGlobbedList(pathList):
     """
@@ -39,6 +43,7 @@ def expandGlobbedList(pathList):
     return newPathList
 
 def main():
+    """Main"""
     parser = OptionParser(usage="""
     %prog [--matrix notes_file.pkl] [--glob] [-f abbrev] run_descr.yaml
     """)
@@ -88,7 +93,7 @@ def main():
     print 'FIND OUT THE REAL ANSWER AND DELETE THIS!'
 
     # Sort by category, then alphabetically by name
-    facL = [(facDict[fac]['category'], fac) for fac in facDict.keys()
+    facL = [(facDict[fac]['category'], fac) for fac in facDict
             if facDict[fac]['category'] != 'COMMUNITY']
     facL.sort()
     facL = [fac for facCat, fac in facL]  # @UnusedVariable

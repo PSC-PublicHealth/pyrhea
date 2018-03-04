@@ -35,6 +35,7 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.notes.noteholder as noteholder
 import schemautils
 import pyrheautils
+from typebase import PatientOverallHealth
 from registry import Registry
 from policybase import ScenarioPolicy
 import checkpoint
@@ -72,6 +73,26 @@ def buildFacOccupancyDict(patch, timeNow):
     #print 'buildFacOccupancyDict: %s' % facTypeDict
     return facTypeDict
 
+def buildFacOverallHealthDict(patch, timeNow):
+    facOHDict = {'day': timeNow}
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    seenFacTypes = []
+    for fac in patch.allFacilities:
+        ctD = defaultdict(lambda: 0)
+        for ward in fac.getWards():
+            for pA in ward.getPatientList():
+                ctD[pA.getStatus().overall] += 1
+        tpName = type(fac).__name__
+        if tpName not in seenFacTypes:
+            for ohIdx in PatientOverallHealth.names:
+                key = '%s_%s' % (tpName, ohIdx)
+                facOHDict[key] = 0
+            seenFacTypes.append(tpName)
+        for key, ct in ctD.items():
+            key = '%s_%s' % (tpName, key)
+            assert key in facOHDict, 'No key %s?' % key
+            facOHDict[key] += ct
+    return facOHDict
 
 def buildFacPthDict(patch, timeNow):
     facPthDict = {'day': timeNow}
@@ -105,7 +126,6 @@ def buildLocalOccupancyDict(patch, timeNow):
         if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
             patientCount = fac.patientStats.currentOccupancy
             facDict[fac.abbrev] = patientCount
-            
     return facDict
 
 
@@ -167,7 +187,7 @@ def generateLocalTierDictBuilder(counterKey):
                 facPPC[key] += ward.miscCounters[counterKey]
                 ward.miscCounters[counterKey] = 0.0
             for key, v in facPPC.items():
-                facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v  
+                facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v
         return facTrtDict
     return buildDict
 
@@ -189,6 +209,7 @@ def generateFacTypeDictBuilder(counterKey):
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
                           'pathogen': buildFacPthDict,
+                          'occupancyByOH': buildFacOverallHealthDict,
                           'localpathogen': buildLocalPthDict,
                           'localtierpathogen': buildLocalTierPthDict,
                           'localtiernewcolonized': generateLocalTierDictBuilder('newColonizationsSinceLastChecked'),

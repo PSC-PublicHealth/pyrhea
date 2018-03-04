@@ -33,6 +33,7 @@ import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
 import pyrheautils
 from facilitybase import CareTier as CareTierEnum
+from facilitybase import PatientOverallHealth as OverallHealthEnum
 import schemautils
 from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp
@@ -458,7 +459,8 @@ def pathogenTimeFig(specialDict):
         catList = []
         for patchName, data in specialDict.items():
             pthDataList = data['pathogen']
-            assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
+            assert isinstance(pthDataList, types.ListType), ('Special data %s is not a list'
+                                                             % patchName)
             for d in pthDataList:
                 for k in d.keys():
                     if k != 'day':
@@ -518,6 +520,77 @@ def pathogenTimeFig(specialDict):
     except KeyError as e:
         if e.message == 'pathogen':
             print('pathogen data not available; skipping time history of infection status')
+
+
+def overallHealthTimeFig(specialDict):
+    try:
+        patchList = specialDict.keys()[:]
+        patchList.sort()
+        catList = []
+        for patchName, data in specialDict.items():
+            ohDataList = data['occupancyByOH']
+            assert isinstance(ohDataList, types.ListType), ('Special data %s is not a list'
+                                                            % patchName)
+            for d in ohDataList:
+                for k in d.keys():
+                    if k != 'day':
+                        cat = k.split('_')[0]
+                        if cat not in catList:
+                            catList.append(cat)
+        catList.sort()
+        figsOH, axesOH = plt.subplots(nrows=len(catList), ncols=len(patchList))
+        axesOH.reshape((len(catList), len(patchList)))
+        if len(catList) == 1:
+            axesOH = axesOH[np.newaxis, :]
+        if len(patchList) == 1:
+            axesOH = axesOH[:, np.newaxis]
+        for colOff, patchName in enumerate(patchList):
+            try:
+                ohDataList = specialDict[patchName]['occupancyByOH']
+                assert isinstance(ohDataList, types.ListType), \
+                    'Special data %s is not a list' % patchName
+                fields = {}
+                for d in ohDataList:
+                    for k, v in d.items():
+                        if k not in fields:
+                            fields[k] = []
+                        fields[k].append(v)
+                assert 'day' in fields, 'Date field is missing for special data %s' % patchName
+                dayList = fields['day']
+                dayVec = np.array(dayList)
+                del fields['day']
+
+                for rowOff, cat in enumerate(catList):
+                    curvesThisCat = {}
+                    for ohLvl in xrange(len(OverallHealthEnum.names)):
+                        key = '%s_%d' % (cat, ohLvl)
+                        if key in fields:
+                            l = fields[key]
+                            assert len(l) == len(dayList), (('field %s is the wrong length in special'
+                                                             ' data %s (%d vs. %d)')
+                                                            % (key, patchName, len(l), len(dayList)))
+                            curvesThisCat[ohLvl] = np.array(l)
+                    totsThisCat = sum(curvesThisCat.values())
+                    for ohLvl, lVec in curvesThisCat.items():
+                        lbl = '%s' % OverallHealthEnum.names[ohLvl]
+                        if np.count_nonzero(lVec):
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totsThisCat))
+                                scaleV[scaleV == np.inf] = 0.0
+                                scaleV = np.nan_to_num(scaleV)
+                                axesOH[rowOff, colOff].plot(dayVec, lVec, label=lbl,
+                                                            color='C%d' % ohLvl)
+                    axesOH[rowOff, colOff].set_xlabel('Days')
+                    axesOH[rowOff, colOff].set_ylabel('Overall Health')
+                    axesOH[rowOff, colOff].legend()
+                    axesOH[rowOff, colOff].set_title(cat)
+            except Exception, e:
+                print e
+        figsOH.tight_layout()
+        figsOH.canvas.set_window_title("Time History of Patient Population Overall Health")
+    except KeyError as e:
+        if e.message == 'occupancyByOH':
+            print('occupancyByOH data not available; skipping time history of overall health')
 
 
 def thawsTimeFig(specialDict):
@@ -824,6 +897,7 @@ def main():
     else:
         occupancyTimeFig(specialDict) #, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
+    overallHealthTimeFig(specialDict)
     thawsTimeFig(specialDict)
 
     plt.show()

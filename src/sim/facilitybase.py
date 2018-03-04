@@ -96,9 +96,9 @@ class Ward(pyrheabase.Ward):
 
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
-        patientAgent._status = patientAgent._status._replace(justArrived=True)
+        patientAgent.setStatus(justArrived=True)
         self.miscCounters['arrivals'] += 1
-        if patientAgent._status.pthStatus == PthStatus.COLONIZED:
+        if patientAgent.getStatus().pthStatus == PthStatus.COLONIZED:
             self.miscCounters['creArrivals'] += 1
         if patientAgent.id in self.fac.arrivingPatientTransferInfoDict.keys():
             transferInfo = self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
@@ -122,15 +122,15 @@ class Ward(pyrheabase.Ward):
 class ForcedStateWard(Ward):
     def forceState(self, patientAgent, careTier, diagClassA, timeNow=None):
         
-        patientAgent._status =  patientAgent._status._replace(diagClassA=diagClassA)
+        patientAgent.setStatus(diagClassA=diagClassA)
         patientAgent._diagnosis = self.fac.diagnose(patientAgent.ward,
                                                     patientAgent.id,
-                                                    patientAgent._status,
-                                                    patientAgent._diagnosis,
+                                                    patientAgent.getStatus(),
+                                                    patientAgent.getDiagnosis(),
                                                     timeNow=timeNow)
         newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent.id,
-                                                              patientAgent._diagnosis,
-                                                              patientAgent._treatment,
+                                                              patientAgent.getDiagnosis(),
+                                                              patientAgent.getTreatmentProtocol(),
                                                               timeNow=timeNow)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
                                       % (self._name, CareTier.names[careTier],
@@ -387,11 +387,11 @@ class Facility(pyrheabase.Facility):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
             innerPayload = super(Facility, self).getMsgPayload(msgType, patientAgent)
             return ((patientAgent.id, patientAgent.ward.tier,
-                     patientAgent._status.overall == PatientOverallHealth.FRAIL,
+                     patientAgent.getStatus().overall == PatientOverallHealth.FRAIL,
                      patientAgent.name),
                     innerPayload)
         elif issubclass(msgType, BirthMsg):
-            return patientAgent._status.overall
+            return patientAgent.getStatus().overall
         else:
             raise RuntimeError('%s: payload request for unknown message type %s'
                                % (self.name, msgType.__name__))
@@ -445,7 +445,7 @@ class Facility(pyrheabase.Facility):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
-            a._status = a._status._replace(overall=payload)
+            a.setStatus(overall=payload)
             ward.lock(a)
             self.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                    self.getMsgPayload(pyrheabase.ArrivalMsg, a),
@@ -657,7 +657,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         
         pOH = self.ward.fac.getInitialOverallHealth(ward, timeNow)
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, pOH, timeNow)
-        self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self._diagnosis,
+        self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self.getDiagnosis(),
                                                         timeNow)
         abbrev = self.ward.fac.abbrev
         self.id = (abbrev, PatientAgent.idCounters[abbrev])
@@ -665,7 +665,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         ward.fac.getPatientRecord(self.id, timeNow=timeNow)  # force creation of a blank record
         newTier, self._treatment = self.ward.fac.prescribe(self.ward,  # @UnusedVariable
                                                            self.id,
-                                                           self._diagnosis,
+                                                           self.getDiagnosis(),
                                                            TREATMENT_DEFAULT,
                                                            timeNow=timeNow)[0:2]
 
@@ -686,7 +686,7 @@ class PatientAgent(pyrheabase.PatientAgent):
     def getStatus(self):
         """Accessor for private status"""
         return self._status
-    
+
     def setStatus(self, **kwargs):
         """
         keyword arguments are elements of PatientStatus, for example 'overall'.  The
@@ -701,6 +701,13 @@ class PatientAgent(pyrheabase.PatientAgent):
     def getDiagnosis(self):
         """Accessor for private diagnosis"""
         return self._diagnosis
+
+    def setDiagnosis(self, **kwargs):
+        """
+        keyword arguments are elements of PatientDiagnosis, for example 'overall'.  The
+        associated values must match the keyword type.
+        """
+        self._diagnosis = self._diagnosis._replace(**kwargs)
 
     def getPthDiagnosis(self):
         """Accessor for private diagnosis pathogen info"""
@@ -729,7 +736,7 @@ class PatientAgent(pyrheabase.PatientAgent):
     def updateDiseaseState(self, treatment, facility, timeNow):  # @UnusedVariable
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
-        previousStatus = self._status
+        previousStatus = self.getStatus()
         if dT > 0:  # moving from one ward to another can trigger two updates the same day
             treeL = []
             try:
@@ -755,7 +762,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                 self._status = setter.set(self._status, timeNow)
             #print "Patient status at {0} is {1}".format(facility.abbrev, self._status.pthStatus == PthStatus.CLEAR)
             if (previousStatus.pthStatus != PthStatus.COLONIZED
-                and self._status.pthStatus == PthStatus.COLONIZED):
+                and self.getStatus().pthStatus == PthStatus.COLONIZED):
                 #print "New Infection at {0}".format(self.ward.fac.abbrev)
                 self.ward.miscCounters['newColonizationsSinceLastChecked'] += 1
             if self.getTreatment('creBundle'):
@@ -764,20 +771,20 @@ class PatientAgent(pyrheabase.PatientAgent):
     def updateEverything(self, timeNow):
 #         if self.lastUpdateTime != timeNow:
         if True:
-            self.updateDiseaseState(self._treatment, self.ward.fac, timeNow)
-            if self._status.diagClassA == DiagClassA.DEATH:
+            self.updateDiseaseState(self.getTreatmentProtocol(), self.ward.fac, timeNow)
+            if self.getStatus().diagClassA == DiagClassA.DEATH:
                 return None, []
-            self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self._status,
-                                                     self._diagnosis, timeNow=timeNow)
-            tpl = self.ward.fac.prescribe(self.ward, self.id, self._diagnosis, self._treatment,
-                                          timeNow=timeNow)
+            self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self.getStatus(),
+                                                     self.getDiagnosis(), timeNow=timeNow)
+            tpl = self.ward.fac.prescribe(self.ward, self.id, self.getDiagnosis(),
+                                          self.getTreatmentProtocol(), timeNow=timeNow)
             newTier, self._treatment = tpl[0:2]
-            self._status = self._status._replace(justArrived=False)
+            self.setStatus(justArrived=False)
             modifierList = (tpl[2] if len(tpl) == 3 else [])
             if self.debug:
                 self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s',
-                                  self.name, self._status, self._diagnosis,
-                                  self._treatment)
+                                  self.name, self.getStatus(), self.getDiagnosis(),
+                                  self.getTreatmentProtocol())
                 self.logger.debug('%s: record at %s is %s',
                                   self.name, self.ward._name,
                                   self.ward.fac.getPatientRecord(self.id))
@@ -801,7 +808,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         return newTier, modifierList
 
     def handleDeath(self, timeNow):
-        assert self._status.diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
+        assert self.getStatus().diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
         self.ward.fac.noteHolder.addNote({"death": 1})
         if self.debug:
             self.logger.debug('Alas poor %s! %s' % (self.name, timeNow))
@@ -816,8 +823,8 @@ class PatientAgent(pyrheabase.PatientAgent):
         newAddr = super(PatientAgent, self).getNewLocAddr(timeNow)
         if newAddr != self.locAddr:
             # It's about to move, so clear relocateFlag
-            self._diagnosis = self._diagnosis._replace(relocateFlag=False)
-            self._status = self._status._replace(relocateFlag=False)
+            self.setDiagnosis(relocateFlag=False)
+            self.setStatus(relocateFlag=False)
         return newAddr
     
     def getCandidateFacilityList(self, timeNow, newTier):
