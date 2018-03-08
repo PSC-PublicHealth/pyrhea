@@ -74,7 +74,7 @@ class PthStatusSetter(PatientStatusSetter):
 
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
-        pyrheabase.Ward.__init__(self, name, patch, tier, 2*nBeds)
+        pyrheabase.Ward.__init__(self, name, patch, tier, 5*nBeds)
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
@@ -498,8 +498,7 @@ class Facility(pyrheabase.Facility):
             pId = transferInfoDict['patientId']
             self.arrivingPatientTransferInfoDict[pId] = transferInfoDict.copy()
         else:
-            if self.abbrev=='FRAN_20201_H' and oldSenderAbbrev=='FRAN_1423_H':
-                print '#!#!#! %s is full; rejected transfer' % self.abbrev
+            pass
         # updated number of bounces and sender
         return (nBounces + 1, tier, self.abbrev, transferInfoDict)
 

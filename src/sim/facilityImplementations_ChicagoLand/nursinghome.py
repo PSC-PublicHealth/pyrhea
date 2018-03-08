@@ -71,6 +71,7 @@ class NursingHome(Facility):
 
         self.initialResidentFrac = (1.0 - losModel['parms'][0])
         self.initialUnhealthyFrac = _c['initialUnhealthyFrac']['value'] # frac of non-residents
+        self.initialNonResidentFrailFrac = _c['initialNonResidentFrailFrac']['value']
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -242,8 +243,11 @@ class NursingHome(Facility):
         if random() <= self.initialResidentFrac:
             return PatientOverallHealth.FRAIL
         else:
-            if random() <= self.initialUnhealthyFrac:
+            rn = random()
+            if rn <= self.initialUnhealthyFrac:
                 return PatientOverallHealth.UNHEALTHY
+            elif rn <= (self.initialUnhealthyFrac + self.initialNonResidentFrailFrac):
+                return PatientOverallHealth.FRAIL
             else:
                 return PatientOverallHealth.HEALTHY
 

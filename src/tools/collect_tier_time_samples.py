@@ -144,7 +144,6 @@ def main():
                     for tier, sampListDict in sampListDictDict.items():
                         tierList.append({'tier': tier, 'samples': dict(sampListDict)})
                     sampleL.append({'abbrev': abbrev, 'time': time, 'tiers': tierList})
-    print sampleL
 
     with open(outFileName, 'w') as f:
         yaml.safe_dump(sampleL, f, indent=4,

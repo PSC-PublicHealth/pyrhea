@@ -19,6 +19,7 @@ import os.path
 import sys
 from optparse import OptionParser
 import yaml
+from collections import defaultdict
 
 import numpy as np
 
@@ -35,6 +36,39 @@ from time_series_plotter import mergeNotesFiles, getTimeSeriesList
 DEFAULT_OUT_FILE = 'time_samples.yaml'
 OUTPUT_SCHEMA = 'time_samples_schema.yaml'
 
+def extractManySamples(abbrev, timeL, specialDict):
+    sampListDict = defaultdict(list)
+    timeListDict = defaultdict(list)
+    for dayVec, curves in getTimeSeriesList(abbrev, specialDict, 'localpathogen'):
+        totVec = sum(curves.values())
+        clippedTimes = np.compress(np.isin(timeL, dayVec), timeL)
+        mask = np.isin(dayVec, clippedTimes)
+        for pthLvl, lVec in curves.items():
+            with np.errstate(divide='ignore', invalid='ignore'):
+                scaleV = np.true_divide(np.asfarray(lVec), np.asfarray(totVec))
+                scaleV[scaleV == np.inf] = 0.0
+                scaleV = np.nan_to_num(scaleV)
+            sampV = np.compress(mask, scaleV)
+            sampListDict[pth.PthStatus.names[pthLvl]].append(sampV)
+            timeListDict[pth.PthStatus.names[pthLvl]].append(clippedTimes)
+    for dayVec, popVec in getTimeSeriesList(abbrev, specialDict, 'localoccupancy'):
+        clippedTimes = np.compress(np.isin(timeL, dayVec), timeL)
+        mask = np.isin(dayVec, clippedTimes)
+        popV = np.compress(mask, popVec)
+        sampListDict['occupancy'].append(popV)
+        timeListDict['occupancy'].append(clippedTimes)
+    for dayVec, curves in getTimeSeriesList(abbrev, specialDict, 'localtiernewcolonized'):
+        clippedTimes = np.compress(np.isin(timeL, dayVec), timeL)
+        mask = np.isin(dayVec, clippedTimes)
+        sumValue = None
+        for tpl,curve in curves.items():
+            popV = np.compress(mask, curve)
+            if sumValue is None:
+                sumValue = np.zeros(len(popV))
+            sumValue += popV
+        sampListDict['NEW COLONIZED'].append(sumValue)
+        timeListDict['NEW COLONIZED'].append(clippedTimes)
+    return sampListDict, timeListDict
 
 def extractSamples(abbrev, time, specialDict):
     pthTplList = getTimeSeriesList(abbrev, specialDict, 'localpathogen')
@@ -72,7 +106,6 @@ def main():
     main
     """
     import sys
-    print sys.argv
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl] [--glob] [--proto prototype.yaml] [--out outname.yaml] run_descr.yaml
     """)
@@ -121,14 +154,14 @@ def main():
         #             1350, # 2013 second half
         #             1524, # 2014 begins
         #             1880  # 2015 begins
-        #             ] 
-    
+        #             ]
+
     print sampTimes
     inputDict = checkInputFileSchema(args[0],
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
     if 'trackedFacilities' not in inputDict or not len(inputDict['trackedFacilities']):
         raise RuntimeError('Run description file does not list any tracked facilities')
-    
+
     modelDir = inputDict['modelDir']
     pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(modelDir)
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
@@ -138,15 +171,31 @@ def main():
     facDict = readFacFiles(facDirList)
 
     specialDict = mergeNotesFiles(opts.notes, opts.glob)
-    
+
     sampleL = []
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
+                sampD, timeD = extractManySamples(abbrev, sampTimes, specialDict)
+                print sampD
+                corrListD = defaultdict(list)
+                for key in sampD:
+                    print 'key: ', key
+                    print 'timeD[key]: ', timeD[key]
+                    print 'sampD[key]: ', sampD[key]
+                    for timeV, sampV in zip(timeD[key], sampD[key]):
+                        corrD = {tm: val for tm, val in zip(timeV, sampV)}
+                        corrListD[key].append(corrD)
                 for time in sampTimes:
                     print "abbrev: {0} time: {1}".format(abbrev,time)
-                    sampleL.append({'abbrev': abbrev, 'time': time,
-                                    'samples': extractSamples(abbrev, time, specialDict)})
+                    dct = {'abbrev': abbrev, 'time': int(time), 'samples': {}}
+                    for key in corrListD:
+                        valL = []
+                        for corrD in corrListD[key]:
+                            if time in corrD:
+                                valL.append(float(corrD[time]))
+                        dct['samples'][key] = valL
+                    sampleL.append(dct)
 
     with open(outFileName, 'w') as f:
         yaml.safe_dump(sampleL, f, indent=4,

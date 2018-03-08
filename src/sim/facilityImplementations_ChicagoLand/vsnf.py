@@ -74,9 +74,12 @@ class VentSNF(Facility):
 
         self.initialResidentFrac = (1.0 - losModel['parms'][0])
         self.initialUnhealthyFracByTier = {}
+        self.initialNonResidentFrailFracByTier = {}
         nameToTierD = {val:key for key,val in CareTier.names.items()}
         for ent in _c['initialUnhealthyFracByTier']:
             self.initialUnhealthyFracByTier[nameToTierD[ent['tier']]] = ent['frac']['value']
+        for ent in _c['initialNonResidentFrailFracByTier']:
+            self.initialNonResidentFrailFracByTier[nameToTierD[ent['tier']]] = ent['frac']['value']
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -195,7 +198,7 @@ class VentSNF(Facility):
             tree = BayesTree(changeTree,
                              PatientStatusSetter(),
                              self.cachedCDF.intervalProb, tag='LOS')
-            
+
             self.treeCache[key] = tree
             return tree
 
@@ -204,8 +207,12 @@ class VentSNF(Facility):
         if random() <= self.initialResidentFrac:
             return PatientOverallHealth.FRAIL
         else:
-            if random() <= self.initialUnhealthyFracByTier[tier]:
+            rn = random()
+            if rn <= self.initialUnhealthyFracByTier[tier]:
                 return PatientOverallHealth.UNHEALTHY
+            elif rn <= (self.initialUnhealthyFracByTier[tier]
+                        + self.initialNonResidentFrailFracByTier[tier]):
+                return PatientOverallHealth.FRAIL
             else:
                 return PatientOverallHealth.HEALTHY
 

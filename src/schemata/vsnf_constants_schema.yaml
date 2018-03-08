@@ -70,7 +70,11 @@
       'residentNeedsLTACRate': {'$ref': '#/definitions/fraction'}
       'initialUnhealthyFracByTier': {
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTier',
-        'description': 'Fraction of initial occupants by tier who have overall health UNHEALTHY rather than HEALTHY'
+        'description': 'Fraction of initial occupants by tier who have overall health UNHEALTHY'
+      }
+      'initialNonResidentFrailFracByTier': {
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTier',
+        'description': 'Fraction of initial non-resident occupants by tier who have overall health FRAIL'
       }
     'required':
       - 'nhLOSModel'
@@ -84,5 +88,5 @@
       - 'residentReturnToCommunityRate'
       - 'residentNeedsLTACRate'
       - 'initialUnhealthyFracByTier'
-      
+      - 'initialNonResidentFrailFracByTier'
       
