@@ -108,7 +108,6 @@ class NursingHome(Facility):
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
 
-
         lMP = losModel['parms']
         self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
                                                          scale=math.exp(lMP[1])))
@@ -153,11 +152,11 @@ class NursingHome(Facility):
                     return self.frailTreeCache[key]
                 else:
                     innerTree = PatientStatusSetter()  # No change of state
-            unhealthySetter = OverallHealthSetter(PatientOverallHealth.UNHEALTHY)
             changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
                                                    ClassASetter(DiagClassA.DEATH)),
                                                   (self.lclRates['nursinghome'],
-                                                   ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                   ClassASetter(DiagClassA.NEEDSREHAB,
+                                                                forceRelocate=True)),
                                                   (self.lclRates['vent'],
                                                    ClassASetter(DiagClassA.NEEDSVENT)),
                                                   (self.lclRates['skilnrs'],
@@ -198,7 +197,8 @@ class NursingHome(Facility):
                                                                 ClassASetter(DiagClassA.DEATH)),
                                                                (self.lclRates['nursinghome']
                                                                 / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                                ClassASetter(DiagClassA.NEEDSREHAB,
+                                                                             forceRelocate=True)),
                                                                (self.lclRates['vent']
                                                                 / adverseProb,
                                                                 ClassASetter(DiagClassA.NEEDSVENT)),

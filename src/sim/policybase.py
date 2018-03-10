@@ -110,6 +110,7 @@ class TreatmentPolicy(Policy):
         ward in which they start the simulation.
         """
         if (ward.tier == CareTier.NURSING
+                and patient.getDiagnosis().overall != PatientOverallHealth.FRAIL
                 and patient.getDiagnosis().diagClassA == DiagClassA.NEEDSREHAB):
             patient.setTreatment(rehab=True)
 

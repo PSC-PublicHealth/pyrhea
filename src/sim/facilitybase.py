@@ -46,19 +46,24 @@ class PatientStatusSetter(object):
 
 
 class ClassASetter(PatientStatusSetter):
-    def __init__(self, newClassA):
+    def __init__(self, newClassA, forceRelocate=False):
         super(ClassASetter, self).__init__()
         self.newClassA = newClassA
+        self.forceRelocate = forceRelocate
 
     def set(self, patientStatus, timeNow):
-        return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
-                ._replace(relocateFlag=True))
+        if self.forceRelocate:
+            return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
+                    ._replace(relocateFlag=True))
+        else:
+            return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
 
     def __str__(self):
         return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
 
     def __repr__(self):
-        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+        return ('PatientStatusSetter(classA <- %s, forceReloate=%s)'
+                % (DiagClassA.names[self.newClassA], self.forceRelocate))
 
 
 class PthStatusSetter(PatientStatusSetter):
@@ -378,10 +383,11 @@ class Facility(pyrheabase.Facility):
         pass
 
     def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
-        return self.transferDestinationPolicy.getOrderedCandidateFacList(self,
+        oCFL = self.transferDestinationPolicy.getOrderedCandidateFacList(self,
                                                                          patientAgent,
                                                                          oldTier, newTier,
                                                                          timeNow)
+        return oCFL
 
     def getMsgPayload(self, msgType, patientAgent):
         if issubclass(msgType, (pyrheabase.ArrivalMsg, pyrheabase.DepartureMsg)):
@@ -653,7 +659,7 @@ class PatientAgent(pyrheabase.PatientAgent):
 
     def __init__(self, name, patch, ward, timeNow=0, debug=False):
         pyrheabase.PatientAgent.__init__(self, name, patch, ward, timeNow=timeNow, debug=debug)
-        
+
         pOH = self.ward.fac.getInitialOverallHealth(ward, timeNow)
         self._diagnosis = self.ward.fac.diagnosisFromCareTier(self.ward.tier, pOH, timeNow)
         self._status = self.ward.fac.statusFromCareTier(self.ward.tier, pOH, self.getDiagnosis(),
@@ -825,7 +831,7 @@ class PatientAgent(pyrheabase.PatientAgent):
             self.setDiagnosis(relocateFlag=False)
             self.setStatus(relocateFlag=False)
         return newAddr
-    
+
     def getCandidateFacilityList(self, timeNow, newTier):
         return self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, timeNow)
 
