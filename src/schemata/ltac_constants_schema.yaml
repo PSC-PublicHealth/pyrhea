@@ -40,6 +40,10 @@
       'bedsPerWard': {'$ref': '#/definitions/count'}
       'dischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
       'fracOfDischargesRequiringRehab': {'$ref': '#/definitions/fraction'}
+      'scaleLengthOfStay': {
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'description': 'scale the average length of stay at each LTAC by this constant (default 1.0)'
+      }
     'required':
       - 'bedsPerWard'
       - 'dischargeViaDeathFrac'

@@ -54,14 +54,14 @@ class LTAC(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
-        
+
         _c = _constants
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
         ttoD = {elt['category']: elt['count']['value'] for elt in descr['totalTransfersOut']}
         fracNotTransferred = (float(totDsch) - float(totTO)) / float(totDsch)
         assert fracNotTransferred >= 0.0, '%s has more transfers than discharges' % self.name
-        
+
         self.lclRates = {}
         self.lclRates['death'] = _c['dischargeViaDeathFrac']['value']
         assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'
@@ -104,11 +104,16 @@ class LTAC(Facility):
 
         nBeds = nWards * bedsPerWard
 
+        # Add a way to dial the LOS up and down
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'LTAC %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
+        if 'scaleLengthOfStay' in _constants:
+            scaleLOS = _constants['scaleLengthOfStay']['value']
+        else:
+            scaleLOS = 1.0
+        muPrime = descr['losModel']['parms'][0] + math.log(scaleLOS)
         self.cachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][1],
-                                                    scale=math.exp(descr['losModel']
-                                                                   ['parms'][0])))
+                                                    scale=math.exp(muPrime)))
         self.treeCache = {}
 
         for i in xrange(nWards):
@@ -123,7 +128,7 @@ class LTAC(Facility):
         changed.  This method is called when the environment wants to trigger a cache
         flush.
         """
-        self.treeCache = {}        
+        self.treeCache = {}
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
@@ -138,7 +143,7 @@ class LTAC(Facility):
                                                          self.abbrev, self.category,
                                                          CareTier.LTAC)
 
-        
+
         if ward.tier == CareTier.LTAC:
             biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
             key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
