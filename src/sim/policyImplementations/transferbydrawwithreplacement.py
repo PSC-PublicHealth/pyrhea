@@ -16,12 +16,11 @@
 ###################################################################################
 
 import logging
+import random
+from collections import deque, defaultdict
 
-import os.path
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheautils
-import random
-from collections import deque
 from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 
@@ -153,15 +152,15 @@ class DWRCore(object):
             for srcName in self.tbl:
                 if tier in self.tbl[srcName]:
                     oldL = self.tbl[srcName][tier]
-                    if oldL and len(oldL) < 3:
-                        dct = {}
+                    if oldL:
+                        dct = defaultdict(lambda: 0)
                         for ct, (nm, addr) in oldL:
                             dct[nm] = ct
                         oldTot = sum(dct.values())
-                        otherNmL = [nm for nm in addrMap if nm not in dct]
-                        if otherNmL:
-                            delta = (0.1 * oldTot)/len(otherNmL)
-                            dct.update({nm: delta for nm in otherNmL})
+                        allNmL = [nm for nm in addrMap]
+                        delta = (0.1 * oldTot)/len(allNmL)
+                        for nm in allNmL:
+                            dct[nm] += delta
                         newL = [(ct, (nm, addrMap[nm])) for nm, ct in dct.items()]
                         newTot = sum(dct.values())
                         self.tbl[srcName][tier] = newL
