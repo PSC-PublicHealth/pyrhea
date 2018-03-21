@@ -10,7 +10,7 @@
   - '$(MODELDIR)/facilityfactsCurrent2013'
   - '$(MODELDIR)/synthCommunities'
 
-'facilityImplementationDir': '../sim/facilityImplementations_OC2013'
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
 'facilitySelectors':
   - 'category': 'NURSINGHOME'
     'implementation': 'NURSINGHOME'
@@ -28,7 +28,7 @@
   - 'category': 'COMMUNITY'
     #'policyClass': 'MinDistanceTransferDestinationPolicy'
     #'policyClass': 'CapacityTransferDestinationPolicy'
-    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
   - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'ContactPrecautionsTreatmentPolicy'
 #  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
@@ -54,15 +54,11 @@ burnInDays: 2
 scenarioWaitDays: 2
 
 'trackedFacilities':
-  - 'AGEN'
-  - 'AMMC'
   - 'CHAP'
-  - 'COAS'
   - 'FVRH'
   - 'GGMC'
   - 'HBHO'
   - 'HOAG'
   - 'KAIA'
   - 'LAMC'
-  - 'SCLE'
-  - 'WAMC'
+  - 'SCGL'

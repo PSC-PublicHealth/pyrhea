@@ -644,7 +644,7 @@ class Community(Facility):
                 (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
                  needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(prevFacAbbrev)
             except:
-                print 'exception on historyL %s' % historyL
+                logger.error('exception on historyL %s', str(reversed(patientAgent.agentHistory)))
                 raise
             tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
                                                        ClassASetter(DiagClassA.DEATH)),

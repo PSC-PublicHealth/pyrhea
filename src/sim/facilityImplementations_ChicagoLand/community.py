@@ -100,10 +100,12 @@ class CommunityWard(genericCommunity.CommunityWard):
     def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent"""
         health = PatientOverallHealth.names[agent.getStatus().overall]
-        if agent._status.pthStatus == PthStatus.COLONIZED:
+        if agent.getStatus().pthStatus == PthStatus.COLONIZED:
             return '%s_colonized' % health
-        elif agent._status.pthStatus == PthStatus.CLEAR:
+        elif agent.getStatus().pthStatus == PthStatus.CLEAR:
             return '%s_base' % health
+        elif agent.getStatus().pthStatus == PthStatus.UNDETCOLONIZED:
+            return '%s_undetcolonized' % health
         else:
             raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
                                                 (agent.name,
@@ -187,8 +189,13 @@ class Community(genericCommunity.Community):
         # Adjust for this particular patient's history
         wtHOSP, wtSNF, wtVSNF, wtLTACH = self.core.getCategoryWeights(pFAbbrev,
                                                                       self.categoryNameMapper)
-        fracVSNFBedsRehab = needsRehabRate / (needsRehabRate + needsSkilNrsRate + needsVentRate)
-        fracVSNFBedsVent = needsVentRate / (needsRehabRate + needsSkilNrsRate + needsVentRate)
+        needsVSNFTotRate = needsRehabRate + needsSkilNrsRate + needsVentRate
+        if needsVSNFTotRate > 0.0:
+            fracVSNFBedsRehab = needsRehabRate / needsVSNFTotRate
+            fracVSNFBedsVent = needsVentRate / needsVSNFTotRate
+        else:
+            fracVSNFBedsRehab = 0.0
+            fracVSNFBedsVent = 0.0
         fracVSNFBedsSkil = 1.0 - (fracVSNFBedsRehab + fracVSNFBedsVent)
         fracHospBedsICU = needsICURate/(needsHospRate + needsICURate)
         fracHospBedsHosp = 1.0 - fracHospBedsICU

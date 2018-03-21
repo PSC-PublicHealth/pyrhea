@@ -63,6 +63,9 @@ def readModelInputs(runDesc):
     pyrheautils.PATH_STRING_MAP['MODELDIR'] = modelDir
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
     pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
+    if 'pathTranslations' in runDesc:
+        for elt in runDesc['pathTranslations']:
+            pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
 
     return inputDict
 

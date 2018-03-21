@@ -869,9 +869,9 @@ def main():
     catToImplDict = {cat: findFacImplCategory(implDir, facImplRules, cat)
                      for cat in catNames}
 
-    writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
-                          'sim_transfer_matrix.csv',
-                          facDirList, catToImplDict)
+#     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
+#                           'sim_transfer_matrix.csv',
+#                           facDirList, catToImplDict)
 
     countBirthsDeaths(catNames, allOfCategoryDict)
 
