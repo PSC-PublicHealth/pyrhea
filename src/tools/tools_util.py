@@ -60,12 +60,18 @@ def readModelInputs(runDesc):
     inputDict = checkInputFileSchema(runDesc,
                                      os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
     modelDir = inputDict['modelDir']
+    if not os.path.isabs(modelDir):
+        rootDir = os.path.abspath(os.path.dirname(runDesc))
+        modelDir = os.path.join(rootDir, modelDir)
     pyrheautils.PATH_STRING_MAP['MODELDIR'] = modelDir
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
+    if not os.path.isabs(implDir):
+        rootDir = os.path.abspath(os.path.dirname(runDesc))
+        implDir = os.path.join(rootDir, implDir)
     pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
     if 'pathTranslations' in runDesc:
         for elt in runDesc['pathTranslations']:
-            pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
+            pyrheautils.PATH_STRING_MAP[elt['key']] = pyrheautils.pathTranslate(elt['value'])
 
     return inputDict
 
