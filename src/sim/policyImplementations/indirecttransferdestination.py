@@ -22,7 +22,8 @@ from phacsl.utils.collections.phacollections import SingletonMetaClass, enum
 from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 import facilitybase
-import transferbydrawwithreplacement, categorydrawwithreplacement
+import transferbydrawwithreplacement
+import categorydrawwithreplacement
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/indirecttransferdestination_constants.yaml'
