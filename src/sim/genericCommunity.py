@@ -522,7 +522,8 @@ class CommunityManager(FacilityManager):
                 ward.freezers[ward.classify(agent, timeNow)].freezeAndStore(agent)
             ward.newArrivals = []
         if dT != 0:
-            logger.debug('%s at time %s thawed by category %s', self.fac.name, timeNow,
+            logger.debug('%s (%s) at time %s thawed by category %s',
+                         self.fac.name, ('%s_%s' % ward.getGblAddr().getLclAddr()), timeNow,
                          {PatientOverallHealth.names[k]: v for k, v in countD.items()})
         self.fac.collectiveStatusStartDate = timeNow
 

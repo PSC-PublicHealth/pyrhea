@@ -28,7 +28,7 @@ from random import shuffle
 import pyrheabase
 import pyrheautils
 import schemautils
-from facilitybase import CareTier, PthStatus
+from facilitybase import CareTier, PthStatus, DiagClassA
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, LTACQueue
 from stats import CachedCDFGenerator, BayesTree
@@ -145,22 +145,31 @@ class LTAC(Facility):
 
 
         if ward.tier == CareTier.LTAC:
-            biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
-            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
-                   biasFlag)
-            if key in self.treeCache:
-                return self.treeCache[key]
-            else:
-                if biasFlag:
-                    changeTree = buildChangeTree(self.pthRates)
+            if patientAgent.getDiagnosis().diagClassA == DiagClassA.NEEDSLTAC:
+                biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
+                key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
+                       biasFlag)
+                if key in self.treeCache:
+                    return self.treeCache[key]
                 else:
-                    changeTree = buildChangeTree(self.lclRates)
+                    if biasFlag:
+                        changeTree = buildChangeTree(self.pthRates)
+                    else:
+                        changeTree = buildChangeTree(self.lclRates)
+    
+                    tree = BayesTree(changeTree,
+                                     PatientStatusSetter(),
+                                     self.cachedCDF.intervalProb, tag='LOS')
+                    self.treeCache[key] = tree
+                    return tree
+            else:
+                # This patient doesn't belong in this ward
+                logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                               'this patient should be gone by now'
+                               % (self.name, patientAgent.name, CareTier.names[careTier],
+                                  DiagClassA.names[patientStatus.diagClassA], startTime))
+                return BayesTree(PatientStatusSetter())
 
-                tree = BayesTree(changeTree,
-                                 PatientStatusSetter(),
-                                 self.cachedCDF.intervalProb, tag='LOS')
-                self.treeCache[key] = tree
-                return tree
         else:
             raise RuntimeError('LTACs do not provide care tier %s' % ward.tier)
 

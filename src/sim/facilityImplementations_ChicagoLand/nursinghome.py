@@ -230,10 +230,10 @@ class NursingHome(Facility):
                 if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
                                                  DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
                                                  DiagClassA.NEEDSSKILNRS, DiagClassA.WELL]):
-                    logger.warning('fac %s status: %s careTier %s startTime: %s: '
+                    logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
                                    'this patient should be gone by now'
-                                   % (self.name, str(patientStatus), CareTier.names[careTier],
-                                      startTime))
+                                   % (self.name, patientAgent.name, CareTier.names[careTier],
+                                      DiagClassA.names[patientStatus.diagClassA], startTime))
                     return BayesTree(PatientStatusSetter())
                 else:
                     raise RuntimeError('Patients with non-FRAIL overall health should only be'

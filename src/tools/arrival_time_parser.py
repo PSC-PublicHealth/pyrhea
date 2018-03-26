@@ -37,6 +37,7 @@ import random
 
 import schemautils
 import pyrheautils
+import tools_util as tu
 from pyrhea import getLoggerConfig, checkInputFileSchema, loadPathogenImplementations
 from facilitybase import CareTier, PthStatus
 from map_transfer_matrix import parseFacilityData
@@ -57,10 +58,10 @@ DEFAULT_LOW_DATE = 0
 DEFAULT_HIGH_DATE = -1  # meaning include all records
 
 DIRECT_TRANSFER_DATA = ['$(MODELDIR)/direct_transfer_counts.yaml']
-# INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/constants/hosp_indirect_transfer_matrix.yaml',
-#                           '$(MODELDIR)/constants/nh_readmit_transfer_matrix.yaml']
+# INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
+#                           '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
 INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
-                          '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
+                          '$(MODELDIR)/nh_readmit_fake_transfer_counts.yaml']
 
 def allVisible(loc, facDict, patName):
     return True
@@ -162,15 +163,17 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
 def overlapsRange(arrive, depart, low, high):
     return (arrive <= high and depart >= low)
 
-def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct):
+def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct, accumStayDct):
     assert rangeLow <= rangeHigh, 'cutoff dates are not in order'
     if tplL:
         dct = defaultdict(lambda: 0)
+        sDct = defaultdict(lambda: 0.0)
         foundOverlap = False
         for loc, arrive, depart in tplL:
             if overlapsRange(arrive, depart, rangeLow, rangeHigh):
                 ctg = facDict[loc]['category']
                 dct[ctg] += 1
+                sDct[ctg] += (depart - arrive)
                 foundOverlap = True
             else:
                 if foundOverlap:
@@ -180,6 +183,8 @@ def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct):
         effectiveEnv = min(rangeHigh, tplL[-1][2])
         for ctg, val in dct.items():
             accumCountsDct[ctg] += val
+        for ctg, val in sDct.items():
+            accumStayDct[ctg] += val
         return dict(dct), effectiveStart, effectiveEnv
     else:
         return {}, rangeLow, rangeHigh
@@ -195,6 +200,27 @@ def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
                     dstIdx = facIdxTbl[dstLoc] if dstLoc in facIdxTbl else commIdx
                     mtx[srcIdx, dstIdx] += ct
     return mtx
+
+class ParseLineError(RuntimeError):
+    pass
+
+def parseLine(line):
+    if 'birth' in line: print line
+    words =  line.split()
+    if len(words) == 6:
+        assert words[3] == 'arrives', 'Bad line format: %s' % line
+        patName = words[2]
+        dstName = words[4]
+        date = int(words[5])
+    elif len(words) == 7:
+        assert words[4] == 'arrives', 'Bad line format: %s' % line
+        assert words[2] == '-', 'Bad line format: %s' % line
+        patName = words[3]
+        dstName = words[5]
+        date = int(words[6])
+    else:
+        raise ParseLineError('Bad line format: %s' % line)
+    return patName, dstName, date
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -232,18 +258,8 @@ def main():
     lowDate = opts.low
     highDate = opts.high
 
-    inputDict = checkInputFileSchema(args[0],
-                                     os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
-    schemautils.setSchemaBasePath(SCHEMA_DIR)
-    if 'modelDir' in inputDict:
-        pyrheautils.PATH_STRING_MAP['MODELDIR'] = pyrheautils.pathTranslate(inputDict['modelDir'])
-    if 'pathTranslations' in inputDict:
-        for elt in inputDict['pathTranslations']:
-            pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
-
-#    loadPthInfo(inputDict['pathogenImplementationDir'])
-    facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
-    facDict = parseFacilityData(facDirs)
+    inputDict = tu.readModelInputs(args[0])
+    facDict = tu.getFacDict(inputDict)
     print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
     facDict['WAUK_2615_H'] = {'category':'HOSPITAL'}
     print 'FIND OUT THE REAL ANSWER AND DELETE THIS!'
@@ -260,41 +276,35 @@ def main():
 
     with open(os.path.join(os.path.dirname(__file__), inputTxt), 'rU') as f:
         for line in f.readlines():
-            if 'birth' in line: print line
-            words =  line.split()
-            if len(words) == 6:
-                assert words[3] == 'arrives', 'Bad line format: %s' % line
-                patName = words[2]
-                dstName = words[4]
-                date = int(words[5])
-            elif len(words) == 7:
-                assert words[4] == 'arrives', 'Bad line format: %s' % line
-                assert words[2] == '-', 'Bad line format: %s' % line
-                patName = words[3]
-                dstName = words[5]
-                date = int(words[6])
-            else:
-                print 'Bad line format: %s' % line
-                continue
-            if date < lowDate or (highDate > lowDate and date > highDate):
-                continue
-            if patName in patientLocs:
-                bits = dstName.split('_')
-                newLoc = '_'.join(bits[4:7])
-                patientLocs[patName].append((newLoc, date))
-            else:
-                bits = patName.split('_')
-                if len(bits) == 8:
-                    startLoc = bits[6]
+            try:
+                patName, dstName, date = parseLine(line)
+                if date < lowDate or (highDate > lowDate and date > highDate):
+                    continue
+                if patName in patientLocs:
+                    bits = dstName.split('_')
+                    try:
+                        int(bits[-1])
+                        bits = bits[:-2]  # Some place names end in a ward tier and number
+                    except:
+                        pass
+                    newLoc = '_'.join(bits[4:7])
+                    patientLocs[patName].append((newLoc, date))
                 else:
-                    startLoc = '_'.join(bits[:-1])
-                patientLocs[patName] = [(startLoc, 0)]
+                    bits = patName.split('_')
+                    if len(bits) == 8:
+                        startLoc = bits[6]
+                    else:
+                        startLoc = '_'.join(bits[:-1])
+                    patientLocs[patName] = [(startLoc, 0)]
+            except ParseLineError, e:
+                print e
 
     directCounts = 0
     indirectCounts = 0
     directMtx = np.zeros([commIdx+1, commIdx+1], dtype=np.int32)
     indirectMtx = np.zeros_like(directMtx)
     accumCountsD = defaultdict(lambda:0)
+    accumStayD = defaultdict(lambda: 0.0)
     netEffStart = None
     netEffEnd = None
     for patName, tupleL in patientLocs.items():
@@ -303,7 +313,7 @@ def main():
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
         filtTupleL = mergeSelfTransfers(filtTupleL)
         countD, effStart, effEnd = countVisits(filtTupleL, lowDate, highDate, facDict,
-                                               accumCountsD)
+                                               accumCountsD, accumStayD)
         if netEffStart is None or effStart < netEffStart:
             netEffStart = effStart
         if netEffEnd is None or effEnd > netEffEnd:
@@ -318,8 +328,9 @@ def main():
     print 'distinct patients: %s' % len(patientLocs)
     print 'visits in date range %s to %s:' % (netEffStart, netEffEnd)
     for k, v in accumCountsD.items():
+        totStay = accumStayD[k]
         ratio = (float(v) * 365.)/(float(len(patientLocs)) * (netEffEnd + 1 - netEffStart))
-        print '   %8s: %d = %f per patient year' % (k, v, ratio)
+        print '   %8s: %d = %f per patient year, ave stay %s' % (k, v, ratio, totStay/v)
     print 'directCounts = %s' % directCounts
     print 'direct transfer matrix follows'
     print directMtx

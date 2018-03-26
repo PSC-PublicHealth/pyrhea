@@ -311,39 +311,56 @@ class Hospital(Facility):
                                                          CareTier.LTAC,
                                                          self.abbrev, self.category,
                                                          CareTier.HOSP)
-            
+
         careTier = ward.tier
         if careTier == CareTier.HOSP:
-            biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
-            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
-                   biasFlag)
-            if key in self.hospTreeCache:
-                return self.hospTreeCache[key]
-            else:
-                if biasFlag:
-                    changeTree = buildChangeTree(self.pthRates)
+            if patientAgent.getDiagnosis().diagClassA == DiagClassA.SICK:
+                biasFlag = (patientStatus.pthStatus not in [PthStatus.CLEAR, PthStatus.RECOVERED])
+                key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA,
+                       biasFlag)
+                if key in self.hospTreeCache:
+                    return self.hospTreeCache[key]
                 else:
-                    changeTree = buildChangeTree(self.lclRates)
-
-                tree = BayesTree(changeTree,
-                                 PatientStatusSetter(),
-                                 self.hospCachedCDF.intervalProb, tag='LOS')
-                self.hospTreeCache[key] = tree
-                return tree
-        elif careTier == CareTier.ICU:
-            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
-            if key in self.icuTreeCache:
-                return self.icuTreeCache[key]
+                    if biasFlag:
+                        changeTree = buildChangeTree(self.pthRates)
+                    else:
+                        changeTree = buildChangeTree(self.lclRates)
+    
+                    tree = BayesTree(changeTree,
+                                     PatientStatusSetter(),
+                                     self.hospCachedCDF.intervalProb, tag='LOS')
+                    self.hospTreeCache[key] = tree
+                    return tree
             else:
-                tree = BayesTree(BayesTree.fromLinearCDF([(self.icuDischargeViaDeathFrac,
-                                                           ClassASetter(DiagClassA.DEATH)),
-                                                          ((1.0 - self.icuDischargeViaDeathFrac),
-                                                           ClassASetter(DiagClassA.SICK))],
-                                                         tag='FATE'),
-                                 PatientStatusSetter(),
-                                 self.icuCachedCDF.intervalProb, tag='LOS')
-                self.icuTreeCache[key] = tree
-                return tree
+                # This patient doesn't belong in this ward
+                logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                               'this patient should be gone by now'
+                               % (self.name, patientAgent.name, CareTier.names[careTier],
+                                  DiagClassA.names[patientStatus.diagClassA], startTime))
+                return BayesTree(PatientStatusSetter())
+
+        elif careTier == CareTier.ICU:
+            if patientAgent.getDiagnosis().diagClassA == DiagClassA.VERYSICK:
+                key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+                if key in self.icuTreeCache:
+                    return self.icuTreeCache[key]
+                else:
+                    tree = BayesTree(BayesTree.fromLinearCDF([(self.icuDischargeViaDeathFrac,
+                                                               ClassASetter(DiagClassA.DEATH)),
+                                                              ((1.0 - self.icuDischargeViaDeathFrac),
+                                                               ClassASetter(DiagClassA.SICK))],
+                                                             tag='FATE'),
+                                     PatientStatusSetter(),
+                                     self.icuCachedCDF.intervalProb, tag='LOS')
+                    self.icuTreeCache[key] = tree
+                    return tree
+            else:
+                # This patient doesn't belong in this ward
+                logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                               'this patient should be gone by now'
+                               % (self.name, patientAgent.name, CareTier.names[careTier],
+                                  DiagClassA.names[patientStatus.diagClassA], startTime))
+                return BayesTree(PatientStatusSetter())
         else:
             raise RuntimeError('Hospitals do not provide care tier %s' % careTier)
 

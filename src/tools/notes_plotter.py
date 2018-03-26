@@ -15,8 +15,6 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import sys
 import os.path
 import logging
@@ -759,8 +757,11 @@ def scanAllFacilities(facilityDirs, facDict=None):
         facDict = readFacFiles(facilityDirs)
     for fac in facDict.values():
         cat = fac['category']
-        assert 'meanPop' in fac, '%s has no meanPop' % fac['abbrev']
-        meanPopByCat[cat] += fac['meanPop']['value']
+        if 'meanPop' in fac:
+            meanPopByCat[cat] += fac['meanPop']['value']
+        else:
+            print 'Excluding %s from summaries; no meanPop' % fac['abbrev']
+            continue
         if 'totalDischarges' in fac:
             totDisch = fac['totalDischarges']['value']
         else:
@@ -856,8 +857,7 @@ def main():
     catNames = allOfCategoryDict.keys()[:]
 
     facDirList = [pyrheautils.pathTranslate(pth) for pth in inputDict['facilityDirs']]
-    if "ChicagoLand" in runDesc:
-        allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
+    allOfCategoryFacilityInfo, meanPopByCategory = scanAllFacilities(facDirList)
 
     if 'facilitySelectors' in inputDict:
         facImplRules = [(re.compile(rule['category']), rule['implementation'])
@@ -891,11 +891,8 @@ def main():
 
     bedBounceFig(allOfCategoryDict)
     patientFlowFig(allOfCategoryDict)
-    if "ChicagoLand" in runDesc:
-        patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
-        occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
-    else:
-        occupancyTimeFig(specialDict) #, meanPopByCat=meanPopByCategory)
+    patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
+    occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
     overallHealthTimeFig(specialDict)
     thawsTimeFig(specialDict)

@@ -167,12 +167,21 @@ def partition(m, facL, facDict):
     mm[:,3] = m[:,vsnfL:vsnfH].sum(1)
     return mm
 
+def findCategoryNameList(facDict):
+    """
+    Returns an ordered list of categories in this dict.  Useful for issues like LTAC/LTACH
+    """
+    catS = set([rec['category'] for rec in facDict.values()])
+    catL = list(catS)
+    catL.sort()
+    return catL
+
 def myPie(mx, rowIdx, ax, idxFacTbl, facDict):
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
     normRw = normalize(mx[rowIdx,:])
     catClrMap = {ctg: colors[i] 
-                 for i,ctg in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
+                 for i,ctg in enumerate(findCategoryNameList(facDict)) }
     segTbl = {key: [] for key in catClrMap.keys()}
     labels = []
     sizes = []
@@ -251,7 +260,7 @@ def myBars_old(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict):
     normRwL = []
     for mx in mxList:
         normRwL.append(normalize(mx[rowIdx,:]))
-    catClrMap = {ctg: colors[i] for i,ctg in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
+    catClrMap = {ctg: colors[i] for i,ctg in enumerate(findCategoryNameList(facDict)) }
     segTbl = {key: [] for key in catClrMap.keys()}
     for idx, val in enumerate(normRwL[0].flatten()):
         abbrev = idxFacTbl[idx]
@@ -324,7 +333,7 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict,
             totRw -= mx[rowIdx, hideThisIdx]
         totRwL.append(totRw)
     catClrMap = {ctg: colors[i] for i,ctg
-                 in enumerate(['HOSPITAL', 'LTACH', 'VSNF', 'SNF', 'COMMUNITY']) }
+                 in enumerate(findCategoryNameList(facDict)) }
     segTbl = {key: [] for key in catClrMap.keys()}
     for idx, val in enumerate(normRwL[0].flatten()):
         abbrev = idxFacTbl[idx]
@@ -405,7 +414,7 @@ def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facD
     idx = facIdxTbl[abbrev]
 
     figs, axisL = plt.subplots(nrows=2, ncols=1)
-    axisL[0].set_title(abbrev)
+    axisL[0].set_title("%s (%s)" % (abbrev, facDict[abbrev]['category']))
     if hideDirectTransfersToSelf:
         hideThisIdx = idx
     else:

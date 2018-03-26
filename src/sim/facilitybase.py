@@ -270,17 +270,32 @@ class PatientRecord(object):
 
 class PatientStats(object):
     def __init__(self):
-        self.currentOccupancy = 0
-        self.totalOccupancy = 0
+        self.curOccDict = {}
+        self.totOccDict = {}
 
-    def addPatient(self):
-        self.currentOccupancy += 1
-        #print '+',
-        self.totalOccupancy += 1
+    @property
+    def currentOccupancy(self):
+        return sum(self.curOccDict.values())
 
-    def remPatient(self):
-        self.currentOccupancy -=1
-        #print '-',
+    @property
+    def totalOccupancy(self):
+        return sum(self.totOccDict.values())
+
+    def addPatient(self, tier):
+        if tier in self.curOccDict:
+            self.curOccDict[tier] += 1
+        else:
+            self.curOccDict[tier] = 1
+        if tier in self.totOccDict:
+            self.totOccDict[tier] += 1
+        else:
+            self.totOccDict[tier] = 1
+
+    def remPatient(self, tier):
+        if tier in self.curOccDict:
+            self.curOccDict[tier] -= 1
+        else:
+            raise RuntimeError('No patient to remove')
 
 
 class MissingPatientRecordError(RuntimeError):
@@ -407,7 +422,7 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload  # @UnusedVariable
-            self.patientStats.addPatient()
+            self.patientStats.addPatient(tier)
             patientRec = self.getPatientRecord(patientId,
                                                (timeNow if timeNow is not None else 0))
             patientRec.isFrail = isFrail
@@ -417,7 +432,7 @@ class Facility(pyrheabase.Facility):
                     patientRec.arrivalDate = timeNow
                     patientRec.prevVisits += 1
                     if patientRec.departureDate is None:  # ie patient readmit without first leaving
-                        self.patientStats.remPatient()
+                        self.patientStats.remPatient(tier)
                 if timeNow != 0:  # Exclude initial populations
                     nh = self.getNoteHolder()
                     if nh:
@@ -436,7 +451,7 @@ class Facility(pyrheabase.Facility):
             patientRec = self.getPatientRecord(patientId)
             patientRec.departureDate = timeNow
             self.mergePatientRecord(patientId, patientRec, timeNow)
-            self.patientStats.remPatient()
+            self.patientStats.remPatient(tier)
             #if patientRec.arrivalDate != 0:  # exclude initial populations
             if True:  # include initial populations
                 lengthOfStay = timeNow - patientRec.arrivalDate
@@ -833,7 +848,8 @@ class PatientAgent(pyrheabase.PatientAgent):
         return newAddr
 
     def getCandidateFacilityList(self, timeNow, newTier):
-        return self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, timeNow)
+        cFL = self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, timeNow)
+        return cFL
 
     def __getstate__(self):
         d = pyrheabase.PatientAgent.__getstate__(self)

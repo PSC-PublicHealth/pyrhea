@@ -1,0 +1,65 @@
+'model': 'OrangeCounty2013'
+'pathogen': 'MRSA'
+'modelDir': '../../models/OrangeCounty2013'
+
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
+'facilityDirs':
+  - '$(MODELDIR)/facilityfactsCurrent2013'
+  - '$(MODELDIR)/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilitySelectors':
+  - 'category': 'NURSINGHOME'
+    'implementation': 'NURSINGHOME'
+  - 'category': 'LTAC'
+    'implementation': 'LTAC'
+  - 'category': 'HOSPITAL'
+    'implementation': 'HOSPITAL'
+  - 'category': 'COMMUNITY'
+    'implementation': 'COMMUNITY'
+
+'policyImplementationDir': '../sim/policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'CapacityTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleTreatmentPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleDiagnosticPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+
+  - 'category': 'scenario'
+#    'policyClass': 'XDROPlusCREBundleScenario'
+    #'policyClass': 'CREBundleScenario'
+    'policyClass': 'XDRORegistryScenario'
+
+'notesFileName': 'notes_twoyear_allfac_OC.pkl'
+
+#'runDurationDays': 1095
+'runDurationDays': 730
+
+#'burnInDays': 365
+burnInDays: 100
+
+
+scenarioWaitDays: 2
+
+'trackedFacilities':
+  - 'CHAP'
+  - 'FVRH'
+  - 'GGMC'
+  - 'HBHO'
+  - 'HOAG'
+  - 'KAIA'
+  - 'LAMC'
+  - 'SCGL'

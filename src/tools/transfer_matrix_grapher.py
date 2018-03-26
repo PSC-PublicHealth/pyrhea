@@ -13,11 +13,8 @@ import numpy as np
 
 import schemautils
 import pyrheautils
+import tools_util as tu
 from plotting_utilities import drawBarSets
-from pyrhea import checkInputFileSchema
-from map_transfer_matrix import parseFacilityData
-
-SCHEMA_DIR = os.path.join(os.path.dirname(__file__), '../schemata')
 
 EXPECTED_MTX_KEYS = frozenset(['direct_measured', 'indirect_measured',
                                'direct_simulated', 'indirect_simulated'])
@@ -68,25 +65,8 @@ def main():
     runDesc = args[0]
 
     print 'Reading run info from %s' % os.path.abspath(runDesc)
-    #
-    # Begin boilerplate to import run information
-    #
-    schemautils.setSchemaBasePath(SCHEMA_DIR)
-    inputDict = checkInputFileSchema(runDesc,
-                                     'rhea_input_schema.yaml',
-                                     comm=None)
-    if 'modelDir' in inputDict:
-        pyrheautils.PATH_STRING_MAP['MODELDIR'] = pyrheautils.pathTranslate(inputDict['modelDir'])
-    if 'pathTranslations' in inputDict:
-        for elt in inputDict['pathTranslations']:
-            pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
-    facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
-    pathPrefix = os.path.dirname(os.path.abspath(runDesc))
-    facDirs = [os.path.join(pathPrefix, fD) for fD in facDirs]
-    facDict = parseFacilityData(facDirs)
-    #
-    # End boilerplate to import run information
-    #
+    inputDict = tu.readModelInputs(args[0])
+    facDict = tu.getFacDict(inputDict)
 
     print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
     facDict['WAUK_2615_H'] = {'category':'HOSPITAL'}

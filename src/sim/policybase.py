@@ -39,6 +39,7 @@ class DiagnosticPolicy(Policy):
         This is called on patients when they arrive at a ward.
         """
         logger.debug('%s arrives %s %s', '%s_%s'%patient.id, ward._name, timeNow)
+        logger.debug('%s status is %s', '%s_%s'%patient.id, str(patient.getStatus()))
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """

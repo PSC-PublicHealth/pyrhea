@@ -59,7 +59,7 @@ loggers:
   pyrheautils:
     level: WARNING
   genericCommunity:
-    level: DEBUG
+    level: WARNING
   policybase:
     level: DEBUG
 #    handlers: [rabbitmq]
