@@ -1,0 +1,160 @@
+'model': 'OrangeCounty2013'
+'pathogen': 'MRSA'
+'modelDir': '../../models/OrangeCounty2013'
+
+'pathTranslations':
+  - 'key': 'CONSTANTS'
+    'value': '$(MODELDIR)/constants'
+
+'facilityDirs':
+  - '$(MODELDIR)/facilityfactsCurrent2013'
+  - '$(MODELDIR)/synthCommunities'
+
+'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilitySelectors':
+  - 'category': 'NURSINGHOME'
+    'implementation': 'NURSINGHOME'
+  - 'category': 'LTAC'
+    'implementation': 'LTAC'
+  - 'category': 'HOSPITAL'
+    'implementation': 'HOSPITAL'
+  - 'category': 'COMMUNITY'
+    'implementation': 'COMMUNITY'
+
+'policyImplementationDir': '../sim/policyImplementations'
+'policySelectors':
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
+  - 'category': 'COMMUNITY'
+    #'policyClass': 'MinDistanceTransferDestinationPolicy'
+    #'policyClass': 'CapacityTransferDestinationPolicy'
+    'policyClass': 'IndirectTransferDestinationPolicy'
+  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+    'policyClass': 'ContactPrecautionsTreatmentPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleTreatmentPolicy'
+#  - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
+#    'policyClass': 'CREBundleDiagnosticPolicy'
+  - 'category': 'COMMUNITY'
+    'policyClass': 'DummyTreatmentPolicy'
+
+  - 'category': 'scenario'
+#    'policyClass': 'XDROPlusCREBundleScenario'
+    #'policyClass': 'CREBundleScenario'
+    'policyClass': 'XDRORegistryScenario'
+
+'notesFileName': 'notes_twoyear_allfac_OC.pkl'
+
+#'runDurationDays': 1095
+'runDurationDays': 730
+
+#'burnInDays': 365
+burnInDays: 100
+
+
+scenarioWaitDays: 2
+
+'trackedFacilities':
+  - ACNC
+  - AGBP
+  - ALAM
+  - ALTA
+  - ANGL
+  - ANHC
+  - ANRG
+  - ATCC
+  - BEAC
+  - BGSJ
+  - BGYL
+  - BPNC
+  - BVCC
+  - CAPO
+  - CARE
+  - CCHS
+  - CHAP
+  - CMCS
+  - COCT
+  - COLL
+  - COVI
+  - CPNH
+  - CSNC
+  - CVLH
+  - CVPL
+  - CVSB
+  - EDNA
+  - ELIZ
+  - EVER
+  - EXTW
+  - FDCT
+  - FLAG
+  - FOCC
+  - FPCC
+  - FREE
+  - FVRH
+  - GGCH
+  - GGMC
+  - GORD
+  - GPCC
+  - GREE
+  - HBHO
+  - HELP
+  - HGOR
+  - HOAG
+  - HSOU
+  - HSUB
+  - HVAL
+  - HVCC
+  - KAIA
+  - KINB
+  - KINO
+  - KINW
+  - KNOT
+  - LAKE
+  - LAMC
+  - LEIS
+  - LHAB
+  - LPAL
+  - LPIH
+  - MANO
+  - MESA
+  - MISS
+  - MSLG
+  - NEWO
+  - NNRC
+  - NSUB
+  - OCGB
+  - OCMM
+  - ORRH
+  - PACI
+  - PALM
+  - PANA
+  - PKVW
+  - PLAC
+  - PREG
+  - PSUP
+  - PVIS
+  - QUAK
+  - RGNT
+  - ROYL
+  - SCGL
+  - SCNH
+  - SCRT
+  - SEAC
+  - SJMC
+  - SJNH
+  - SJOS
+  - SJUD
+  - SMMC
+  - SNMR
+  - STAN
+  - TERR
+  - TOWN
+  - UCIM
+  - VICT
+  - VIVA
+  - WAEC
+  - WAMC
+  - WINA
+  - WINF
+  - WLNT
+

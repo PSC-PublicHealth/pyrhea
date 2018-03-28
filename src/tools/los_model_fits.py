@@ -25,7 +25,8 @@ import traceback
 import os.path
 from collections import defaultdict
 import phacsl.utils.formats.csv_tools as csv_tools
-from map_transfer_matrix import parseFacilityData
+import tools_util as tu
+from pyrheautils import pathTranslate
 
 import numpy as np
 import scipy.optimize as op
@@ -34,7 +35,7 @@ import matplotlib.path as path
 import matplotlib.patches as patches
 
 from scipy.cluster.vq import whiten, kmeans, vq
-from scipy.stats import lognorm, expon
+from scipy.stats import lognorm, expon, weibull_min
 
 # Truncate the sample set at how many days during fitting?
 truncLim = 365
@@ -163,6 +164,68 @@ class LOSModel(object):
         except Exception:
             traceback.print_exc(file=sys.stdout)
             sys.exit('Exception during minimization')
+
+
+class WeibullLOSModel(LOSModel):
+    """
+    A simple exponential distribution
+    """
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.01, 1.0]
+        if not optimizationBounds:
+            optimizationBounds = [(0.0001, None), (0.99, 1.01)]
+        super(WeibullLOSModel, self).__init__(initialVals=initialVals,
+                                              optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'c': 0, 's': 1})
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        c, s = fitParms[:2]
+        pVec = weibull_min.pdf(xArr, c, scale=s, loc=0.0)
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        c, s = fitParms[:2]
+        lnTerm = weibull_min.logpdf(xArr, c, scale=s, loc=0.0)
+        return lnTerm
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        c, s = fitParms[:2]
+        cdfVec = weibull_min.cdf(xArr, c, scale=s, loc=0.0)
+        return cdfVec
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        c, s = fitParms[:2]
+        xMean = weibull_min.mean(c, scale=s, loc=0.0)
+        lowHighFlags = lowVec >= xMean
+        highLowFlags = highVec < xMean
+        bothLowFlags = highLowFlags  # since low must be lower
+        bothHighFlags = lowHighFlags  # ditto
+        lowCDFVec = weibull_min.cdf(lowVec, c, scale=s, loc=0.0)
+        highCDFVec = weibull_min.cdf(highVec, c, scale=s, loc=0.0)
+        bothLowCDFVec = highCDFVec - lowCDFVec
+        lowSFVec = weibull_min.sf(lowVec, c, scale=s, loc=0.0)
+        highSFVec = weibull_min.sf(highVec, c, scale=s, loc=0.0)
+        bothHighCDFVec = lowSFVec - highSFVec
+        mixedCDFVec = 1.0 - (highSFVec + lowCDFVec)
+        dCDFVec = np.select([bothLowFlags, bothHighFlags],
+                            [bothLowCDFVec, bothHighCDFVec],
+                            default=mixedCDFVec)
+        return dCDFVec
+
+    def strDesc(self):
+        return "weibell_min(lmda=$0)"
 
 
 class ExponLOSModel(LOSModel):
@@ -680,14 +743,14 @@ def resampleBand(bandTuple, sampVec, range=None):
     sampW = sampVec.shape[0]
     lo, hi, ct = bandTuple
     if hi > rHigh or lo < rLow:
-        raise RuntimeError('sample band (%s, %s) out of range (%s, %s)'
-                           % (lo, hi, rLow, rHigh))
-    cLow = int(sampW*((lo - rLow)/(rHigh-rLow)) + 0.0001)
-    cHigh = int(sampW*((hi - rLow)/(rHigh-rLow)) - 0.0001)
-    sval = float(ct) / (cHigh + 1 - cLow)
-    #print lo, hi, ct, sampW, cLow, cHigh, sval
-    for i in xrange(cLow, cHigh+1):
-        sampVec[i] += sval
+        print 'sample band (%s, %s) out of range (%s, %s)' % (lo, hi, rLow, rHigh)
+    else:
+        cLow = int(sampW*((lo - rLow)/(rHigh-rLow)) + 0.0001)
+        cHigh = int(sampW*((hi - rLow)/(rHigh-rLow)) - 0.0001)
+        sval = float(ct) / (cHigh + 1 - cLow)
+        #print lo, hi, ct, sampW, cLow, cHigh, sval
+        for i in xrange(cLow, cHigh+1):
+            sampVec[i] += sval
     return sampVec
 
 
@@ -776,25 +839,25 @@ def makeScatterPlot(ax, markerTupleList):
 
 def main():
 
-    #modelDir = '/home/welling/git/pyrhea/models/ChicagoLand'
-    #modelDir = os.path.join(os.path.dirname(__file__), '../../models/ChicagoLand')
-    #losHistoPath = os.path.join(modelDir, 'Histogram_09292016.csv')
-    #facDict = parseFacilityData(os.path.join(modelDir, 'facilityfacts'))
-    #losHistoDict = importLOSHistoTable(losHistoPath)
-    modelDir = os.path.join(os.path.dirname(__file__), '../../models/OrangeCounty2013')
-    losHistoPath = os.path.join(modelDir,
-                                "OC_Hospital_Time_to_Readmission_LINE_LIST_"
-                                "for_RHEA_2.0-Adult_Only-UPDATED-10-20-2017_"
-                                "TimeToReadmitList.csv")
+    inputDict = tu.readModelInputs('../sim/twoyear_run_OC.yaml')
+    facDict = tu.getFacDict(inputDict)
+    
+    #losHistoPath = os.path.join(pathTranslate('$(MODELDIR)', 'Histogram_09292016.csv')
+    losHistoPath = os.path.join(pathTranslate('$(MODELDIR)'),
+                                "OC_Nursing_Home_LOS_Line-Lists_for_RHEA_2.0_-_2011-2015"
+                                "_-_Adult_Only_-_09-29-2017_FINAL_NH_LOS_Line_List.csv"
+                                )
     losHistoDict = importLOSLineRecs(losHistoPath,
-                                     key1='Hospital Code',
-                                     key2='Time to Readmit (Days)')
-    facDict = parseFacilityData(os.path.join(modelDir, 'facilityfactsCurrent2013'))
+                                     key1='CODE',
+                                     key2='LOS')
+
+
 #    LOSModelType = LogNormLOSModel
 #    LOSModelType = TwoPopLOSModel
 #    LOSModelType = TwoLogNormLOSModel
 #    LOSModelType = ExponLOSModel
-    LOSModelType = TwoExponLOSModel
+#    LOSModelType = TwoExponLOSModel
+    LOSModelType = WeibullLOSModel
     tblRecs = []
     indexDict = {}
     valVecList = []
@@ -841,13 +904,16 @@ def main():
 
     nTrackers = 6
     nClusters = 3
-    xLabel = 'lmda'
-    yLabel = 'lmda2'
-#     yLabel = 'k'
+    xLabel = 'c'
+#    yLabel = 'lmda2'
+    yLabel = 's'
     annotateScatterPts = True
-    clrs = ['red', 'blue', 'green', 'yellow', 'magenta']
-    histoRange = (0.0, 400.0)
-    histoBins = 400
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    clrs = prop_cycle.by_key()['color']
+#     histoRange = (0.0, 400.0)
+#     histoBins = 400
+    histoRange = (0.0, 1000.0)
+    histoBins = 1000
 
     tupleL = [(-rec['lnLikPerSample'], rec['abbrev'], rec['_fitVec']) for rec in tblRecs
              if rec['lnLikPerSample'] is not None]
@@ -859,7 +925,7 @@ def main():
     print 'Bottom pairs:'
     for val, key, pdfS in tupleL[:nTrackers]:
         print '  %s: %s fit by %s' % (key, -val, pdfS)
-    
+
 
     trackers = ([key for val, key, pdfS in tupleL[:nTrackers/2]]  # @UnusedVariable
                 + [key for val, key, pdfS in tupleL[-(nTrackers - nTrackers/2):]])  # @UnusedVariable
@@ -938,6 +1004,8 @@ def main():
             scatterAx.annotate(abbrev, xy=xy, xytext=xytext)
 
     fig3, histoAxes = plt.subplots(nrows=1, ncols=len(codeDict))
+    if len(codeDict) == 1:
+        histoAxes = [histoAxes]
     for category, i in codeDict.items():
         samples = []
         for abbrev, offset in indexDict.items():
