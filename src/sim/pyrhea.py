@@ -664,6 +664,8 @@ def main():
                           help="Use this value as the random seed")
         parser.add_option("-k", "--checkpoint", action="store", type="int", default=-1,
                           help="save the state and stop after n ticks")
+        parser.add_option("-c", "--constantsFile", action="store", type="string", default=None,
+                          help="python file defining the dict constantsReplacementsData")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -685,7 +687,8 @@ def main():
                   'partitionFile': opts.partition,
                   'randomSeed': opts.seed,
                   'checkpoint': opts.checkpoint,
-                  }
+                  'constantsFile': opts.constantsFile,
+        }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
                                                    os.path.join(SCHEMA_DIR, INPUT_SCHEMA),
@@ -709,6 +712,10 @@ def main():
         clData = comm.bcast(clData, root=0)
 
         pyrheautils.prepPathTranslations(clData['input'])
+
+        # loading up the constants replacements needs to happen fairly early
+        if clData['constantsFile'] is not None:
+            pyrheautils.readConstantsReplacementFile(clData['constantsFile'])
 
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
     

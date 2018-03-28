@@ -83,13 +83,57 @@ def pathTranslate(rawPath, lookupDict=None):
     #return os.path.abspath(path)
     return path
 
+constantsReplacementData = {}
 
+def readConstantsReplacementFile(fileName):
+    global constantsReplacementData
+
+    fileName = pathTranslate(fileName)
+    file = os.path.basename(fileName)
+    name, ext = os.path.splitext(file)
+    
+    newMod = load_source(name, fileName)
+
+    constantsReplacementData = getattr(newMod, "constantsReplacementData")
+
+def replaceData(fileName, yData):
+    global constantsReplacementData
+    
+    if fileName not in constantsReplacementData:
+        return yData
+
+    repl = constantsReplacementData[fileName]
+
+    for path, val in repl:
+        pointer = yData
+        idx = 0
+        while idx < len(path) - 1:
+            step = path[idx]
+            if step == '#KeyVal':
+                keyKey = path[idx+1]
+                keyValue = path[idx+2]
+                idx += 3
+                for d in pointer:
+                    if d[keyKey] == keyValue:
+                        pointer = d
+                        break
+                else:
+                    raise KeyError(keyKey)
+            else:  #normal case
+                pointer = pointer[step]
+                idx += 1
+        pointer[path[-1]] = val
+
+    return yData
+    
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
     """
     Import a set of constants in YAML format, checking against its schema.
     """
+    print valuePath
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)
+        cJSON = replaceData(valuePath, cJSON)
         if os.name != 'nt':
             validator = schemautils.getValidator(pathTranslate(schemaPath, pathLookupDict))
             try:
