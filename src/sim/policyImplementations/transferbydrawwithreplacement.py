@@ -42,7 +42,7 @@ def randomOrderByWt(pairList, tot, cull=None):
     if cull is None:
         pairList = deque(pairList)
     else:
-        tot -= sum([wt for wt, info in pairList if info == cull])
+        tot -= sum([wt for wt, info in pairList if info[0] == cull])
         pairList = deque([(wt, info) for wt, info in pairList if info[0] != cull])
     shuffledList = []
 #    shuffledList_sav = [info for weight, info in pairList]

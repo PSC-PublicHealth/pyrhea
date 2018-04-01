@@ -167,8 +167,20 @@ class VentSNF(Facility):
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
+        dCA = patientAgent.getDiagnosis().diagClassA
         assert careTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT],\
             "VSNFs do not provide this CareTier: found %s" % careTier
+        if not ((careTier == CareTier.SKILNRS and dCA == DiagClassA.NEEDSSKILNRS)
+                or (careTier == CareTier.VENT and dCA == DiagClassA.NEEDSVENT)
+                or (careTier == CareTier.NURSING and (dCA == DiagClassA.NEEDSREHAB
+                                                      or patientAgent.getDiagnosis().overallHealth
+                                                      == PatientOverallHealth.FRAIL))):
+            # This patient doesn't belong in this ward
+            logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                           'this patient should be gone by now'
+                           % (self.name, patientAgent.name, CareTier.names[careTier],
+                              DiagClassA.names[patientStatus.diagClassA], startTime))
+            return BayesTree(PatientStatusSetter())
 
         lclRates, pthRates = self.rateD[careTier]
         if not pthRates:

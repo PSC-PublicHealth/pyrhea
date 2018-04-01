@@ -131,6 +131,7 @@ class NursingHome(Facility):
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
+        patientDiagnosis = patientAgent.getDiagnosis()
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
@@ -138,7 +139,7 @@ class NursingHome(Facility):
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
-        if patientStatus.overall == PatientOverallHealth.FRAIL:
+        if patientDiagnosis.overall == PatientOverallHealth.FRAIL:
             if treatment.rehab:
                 if key in self.frailRehabTreeCache:
                     return self.frailRehabTreeCache[key]
@@ -178,7 +179,7 @@ class NursingHome(Facility):
             else:
                 self.frailTreeCache[key] = tree
             return tree
-        else:  # overall non-FRAIL
+        else:  # overall health is not FRAIL, hence HEALTHY or UNHEALTHY
             if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
@@ -226,18 +227,14 @@ class NursingHome(Facility):
                                          self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
-            else:  # healthy and not rehab
-                if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
-                                                 DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
-                                                 DiagClassA.NEEDSSKILNRS, DiagClassA.WELL]):
-                    logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
-                                   'this patient should be gone by now'
-                                   % (self.name, patientAgent.name, CareTier.names[careTier],
-                                      DiagClassA.names[patientStatus.diagClassA], startTime))
-                    return BayesTree(PatientStatusSetter())
-                else:
-                    raise RuntimeError('Patients with non-FRAIL overall health should only be'
-                                       ' in NURSING care for rehab')
+            else:  # not frail and not rehab
+                if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
+                    raise RuntimeError('%s has a REHAB diagnosis but no treatment?')
+            logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                           'this patient should be gone by now'
+                           % (self.name, patientAgent.name, CareTier.names[careTier],
+                              DiagClassA.names[patientStatus.diagClassA], startTime))
+            return BayesTree(PatientStatusSetter())
 
     def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
         if random() <= self.initialResidentFrac:
