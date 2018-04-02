@@ -95,6 +95,7 @@ def main():
     hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
     allCt = 0
     lostCt = 0
+    selfCt = 0
     for rec in recs:
         src = str(rec[srcColKey])
         if src in ignoredKeys:
@@ -115,15 +116,19 @@ def main():
             if n != 0:
                 assert str(dst) not in tbl[src], 'redundant entry for %s %s' % (src, dst)
                 #print '%s -> %s' % (src, dst)
-                tbl[src][str(dst)] = n
-                if dst not in facDict:
-                    lostTrans = n
-                    if n != 0:
-                        print 'Unknown destination %s: %d transfers lost' % (dst, lostTrans)
-                    lostCt += lostTrans
-                    continue
+                if dst == src:
+                    selfCt += n
+                else:
+                    tbl[src][str(dst)] = n
+                    if dst not in facDict:
+                        lostTrans = n
+                        if n != 0:
+                            print 'Unknown destination %s: %d transfers lost' % (dst, lostTrans)
+                        lostCt += lostTrans
+                        continue
                 allCt += n
     print 'understood %s transfers' % allCt
+    print 'excluded %s self transfers' % selfCt
     print 'total transfers lost to unknown endpoints: %d' % lostCt
     print 'parsed'
     with open('direct_transfer_counts.yaml', 'w') as f:
