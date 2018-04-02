@@ -153,10 +153,12 @@ class LTAC(Facility):
                     return self.treeCache[key]
                 else:
                     if biasFlag:
-                        changeTree = buildChangeTree(self.pthRates)
+                        changeTree = buildChangeTree(self.pthRates,
+                                                     forceRelocateDiag=DiagClassA.NEEDSLTAC)
                     else:
-                        changeTree = buildChangeTree(self.lclRates)
-    
+                        changeTree = buildChangeTree(self.lclRates,
+                                                     forceRelocateDiag=DiagClassA.NEEDSLTAC)
+
                     tree = BayesTree(changeTree,
                                      PatientStatusSetter(),
                                      self.cachedCDF.intervalProb, tag='LOS')

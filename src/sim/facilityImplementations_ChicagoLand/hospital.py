@@ -50,7 +50,7 @@ tierKeyMap = {CareTier.HOME: 'home',
 
 knownTierKeys = tierKeyMap.values() + ['death']
 
-def buildChangeTree(lclRates):
+def buildChangeTree(lclRates, forceRelocateDiag=None):
     """
     Given a dict with probabilities for the standard fates (CareTiers plus death),
     return a Bayes tree implementing it.  Note that the probabilities must sum to 1.0 .
@@ -58,24 +58,19 @@ def buildChangeTree(lclRates):
     for key in lclRates:
         if not (key in knownTierKeys or lclRates[key] == 0.0):
             raise RuntimeError('Unknown transfer rate key %s' % key)
-    changeTree = BayesTree.fromLinearCDF([(lclRates['death'],
-                                           ClassASetter(DiagClassA.DEATH)),
-                                          (lclRates['hospital'],
-                                           ClassASetter(DiagClassA.SICK,
-                                                        forceRelocate=True)),
-                                          (lclRates['icu'],
-                                           ClassASetter(DiagClassA.VERYSICK)),
-                                          (lclRates['ltac'],
-                                           ClassASetter(DiagClassA.NEEDSLTAC)),
-                                          (lclRates['nursinghome'],
-                                           ClassASetter(DiagClassA.NEEDSREHAB)),
-                                          (lclRates['vent'],
-                                           ClassASetter(DiagClassA.NEEDSVENT)),
-                                          (lclRates['skilnrs'],
-                                           ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                          (lclRates['home'],
-                                           ClassASetter(DiagClassA.WELL)),
-                                          ], tag='FATE')
+
+    ratePairL = []
+    for key, tier in [('death', DiagClassA.DEATH), ('hospital', DiagClassA.SICK),
+                      ('icu', DiagClassA.VERYSICK), ('ltac', DiagClassA.NEEDSLTAC),
+                      ('nursinghome', DiagClassA.NEEDSREHAB), ('vent', DiagClassA.NEEDSVENT),
+                      ('skilnrs', DiagClassA.NEEDSSKILNRS), ('home', DiagClassA.WELL)]:
+        if key in lclRates:
+            if tier == forceRelocateDiag:
+                ratePairL.append((lclRates[key], ClassASetter(tier, forceRelocate=True)))
+            else:
+                ratePairL.append((lclRates[key], ClassASetter(tier)))
+    changeTree = BayesTree.fromLinearCDF(ratePairL, tag='FATE')
+
     return changeTree
 
 
@@ -103,7 +98,7 @@ def biasTransfers(lclRates, infectiousAgent, scaleThisTier,
                      beta, alpha, enhancementScale, k, x)
         x = 0.0
         k = alpha/beta
-    
+
     if alpha == 0.0 or alpha == 1.0:
         newLclRates = lclRates.copy()
         pthRates = lclRates.copy()
@@ -322,9 +317,11 @@ class Hospital(Facility):
                     return self.hospTreeCache[key]
                 else:
                     if biasFlag:
-                        changeTree = buildChangeTree(self.pthRates)
+                        changeTree = buildChangeTree(self.pthRates,
+                                                     forceRelocateDiag=DiagClassA.SICK)
                     else:
-                        changeTree = buildChangeTree(self.lclRates)
+                        changeTree = buildChangeTree(self.lclRates,
+                                                     forceRelocateDiag=DiagClassA.SICK)
     
                     tree = BayesTree(changeTree,
                                      PatientStatusSetter(),
