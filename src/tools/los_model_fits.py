@@ -174,7 +174,7 @@ class WeibullLOSModel(LOSModel):
         if not initialVals:
             initialVals = [0.01, 1.0]
         if not optimizationBounds:
-            optimizationBounds = [(0.0001, None), (0.99, 1.01)]
+            optimizationBounds = [(0.0001, None), (0.0001, None)]
         super(WeibullLOSModel, self).__init__(initialVals=initialVals,
                                               optimizationBounds=optimizationBounds)
         self.nameToIndexMap.update({'c': 0, 's': 1})
@@ -225,7 +225,59 @@ class WeibullLOSModel(LOSModel):
         return dCDFVec
 
     def strDesc(self):
-        return "weibell_min(lmda=$0)"
+        return "weibell_min(k=$0, s=$1)"
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        allSamps = []
+        tot = 0.0
+        for llim, hlim, ct in losHistoList:
+            if llim > 100.0:
+                continue
+            samp = 0.5 * (llim + hlim)
+            if ct >= 1:
+                allSamps.extend(int(ct) * [samp])
+                tot += ct * samp
+        allSamps.sort()
+        nSamp = len(allSamps)
+        mean = float(tot)/nSamp
+        median = float(allSamps[nSamp/2])
+        print 'mean = %s median = %s' % (mean, median)
+        histV, edgeV = np.histogram([smp for smp in allSamps if smp <= median],
+                                    'auto')
+        print 'histV: ', histV
+        print 'edgeV: ', edgeV
+        maxBinIdx = np.argmax(histV)
+        print maxBinIdx
+        mode = 0.5 * (edgeV[maxBinIdx] + edgeV[maxBinIdx + 1])
+        print 'mode: ', mode
+        # median is s*(ln(2))^(1/k)
+        # mode is s*((k-1/k))^1/k
+        # mode/median = ((k-1)/k ln(2)) ^ 1/k
+        # ln(mode/median) = 1/k * (ln(k-1) - (ln(k) + ln(2))
+        def alphaSqr(k):
+            val = np.power(((k-1.0)/(k*np.log(2.0))), 1.0/k) - (mode/median)
+            return val * val
+        optRslt = op.minimize(alphaSqr, [1.0], bounds=[(0.001, None)])
+        if optRslt.success:
+            k = optRslt.x[0]
+        else:
+            k = optRslt.x[0]  # A good generic choice
+        s = median/np.power(np.log(2), 1.0/k)
+#        print 'HERE ',optRslt.success, mode, median, k, s
+        guessV = np.asarray([k, s])
+        self.setFitParms(guessV)
+#         bestVal = funToMaximize(guessV, losHistoList, self)
+#         print bestVal
+#         resultX = guessV
+#         resultSuccess = optRslt.success
+        resultX, bestVal, resultSuccess = \
+            super(WeibullLOSModel, self).modelFit(losHistoList,
+                                                  funToMinimize=funToMinimize,
+                                                  funToMaximize=funToMaximize,
+                                                  truncLim=truncLim,
+                                                  debug=debug)
+        return resultX, bestVal, resultSuccess
 
 
 class ExponLOSModel(LOSModel):
@@ -376,7 +428,7 @@ class TwoPopLOSModel(LOSModel):
                                             optimizationBounds=optimizationBounds[1:3])
         super(TwoPopLOSModel, self).__init__(initialVals=initialVals,
                                               optimizationBounds=optimizationBounds)
-        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'lmda': 3})        
+        self.nameToIndexMap.update({'k': 0, 'mu': 1, 'sigma': 2, 'lmda': 3})
 
     def fullPDF(self, xVec, fitParms=None):
         if fitParms is None:
@@ -457,15 +509,110 @@ class TwoPopLOSModel(LOSModel):
         return "$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)"
 
 
+class MixedWeibullExpLOSModel(LOSModel):
+    """
+    The population is divided between a group following a Weibull LOS
+    distribution and a group with a slow exponential LOS distribution
+    """
+    def __init__(self, initialVals=None, optimizationBounds=None):
+        if not initialVals:
+            initialVals = [0.8, 3.246, 0.5, 0.0015]
+        if not optimizationBounds:
+            optimizationBounds = [(0.001, 0.999), (0.05, 400.0), (0.05, None), (0.00001, 0.1)]
+        self.innerModel = WeibullLOSModel(initialVals=initialVals[1:3],
+                                          optimizationBounds=optimizationBounds[1:3])
+        super(MixedWeibullExpLOSModel, self).__init__(initialVals=initialVals,
+                                                      optimizationBounds=optimizationBounds)
+        self.nameToIndexMap.update({'k': 0, 'c': 1, 's': 2, 'lmda': 3})
+
+    def fullPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        lmda = fitParms[3]
+        pVec = ((k * self.innerModel.fullPDF(xVec, fitParms[1:3]))
+                + ((1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)))
+        return pVec
+
+    def fullLogPDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        lmda = fitParms[3]
+        # print "fullLogPDF: k= %s, sigma= %s, mu= %s, lmda= %s" % (k, sigma, mu, lmda)
+        lnTerm = k * self.innerModel.fullPDF(xArr, fitParms[1:3])
+        expTerm = (1.0 - k) * expon.pdf(xArr, scale=1.0/lmda)
+        oldErrInfo = np.seterr(all='ignore')
+        lnVersion = (math.log(k) + self.innerModel.fullLogPDF(xArr, fitParms[1:3])
+                     + np.log(1.0 + (expTerm / np.where(lnTerm == 0.0, 1.0, lnTerm))))
+        expVersion = (math.log(1.0-k) + expon.logpdf(xArr, scale=1.0/lmda)
+                      + np.log(1.0 + (lnTerm / np.where(expTerm == 0.0, 1.0, expTerm))))
+        np.seterr(**oldErrInfo)
+        lpVec = np.where(lnTerm > expTerm, lnVersion, expVersion)
+        return lpVec
+
+    def fullCDF(self, xVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        xArr = np.asarray(xVec, np.float64)
+        k = fitParms[0]
+        lmda = fitParms[3]
+        lnTerm = k * self.innerModel.fullCDF(xArr, fitParms[1:3])
+        expTerm = (1.0 - k) * expon.cdf(xArr, scale=1.0/lmda)
+        return lnTerm + expTerm
+
+    def intervalCDF(self, lowVec, highVec, fitParms=None):
+        if fitParms is None:
+            fitParms = self.fitParms
+        k = fitParms[0]
+        lmda = fitParms[3]
+        lnTerm = self.innerModel.intervalCDF(lowVec, highVec, fitParms[1:3])
+
+        xMean = 1.0 / lmda
+        lowHighFlags = lowVec >= xMean
+        highLowFlags = highVec < xMean
+        bothLowFlags = highLowFlags  # since low must be lower
+        bothHighFlags = lowHighFlags  # ditto
+
+        lowCDFVec = expon.cdf(lowVec, scale=1.0/lmda)
+        highCDFVec = expon.cdf(highVec, scale=1.0/lmda)
+        bothLowCDFVec = highCDFVec - lowCDFVec
+
+        lowSFVec = expon.sf(lowVec, scale=1.0/lmda)
+        highSFVec = expon.sf(highVec, scale=1.0/lmda)
+        bothHighCDFVec = lowSFVec - highSFVec
+        mixedCDFVec = 1.0 - (highSFVec + lowCDFVec)
+        dCDFVec = np.select([bothLowFlags, bothHighFlags],
+                            [bothLowCDFVec, bothHighCDFVec],
+                            default=mixedCDFVec)
+        return (k * lnTerm) + ((1.0 - k) * dCDFVec)
+
+    def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
+                 truncLim=None, debug=False):
+        resultX, bestVal, resultSuccess = \
+            super(MixedWeibullExpLOSModel, self).modelFit(losHistoList,
+                                                          funToMinimize=funToMinimize,
+                                                          funToMaximize=funToMaximize,
+                                                          truncLim=truncLim,
+                                                          debug=debug)
+        self.innerModel.setFitParms(resultX[1:3])
+        return resultX, bestVal, resultSuccess
+
+    def strDesc(self):
+        return "$0*weibull(k=$1,s=$2)+(1-$0)*expon(lambda=$3)"
+
+
 class TwoLogNormLOSModel(LOSModel):
     """
     The population is divided between two groups, each with its own log normal distribution.
     """
     def __init__(self, initialVals=None, optimizationBounds=None):
         if not initialVals:
-            initialVals = [0.5, 2.2, 0.5, 3.3, 0.5]
+            initialVals = [0.25, 2.2, 0.5, 3.3, 0.5]
         if not optimizationBounds:
-            optimizationBounds = [(0.001, 0.999), (0.05, 400.0), (0.05, None),
+            optimizationBounds = [(0.001, 0.5), (0.05, 400.0), (0.05, None),
                                   (0.05, 400.0), (0.05, None)]
         self.leftInnerLN = LogNormLOSModel(initialVals=initialVals[1:3],
                                            optimizationBounds=optimizationBounds[1:3])
@@ -516,7 +663,7 @@ class TwoLogNormLOSModel(LOSModel):
         k = fitParms[0]
         leftTerm = k * self.leftInnerLN.intervalCDF(lowVec, highVec, fitParms[1:3])
         rightTerm = (1.0 - k) * self.rightInnerLN.intervalCDF(lowVec, highVec, fitParms[3:])
-        
+
         return leftTerm + rightTerm
 
     def modelFit(self, losHistoList, funToMinimize=None, funToMaximize=None,
@@ -669,12 +816,12 @@ def boundedLnLik(fitParms, losHistoList, losModel, truncLim = None, debug=False)
             lnLikVal -= np.sum(ctVec) * np.log(cdfAtBound)
         if debug:
             print '%s -> %s' % (fitParms, lnLikVal/np.sum(ctVec))
-#             print ctVec
-#             print lowVec
-#             print highVec
-#             print losModel.intervalCDF(lowVec, highVec, fitParms)
-#             print ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms))
-#             print 'log likelihood %s' % lnLikVal
+            print ctVec
+            print lowVec
+            print highVec
+            print losModel.intervalCDF(lowVec, highVec, fitParms)
+            print ctVec * np.log(losModel.intervalCDF(lowVec, highVec, fitParms))
+            print 'log likelihood %s' % lnLikVal
         return lnLikVal
     except Exception:
         traceback.print_exc(file=sys.stdout)
@@ -853,11 +1000,12 @@ def main():
 
 
 #    LOSModelType = LogNormLOSModel
-#    LOSModelType = TwoPopLOSModel
+    LOSModelType = TwoPopLOSModel
+#    LOSModelType = MixedWeibullExpLOSModel
 #    LOSModelType = TwoLogNormLOSModel
 #    LOSModelType = ExponLOSModel
 #    LOSModelType = TwoExponLOSModel
-    LOSModelType = WeibullLOSModel
+#    LOSModelType = WeibullLOSModel
     tblRecs = []
     indexDict = {}
     valVecList = []
@@ -877,9 +1025,9 @@ def main():
             offset += 1
             note = "" if success else "fitting iteration did not converge"
             newRec = {'abbrev': abbrev,
-                            'lnLikPerSample': accuracyMeasure/nSamples,
-                            'nsamples': nSamples, 'nbins': nBins,
-                            'notes': note, 'pdf': losModel.strDesc()}
+                      'lnLikPerSample': accuracyMeasure/nSamples,
+                      'nsamples': nSamples, 'nbins': nBins,
+                      'notes': note, 'pdf': '"%s"'%losModel.strDesc()}
             newRec.update({k: fitVec[v] for k, v in losModel.nameToIndexMap.items()})
             newRec.update({'_fitVec': fitVec})
             tblRecs.append(newRec)
@@ -897,16 +1045,16 @@ def main():
     print 'writing summary file %s' % ofName
     with open(ofName, 'w') as f:
         csv_tools.writeCSV(f, ['abbrev', 'k', 'mu', 'sigma', 'mu2', 'sigma2',
-                               'lmda', 'lmda2', 'lnLikPerSample', 'nsamples', 'nbins', 'notes'],
+                               'lmda', 'lmda2', 'lnLikPerSample', 'nsamples', 'nbins', 'pdf', 'notes'],
                            tblRecs)
 
     reverseMap = {val: key for key, val in indexDict.items()}
 
     nTrackers = 6
     nClusters = 3
-    xLabel = 'c'
+    xLabel = 'lmda'
 #    yLabel = 'lmda2'
-    yLabel = 's'
+    yLabel = 'mu'
     annotateScatterPts = True
     prop_cycle = plt.rcParams['axes.prop_cycle']
     clrs = prop_cycle.by_key()['color']
