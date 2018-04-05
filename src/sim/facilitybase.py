@@ -17,6 +17,7 @@
 
 from random import randint, choice
 import logging
+import math
 from collections import defaultdict
 import cPickle as pickle
 
@@ -643,6 +644,15 @@ class Facility(pyrheabase.Facility):
                     newL.append({'category': cat, 'count': {'value': val, 'prov': prov}})
                 newDescr[field] = newL
         return newDescr
+
+    def scaleLOS(self, losModel, scaleLOS=1.0):
+        if scaleLOS and scaleLOS != 1.0:
+            assert losModel['pdf'] == 'lognorm(mu=$0,sigma=$1)', ('scaling PDF %s is not implemented'
+                                                                  % losModel['pdf'])
+            muPrime = losModel['parms'][0] + math.log(scaleLOS)
+            return [muPrime, losModel['parms'][1]]
+        else:
+            return losModel['parms']
 
 
 def decodeHistoryEntry(histEntry):

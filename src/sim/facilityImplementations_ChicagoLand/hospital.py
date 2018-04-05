@@ -247,17 +247,26 @@ class Hospital(Facility):
 
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        self.hospCachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][1],
-                                                        scale=math.exp(descr['losModel']
-                                                                       ['parms'][0])))
+        scaledLOSParms = self.scaleLOS(descr['losModel'],
+                                       (descr['scaleLengthOfStay']['value'] if
+                                        'scaleLengthOfStay' in descr else None))
+        self.hospCachedCDF = CachedCDFGenerator(lognorm(scaledLOSParms[1],
+                                                        scale=math.exp(scaledLOSParms[0])))
         self.hospTreeCache = {}
         if descr['meanLOSICU']['value'] == 0.0:
             self.icuCachedCDF = None
         else:
+            # Construct a losModel struct from the mean and sigma
             mean = descr['meanLOSICU']['value']
             sigma = _constants['icuLOSLogNormSigma']['value']
             mu = math.log(mean) - (0.5 * sigma * sigma)
-            self.icuCachedCDF = CachedCDFGenerator(lognorm(sigma, scale=math.exp(mu)))
+            icuLM = {'parms': [mu, sigma], 'pdf': 'lognorm(mu=$0,sigma=$1)',
+                     'prov': 'from mean and sigma'}
+            scaledICUParms = self.scaleLOS(icuLM,
+                                           (descr['scaleLengthOfStay']['value'] if
+                                            'scaleLengthOfStay' in descr else None))
+            self.icuCachedCDF = CachedCDFGenerator(lognorm(scaledICUParms[1],
+                                                           scale=math.exp(scaledICUParms[0])))
         self.icuTreeCache = {}
 
         for i in xrange(icuWards):
