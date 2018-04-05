@@ -466,6 +466,7 @@ class Facility(pyrheabase.Facility):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
+            a.setStatus(homeAddr=ward.getGblAddr())
             a.setStatus(overall=payload)
             ward.lock(a)
             self.handleIncomingMsg(pyrheabase.ArrivalMsg,
