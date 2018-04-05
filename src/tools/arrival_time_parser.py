@@ -23,6 +23,8 @@ from actual patient data.
 
 import sys
 import os.path
+cwd = os.path.dirname(__file__)
+sys.path.append(os.path.join(cwd, "../sim"))
 import signal
 import optparse
 import yaml
@@ -58,10 +60,10 @@ DEFAULT_LOW_DATE = 0
 DEFAULT_HIGH_DATE = -1  # meaning include all records
 
 DIRECT_TRANSFER_DATA = ['$(MODELDIR)/direct_transfer_counts.yaml']
-# INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
-#                           '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
 INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
-                          '$(MODELDIR)/nh_readmit_fake_transfer_counts.yaml']
+                           '$(MODELDIR)/nh_readmit_transfer_counts.yaml']
+#INDIRECT_TRANSFER_DATA = ['$(MODELDIR)/hosp_indirect_transfer_counts.yaml',
+#                          '$(MODELDIR)/nh_readmit_fake_transfer_counts.yaml']
 
 def allVisible(loc, facDict, patName):
     return True
