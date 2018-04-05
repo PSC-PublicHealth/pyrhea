@@ -173,7 +173,7 @@ class VentSNF(Facility):
         if not ((careTier == CareTier.SKILNRS and dCA == DiagClassA.NEEDSSKILNRS)
                 or (careTier == CareTier.VENT and dCA == DiagClassA.NEEDSVENT)
                 or (careTier == CareTier.NURSING and (dCA == DiagClassA.NEEDSREHAB
-                                                      or patientAgent.getDiagnosis().overallHealth
+                                                      or patientAgent.getDiagnosis().overall
                                                       == PatientOverallHealth.FRAIL))):
             # This patient doesn't belong in this ward
             logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
