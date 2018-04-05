@@ -133,14 +133,14 @@ def mergeSelfTransfers(tupleL):
                 prevDeparture = departure
         rslt.append((prevLoc, prevArrival, prevDeparture))
     return rslt
-    
+
 
 def filterPath(tupleL, testFun, facDict, patName):
     rslt = [tpl for tpl in tupleL if testFun(tpl[0], facDict, patName)]
     return rslt
 
 
-def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
+def accumulate(mtx, tplL, lowThresh, highThresh, lowDate, highDate, facIdxTbl, facDict, commIdx):
     counts = 0
     if len(tplL) > 1:
         oldLoc, oldArrive, oldDepart = tplL[0]
@@ -151,14 +151,13 @@ def accumulate(mtx, tplL, lowThresh, highThresh, facIdxTbl, facDict, commIdx):
             lastHospDate = None
         for newLoc, newArrive, newDepart in tplL[1:]:
             newInHosp = (facDict[newLoc]['category'] in HOSP_CAT_LIST)
-    #             if (newInHosp and lastHospDate is not None and (newDate - lastHospDate) <= 365):
-    #                 print 'hosp-to-hosp transfer %s -> %s' % (oldLoc, newLoc)
-            delta = newArrive - oldDepart
-            if delta <= highThresh and delta >= lowThresh:
-                oldIdx = facIdxTbl[oldLoc] if oldLoc in facIdxTbl else commIdx
-                newIdx = facIdxTbl[newLoc] if newLoc in facIdxTbl else commIdx
-                mtx[oldIdx, newIdx] += 1
-                counts += 1
+            if newArrive >= lowDate and newArrive <= highDate:
+                delta = newArrive - oldDepart
+                if delta <= highThresh and delta >= lowThresh:
+                    oldIdx = facIdxTbl[oldLoc] if oldLoc in facIdxTbl else commIdx
+                    newIdx = facIdxTbl[newLoc] if newLoc in facIdxTbl else commIdx
+                    mtx[oldIdx, newIdx] += 1
+                    counts += 1
             oldLoc, oldArrive, oldDepart, oldInHosp = newLoc, newArrive, newDepart, newInHosp
     return counts
 
@@ -182,12 +181,12 @@ def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct, accumStayDct
                     # We're out of time
                     break
         effectiveStart = max(rangeLow, tplL[0][1])
-        effectiveEnv = min(rangeHigh, tplL[-1][2])
+        effectiveEnd = min(rangeHigh, tplL[-1][2])
         for ctg, val in dct.items():
             accumCountsDct[ctg] += val
         for ctg, val in sDct.items():
             accumStayDct[ctg] += val
-        return dict(dct), effectiveStart, effectiveEnv
+        return dict(dct), effectiveStart, effectiveEnd
     else:
         return {}, rangeLow, rangeHigh
 
@@ -280,24 +279,22 @@ def main():
         for line in f.readlines():
             try:
                 patName, dstName, date = parseLine(line)
-                if date < lowDate or (highDate > lowDate and date > highDate):
-                    continue
-                if patName in patientLocs:
-                    bits = dstName.split('_')
-                    try:
-                        int(bits[-1])
-                        bits = bits[:-2]  # Some place names end in a ward tier and number
-                    except:
-                        pass
-                    newLoc = '_'.join(bits[4:7])
-                    patientLocs[patName].append((newLoc, date))
-                else:
+                bits = dstName.split('_')
+                try:
+                    int(bits[-1])
+                    bits = bits[:-2]  # Some place names end in a ward tier and number
+                except:
+                    pass
+                newLoc = '_'.join(bits[4:7])
+                if patName not in patientLocs:
                     bits = patName.split('_')
                     if len(bits) == 8:
                         startLoc = bits[6]
                     else:
                         startLoc = '_'.join(bits[:-1])
                     patientLocs[patName] = [(startLoc, 0)]
+                patientLocs[patName].append((newLoc, date))
+
             except ParseLineError, e:
                 print e
 
@@ -311,7 +308,6 @@ def main():
     netEffEnd = None
     for patName, tupleL in patientLocs.items():
 
-        #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleDirect, facDict, patName)
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
         filtTupleL = mergeSelfTransfers(filtTupleL)
         countD, effStart, effEnd = countVisits(filtTupleL, lowDate, highDate, facDict,
@@ -320,12 +316,14 @@ def main():
             netEffStart = effStart
         if netEffEnd is None or effEnd > netEffEnd:
             netEffEnd = effEnd
-        directCounts += accumulate(directMtx, filtTupleL, 0, 3, facIdxTbl, facDict, commIdx)
+        directCounts += accumulate(directMtx, filtTupleL, 0, 3, lowDate, highDate,
+                                   facIdxTbl, facDict, commIdx)
 
         #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleIndirect, facDict, patName)
         filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
         filtTupleL = mergeSelfTransfers(filtTupleL)
-        indirectCounts += accumulate(indirectMtx, filtTupleL, 4, 365, facIdxTbl, facDict, commIdx)
+        indirectCounts += accumulate(indirectMtx, filtTupleL, 4, 365, lowDate, highDate,
+                                     facIdxTbl, facDict, commIdx)
 
     print 'distinct patients: %s' % len(patientLocs)
     print 'visits in date range %s to %s:' % (netEffStart, netEffEnd)

@@ -60,11 +60,11 @@ DEFAULT_NOTES_FNAME = 'notes.pkl'
 
 CARE_TIERS = CareTierEnum.names.values()[:]
 
-FAC_TYPE_TO_CATEGORY_MAP = {'NursingHome': 'SNF',
-                            'LTAC': 'LTACH',
-                            'Community': 'COMMUNITY',
-                            'VentSNF': 'VSNF',
-                            'Hospital': 'HOSPITAL'}
+FAC_TYPE_TO_CATEGORY_MAP = {'NursingHome': ['SNF', 'NURSINGHOME'],
+                            'LTAC': ['LTACH', 'LTAC'],
+                            'Community': ['COMMUNITY'],
+                            'VentSNF': ['VSNF'],
+                            'Hospital': ['HOSPITAL']}
 
 def checkInputFileSchema(fname, schemaFname):
     try:
@@ -190,11 +190,11 @@ def loadFacilityTypeConstants(category, implementationDir):
 
 def importNotes(fname):
     try:
-	print "loading pkl"
+        print "loading pkl"
         with open(fname, 'r') as f:
             stuff = pickle.load(f)
     except (KeyError, pickle.UnpicklingError):
-	print "loading json"
+        print "loading json"
         with open(fname, 'r') as f:
             stuff = ujson.load(f)
     return stuff
@@ -433,13 +433,14 @@ def occupancyTimeFig(specialDict, meanPopByCat=None):
                     # The '_all' curves count every arrival at the facility and
                     # are no longer of interest
                     baseLine, = axes5[offset].plot(dayList, l, label=k)
-                    if (meanPopByCat is not None and k in FAC_TYPE_TO_CATEGORY_MAP
-                            and FAC_TYPE_TO_CATEGORY_MAP[k] in meanPopByCat):
-                        meanPop = meanPopByCat[FAC_TYPE_TO_CATEGORY_MAP[k]]
-                        axes5[offset].plot(dayList, [meanPop] * len(dayList),
-                                           color=baseLine.get_color(),
-                                           linestyle='--')
-                            
+                    if meanPopByCat is not None and k in FAC_TYPE_TO_CATEGORY_MAP:
+                        for cat in FAC_TYPE_TO_CATEGORY_MAP[k]:
+                            if cat in meanPopByCat:
+                                meanPop = meanPopByCat[cat]
+                                axes5[offset].plot(dayList, [meanPop] * len(dayList),
+                                                   color=baseLine.get_color(),
+                                                   linestyle='--')
+
             axes5[offset].set_xlabel('Days')
             axes5[offset].set_ylabel('Occupancy')
             axes5[offset].legend()

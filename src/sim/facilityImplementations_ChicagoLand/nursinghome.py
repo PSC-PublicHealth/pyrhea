@@ -32,6 +32,7 @@ from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, buildTimeTupleList
 from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
+from hospital import buildChangeTree
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ class NursingHome(Facility):
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
+        patientDiagnosis = patientAgent.getDiagnosis()
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()
         careTier = ward.tier
@@ -138,7 +140,7 @@ class NursingHome(Facility):
             "Nursing homes only offer CareTier 'NURSING'; found %s" % careTier
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
-        if patientStatus.overall == PatientOverallHealth.FRAIL:
+        if patientDiagnosis.overall == PatientOverallHealth.FRAIL:
             if treatment.rehab:
                 if key in self.frailRehabTreeCache:
                     return self.frailRehabTreeCache[key]
@@ -152,24 +154,7 @@ class NursingHome(Facility):
                     return self.frailTreeCache[key]
                 else:
                     innerTree = PatientStatusSetter()  # No change of state
-            changeTree = BayesTree.fromLinearCDF([(self.lclRates['death'],
-                                                   ClassASetter(DiagClassA.DEATH)),
-                                                  (self.lclRates['nursinghome'],
-                                                   ClassASetter(DiagClassA.NEEDSREHAB,
-                                                                forceRelocate=True)),
-                                                  (self.lclRates['vent'],
-                                                   ClassASetter(DiagClassA.NEEDSVENT)),
-                                                  (self.lclRates['skilnrs'],
-                                                   ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                  (self.lclRates['ltac'],
-                                                   ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                  (self.lclRates['hospital'],
-                                                   ClassASetter(DiagClassA.SICK)),
-                                                  (self.lclRates['icu'],
-                                                   ClassASetter(DiagClassA.VERYSICK)),
-                                                  (self.lclRates['home'],
-                                                   ClassASetter(DiagClassA.WELL))],
-                                                 tag='FATE')
+            changeTree = buildChangeTree(self.lclRates, forceRelocateDiag=DiagClassA.NEEDSREHAB)
 
             tree = BayesTree(changeTree, innerTree,
                              self.frailCachedCDF.intervalProb, tag='LOS')
@@ -178,66 +163,26 @@ class NursingHome(Facility):
             else:
                 self.frailTreeCache[key] = tree
             return tree
-        else:  # overall non-FRAIL
+        else:  # overall health is not FRAIL, hence HEALTHY or UNHEALTHY
             if treatment.rehab:
                 if key in self.rehabTreeCache:
                     return self.rehabTreeCache[key]
                 else:
-                    adverseProb = (self.lclRates['death']
-                                   + self.lclRates['hospital']
-                                   + self.lclRates['icu']
-                                   + self.lclRates['ltac']
-                                   + self.lclRates['nursinghome']
-                                   + self.lclRates['vsnf']
-                                   + self.lclRates['vent']
-                                   + self.lclRates['skilnrs'])
-                    if adverseProb > 0.0:
-                        adverseTree = BayesTree.fromLinearCDF([(self.lclRates['death']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.DEATH)),
-                                                               (self.lclRates['nursinghome']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSREHAB,
-                                                                             forceRelocate=True)),
-                                                               (self.lclRates['vent']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSVENT)),
-                                                               (self.lclRates['skilnrs']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                               (self.lclRates['ltac']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                               (self.lclRates['hospital']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.SICK)),
-                                                               (self.lclRates['icu']
-                                                                / adverseProb,
-                                                                ClassASetter(DiagClassA.VERYSICK))],
-                                                              tag='FATE')
-                        tree = BayesTree(BayesTree(adverseTree,
-                                                   ClassASetter(DiagClassA.WELL),
-                                                   adverseProb),
-                                         PatientStatusSetter(),
-                                         self.rehabCachedCDF.intervalProb, tag='LOS')
-                    else:
-                        tree = BayesTree(ClassASetter(DiagClassA.WELL),
-                                         PatientStatusSetter(),
-                                         self.rehabCachedCDF.intervalProb, tag='LOS')
+                    changeTree = buildChangeTree(self.lclRates,
+                                                 forceRelocateDiag=DiagClassA.NEEDSREHAB)
+                    tree = BayesTree(changeTree,
+                                     PatientStatusSetter(),
+                                     self.rehabCachedCDF.intervalProb, tag='LOS')
                     self.rehabTreeCache[key] = tree
                     return tree
-            else:  # healthy and not rehab
-                if patientStatus.diagClassA in ([DiagClassA.NEEDSLTAC, DiagClassA.SICK,
-                                                 DiagClassA.VERYSICK, DiagClassA.NEEDSVENT,
-                                                 DiagClassA.NEEDSSKILNRS, DiagClassA.WELL]):
-                    logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
-                                   'this patient should be gone by now'
-                                   % (self.name, patientAgent.name, CareTier.names[careTier],
-                                      DiagClassA.names[patientStatus.diagClassA], startTime))
-                    return BayesTree(PatientStatusSetter())
-                else:
-                    raise RuntimeError('Patients with non-FRAIL overall health should only be'
-                                       ' in NURSING care for rehab')
+            else:  # not frail and not rehab
+                if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
+                    raise RuntimeError('%s has a REHAB diagnosis but no treatment?')
+            logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                           'this patient should be gone by now'
+                           % (self.name, patientAgent.name, CareTier.names[careTier],
+                              DiagClassA.names[patientStatus.diagClassA], startTime))
+            return BayesTree(PatientStatusSetter())
 
     def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
         if random() <= self.initialResidentFrac:

@@ -44,7 +44,6 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-
 class LTAC(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
@@ -105,15 +104,11 @@ class LTAC(Facility):
         nBeds = nWards * bedsPerWard
 
         # Add a way to dial the LOS up and down
-        assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
-            'LTAC %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        if 'scaleLengthOfStay' in _constants:
-            scaleLOS = _constants['scaleLengthOfStay']['value']
-        else:
-            scaleLOS = 1.0
-        muPrime = descr['losModel']['parms'][0] + math.log(scaleLOS)
-        self.cachedCDF = CachedCDFGenerator(lognorm(descr['losModel']['parms'][1],
-                                                    scale=math.exp(muPrime)))
+        scaledLOSParms = self.scaleLOS(descr['losModel'],
+                                       (descr['scaleLengthOfStay']['value'] if
+                                        'scaleLengthOfStay' in descr else None))
+        self.cachedCDF = CachedCDFGenerator(lognorm(scaledLOSParms[1],
+                                                    scale=math.exp(scaledLOSParms[0])))
         self.treeCache = {}
 
         for i in xrange(nWards):
@@ -153,10 +148,12 @@ class LTAC(Facility):
                     return self.treeCache[key]
                 else:
                     if biasFlag:
-                        changeTree = buildChangeTree(self.pthRates)
+                        changeTree = buildChangeTree(self.pthRates,
+                                                     forceRelocateDiag=DiagClassA.NEEDSLTAC)
                     else:
-                        changeTree = buildChangeTree(self.lclRates)
-    
+                        changeTree = buildChangeTree(self.lclRates,
+                                                     forceRelocateDiag=DiagClassA.NEEDSLTAC)
+
                     tree = BayesTree(changeTree,
                                      PatientStatusSetter(),
                                      self.cachedCDF.intervalProb, tag='LOS')
