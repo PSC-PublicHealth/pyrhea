@@ -295,13 +295,14 @@ def fullCRVFromPDFModel(pdfModel):
                     'parms': iterable of floats }
     The algorithm is a simple case statement with matches for known pdf strings.
     """
-    if pdfModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
+    modelStr = pdfModel['pdf'].strip('"\'')
+    if modelStr == 'lognorm(mu=$0,sigma=$1)':
         mu, sigma = pdfModel['parms']
         return lognorm(sigma, scale=exp(mu), loc=0.0)
-    elif pdfModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
+    elif modelStr == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
         k, mu, sigma, lmda = pdfModel['parms']
         return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
-    elif pdfModel['pdf'] == 'expon(lambda=$0)':
+    elif modelStr == 'expon(lambda=$0)':
         lmda = pdfModel['parms'][0]
         return expon(scale=1.0/lmda)
     else:

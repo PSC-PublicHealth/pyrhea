@@ -163,7 +163,7 @@ class LTAC(Facility):
                 # This patient doesn't belong in this ward
                 logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
                                'this patient should be gone by now'
-                               % (self.name, patientAgent.name, CareTier.names[careTier],
+                               % (self.name, patientAgent.name, CareTier.names[ward.tier],
                                   DiagClassA.names[patientStatus.diagClassA], startTime))
                 return BayesTree(PatientStatusSetter())
 
