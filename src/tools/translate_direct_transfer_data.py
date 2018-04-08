@@ -81,9 +81,6 @@ def main():
 
     facDirs = [pyrheautils.pathTranslate(dct) for dct in inputDict['facilityDirs']]
     facDict = parseFacilityData(facDirs)
-    print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
-    facDict['WAUK_2615_H'] = {'category':'HOSPITAL'}
-    print 'FIND OUT THE REAL ANSWER AND DELETE THIS!'
 
     with open(os.path.join(os.path.dirname(__file__), inputCSV), 'rU') as f:
         keys, recs = csv_tools.parseCSV(f)
@@ -91,6 +88,9 @@ def main():
     hospCatList = ['HOSPITAL', 'LTAC', 'LTACH']
     toSnfCt = 0
     toHospCt = 0
+    allCt = 0
+    lostCt = 0
+    selfCt = 0
     for rec in recs:
         src = str(rec['UNIQUE_ID'])
         assert src not in allTbl, 'Duplicate entry for source %s' % src
@@ -99,13 +99,33 @@ def main():
             n = rec[dst]
             if n != 0:
                 assert str(dst) not in allTbl[src], 'redundant entry for %s %s' % (src, dst)
-                allTbl[src][str(dst)] = n
-                if facDict[src]['category'] in hospCatList:
-                    print '%s -> %s' % (facDict[src]['category'], facDict[str(dst)]['category'])
-                    if facDict[str(dst)]['category'] in hospCatList:
-                        toHospCt += n
+                if dst == src:
+                    selfCt += n
+                else:
+                    allTbl[src][str(dst)] = n
+                    if dst not in facDict:
+                        lostTrans = n
+                        if n != 0:
+                            print 'Unknown destination %s: %d transfers lost' % (dst, lostTrans)
+                        lostCt += lostTrans
                     else:
-                        toSnfCt += n
+                        if src not in facDict:
+                            lostTrans = n
+                            if n != 0:
+                                print 'Unknown source %s: %d transfers lost' % (src, lostTrans)
+                            lostCt += lostTrans
+                        else:
+                            if facDict[src]['category'] in hospCatList:
+                                print '%s -> %s' % (facDict[src]['category'],
+                                                    facDict[str(dst)]['category'])
+                                if facDict[str(dst)]['category'] in hospCatList:
+                                    toHospCt += n
+                                else:
+                                    toSnfCt += n
+                        allCt += n
+    print 'understood %s transfers' % allCt
+    print 'excluded %s self transfers' % selfCt
+    print 'total transfers lost to unknown endpoints: %d' % lostCt
     print 'hosp -> hosp %s' % toHospCt
     print 'hosp -> snf %s' % toSnfCt
     print 'parsed'
