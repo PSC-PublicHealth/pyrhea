@@ -1165,7 +1165,6 @@ def fitCategoriesAndPlot(losModelType, losHistoDict, code, codeDict, indexDict, 
                   np.sum(vec)*((HISTO_RANGE[1]-HISTO_RANGE[0])/HISTO_BINS),
                   rng=HISTO_RANGE, nbins=vec.shape[0])
         histoAxes[i].set_title(category)
-        histoAxes[0].set_yscale('log')
 
     fig3.tight_layout()
     fig3.canvas.set_window_title("Category LOS Histograms")
