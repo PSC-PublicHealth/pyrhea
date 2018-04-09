@@ -1165,6 +1165,7 @@ def fitCategoriesAndPlot(losModelType, losHistoDict, code, codeDict, indexDict, 
                   np.sum(vec)*((HISTO_RANGE[1]-HISTO_RANGE[0])/HISTO_BINS),
                   rng=HISTO_RANGE, nbins=vec.shape[0])
         histoAxes[i].set_title(category)
+        histoAxes[0].set_yscale('log')
 
     fig3.tight_layout()
     fig3.canvas.set_window_title("Category LOS Histograms")
@@ -1173,23 +1174,25 @@ def fitCategoriesAndPlot(losModelType, losHistoDict, code, codeDict, indexDict, 
 
 def main():
 
-    #inputDict = tu.readModelInputs('../sim/twoyear_run_OC.yaml')
-    inputDict = tu.readModelInputs('../sim/twoyear_run_ChicagoLand.yaml')
+    inputDict = tu.readModelInputs('../sim/twoyear_run_OC.yaml')
+    #inputDict = tu.readModelInputs('../sim/twoyear_run_ChicagoLand.yaml')
     facDict = tu.getFacDict(inputDict)
     # Drop the communities from facDict
     # Drop all but NHs from facDict
     facDict = {abbrev:rec for abbrev, rec in facDict.items()
                if rec['category'] in ['NURSINGHOME', 'SNF', 'VSNF']}
 
-    losHistoPath = os.path.join(pathTranslate('$(MODELDIR)'), 'Histogram_09292016.csv')
-    losHistoDict = importLOSHistoTable(losHistoPath)
-#     losHistoPath = os.path.join(pathTranslate('$(MODELDIR)'),
-#                                 "OC_Nursing_Home_LOS_Line-Lists_for_RHEA_2.0_-_2011-2015"
-#                                 "_-_Adult_Only_-_09-29-2017_FINAL_NH_LOS_Line_List.csv"
-#                                 )
-#     losHistoDict = importLOSLineRecs(losHistoPath,
-#                                      key1='CODE',
-#                                      key2='LOS')
+#     losHistoPath = os.path.join(pathTranslate('$(MODELDIR)'), 'Histogram_09292016.csv')
+#     losHistoDict = importLOSHistoTable(losHistoPath)
+#     forceChicagoLongTailFix = True
+    losHistoPath = os.path.join(pathTranslate('$(MODELDIR)'),
+                                "OC_Nursing_Home_LOS_Line-Lists_for_RHEA_2.0_-_2011-2015"
+                                "_-_Adult_Only_-_09-29-2017_FINAL_NH_LOS_Line_List.csv"
+                                )
+    losHistoDict = importLOSLineRecs(losHistoPath,
+                                     key1='CODE',
+                                     key2='LOS')
+    forceChicagoLongTailFix = False
 
     indexDict = {}
     offset = 0
@@ -1220,7 +1223,9 @@ def main():
         nBins = len(losHistoList)
         print '%s:' % abbrev,
         kGuess, mu, sigma, lmda = catFitVec
-        lmda = 2.451e-4  # Temporarily force FRAIL time constant to match OC
+        if forceChicagoLongTailFix:
+            print 'Forcing ChicagoLand long tail to match better data for OC'
+            lmda = 2.451e-4  # Temporarily force FRAIL time constant to match OC
         if 'meanLOS' in facDict[abbrev]:
             desiredMean = facDict[abbrev]['meanLOS']['value']
             losModel = TwoPopFixedMeanLOSModel(mu, sigma, lmda, desiredMean,
