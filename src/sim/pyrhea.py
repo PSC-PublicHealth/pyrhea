@@ -288,6 +288,10 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
     facRecs = []
     for rec in rawRecs:
         assert 'abbrev' in rec, "Facility description has no 'abbrev' field: %s" % rec
+
+        if rec['abbrev'] in pyrheautils.facilitiesReplacementData:
+            rec = pyrheautils.replaceYamlData(pyrheautils.facilitiesReplacementData[rec['abbrev']], rec)
+        
         assert 'category' in rec, \
             "Facility description for %(abbrev)s has no 'category' field" % rec
         facImplCategory = findFacImplCategory(facImplDict, facImplRules, rec['category'])
@@ -665,7 +669,7 @@ def main():
         parser.add_option("-k", "--checkpoint", action="store", type="int", default=-1,
                           help="save the state and stop after n ticks")
         parser.add_option("-c", "--constantsFile", action="store", type="string", default=None,
-                          help="python file defining the dict constantsReplacementsData")
+                          help="python file defining the dict constantsReplacementData and/or facilitiesReplacementData")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -703,6 +707,7 @@ def main():
             outputNotesName = clData['input']['notesFileName']
         else:
             outputNotesName = DEFAULT_OUTPUT_NOTES_NAME
+        clData['outputNotesName'] = outputNotesName  # make this available to the other ranks anyways
         parser.destroy()
     else:
         clData = None
@@ -712,6 +717,9 @@ def main():
         clData = comm.bcast(clData, root=0)
 
         pyrheautils.prepPathTranslations(clData['input'])
+
+        # make output notes name available to the constants file for magic reasons
+        pyrheautils.outputNotesName = clData['outputNotesName']
 
         # loading up the constants replacements needs to happen fairly early
         if clData['constantsFile'] is not None:
