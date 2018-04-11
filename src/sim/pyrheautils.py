@@ -21,6 +21,7 @@ import os.path
 import logging
 from imp import load_source
 import yaml
+from collections import defaultdict
 
 import schemautils
 
@@ -84,9 +85,12 @@ def pathTranslate(rawPath, lookupDict=None):
     return path
 
 constantsReplacementData = {}
+facilitiesReplacementData = {}
+outputNotesName = ""
 
 def readConstantsReplacementFile(fileName):
     global constantsReplacementData
+    global facilitiesReplacementData
 
     fileName = pathTranslate(fileName)
     file = os.path.basename(fileName)
@@ -94,8 +98,11 @@ def readConstantsReplacementFile(fileName):
     
     newMod = load_source(name, fileName)
 
-    constantsReplacementData = getattr(newMod, "constantsReplacementData")
-
+    if hasattr(newMod, "constantsReplacementData"):
+        constantsReplacementData = getattr(newMod, "constantsReplacementData")
+    if hasattr(newMod, "facilitiesReplacementData"):
+        facilitiesReplacementData = getattr(newMod, "facilitiesReplacementData")
+        
 def replaceData(fileName, yData):
     global constantsReplacementData
     
@@ -104,7 +111,10 @@ def replaceData(fileName, yData):
 
     repl = constantsReplacementData[fileName]
 
-    for path, val in repl:
+    return replaceYamlData(repl, yData)
+    
+def replaceYamlData(replacementData, yData):
+    for path, val in replacementData:
         pointer = yData
         idx = 0
         while idx < len(path) - 1:
@@ -120,7 +130,11 @@ def replaceData(fileName, yData):
                 else:
                     raise KeyError(keyKey)
             else:  #normal case
-                pointer = pointer[step]
+                try:
+                    pointer = pointer[step]
+                except:
+                    pointer[step] = {}
+                    pointer = pointer[step]
                 idx += 1
         pointer[path[-1]] = val
 
