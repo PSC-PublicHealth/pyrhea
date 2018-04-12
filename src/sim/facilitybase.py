@@ -78,9 +78,11 @@ class PthStatusSetter(PatientStatusSetter):
         return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
 
 
+HackBedMultiplier = 5
+
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
-        pyrheabase.Ward.__init__(self, name, patch, tier, 5*nBeds)
+        pyrheabase.Ward.__init__(self, name, patch, tier, int(HackBedMultiplier*nBeds))
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
