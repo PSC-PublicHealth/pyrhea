@@ -34,7 +34,7 @@ from facilitybase import CareTier as CareTierEnum
 from facilitybase import PatientOverallHealth as OverallHealthEnum
 import schemautils
 from phacsl.utils.notes.statval import HistoVal
-from stats import lognormplusexp
+from stats import lognormplusexp, doubleweibull, fullCRVFromPDFModel, fullLogNormCRVFromMean
 import pathogenbase as pth
 import map_transfer_matrix as mtm
 import math
@@ -88,31 +88,11 @@ def checkInputFileSchema(fname, schemaFname):
 
 
 def fullCRVFromMeanLOS(fitParms):
-    mean = fitParms[0]
-    sigma = fitParms[1]
-    mu = math.log(mean) - (0.5 * sigma * sigma)
-    return lognorm(sigma, scale=math.exp(mu), loc=0.0)
+    return fullLogNormCRVFromMean(fitParms[0], fitParms[1])
 
 
 def fullCRVFromLOSModel(losModel):
-    """
-    Returns a function of the signature: pscore = losFun([x0, x1, x2, ...]) for use
-    in plotting analytic PDFs.  The curve is shifted right by 0.5 because the bar
-    chart it must overlay centers the bar for integer N at x=N, but that bar really
-    represents the integral of the PDF from (N-1) to N and so should be centered at
-    x = (N - 0.5).
-    """
-    if losModel['pdf'] == 'lognorm(mu=$0,sigma=$1)':
-        mu, sigma = losModel['parms']
-        return lognorm(sigma, scale=math.exp(mu), loc=0.0)
-    elif losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
-        k, mu, sigma, lmda = losModel['parms']
-        return lognormplusexp(s=sigma, mu=mu, k=k, lmda=lmda)
-    elif losModel['pdf'] == 'expon(lambda=$0)':
-        lmda = losModel['parms'][0]
-        return expon(scale=1.0/lmda)
-    else:
-        raise RuntimeError('Unknown LOS model %s' % losModel['pdf'])
+    return fullCRVFromPDFModel(losModel)
 
 
 class LOSPlotter(object):
