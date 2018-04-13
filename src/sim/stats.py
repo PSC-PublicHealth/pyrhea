@@ -20,7 +20,7 @@ _rhea_svn_id_ = "$Id$"
 import types
 import sys
 import random
-from scipy.stats.distributions import rv_continuous, lognorm, expon
+from scipy.stats.distributions import rv_continuous, lognorm, expon, weibull_min
 from math import fabs, log, exp
 import logging
 
@@ -48,6 +48,25 @@ class LogNormPlusExp(rv_continuous):
         return np.all(s > 0.0) and np.all(k >= 0.0) and np.all(k <= 1.0) and np.all(lmda > 0.0)
 
 lognormplusexp = LogNormPlusExp(name='lognormplusexp', a=0.0)
+
+
+class DoubleWeibull(rv_continuous):
+    """
+    defined to yield k*weibull(c=shape1, lmda=scale1) + (1-k)*weibull(c=shape2, lmda=scale2)
+    """
+    def _pdf(self, x, k, shape1, scale1, shape2, scale2):
+        return ((weibull_min.pdf(x, shape1, scale=scale1) * k)
+                + (weibull_min.pdf(x, shape2, scale=scale2) * (1.0-k)))
+
+    def _cdf(self, x, k, shape1, scale1, shape2, scale2):
+        return ((weibull_min.cdf(x, shape1, scale=scale1) * k)
+                + (weibull_min.cdf(x, shape2, scale=scale2) * (1.0-k)))
+
+    def _argcheck(self, k, shape1, scale1, shape2, scale2):
+        return (np.all(k >= 0.0) and np.all(k<= 1.0) and np.all(shape1 > 0.0)
+                and np.all(scale1 > 0.0) and np.all(shape2 > 0.0) and np.all(scale2 > 0.0))
+
+doubleweibull = DoubleWeibull(name='doubleweibull', a=0.0)
 
 
 class CachedCDFGenerator:
@@ -228,7 +247,7 @@ class BayesTree(object):
                     return lRslt
                 else:
                     return BayesTree._innerFindTag(rTree, rTag, target)
-                
+
         else:
             assert not isinstance(tagTree, types.TupleType), 'Ran out of tags looking for tag %s' % target
             if tagTree == target:
@@ -305,6 +324,9 @@ def fullCRVFromPDFModel(pdfModel):
     elif modelStr == 'expon(lambda=$0)':
         lmda = pdfModel['parms'][0]
         return expon(scale=1.0/lmda)
+    elif modelStr == '$0*weibull(k=$1, lmda=$2)+(1-$0)*weibull(k=$3, lmda=$4)':
+        k, shape1, scale1, shape2, scale2 = pdfModel['parms']
+        return doubleweibull(k, shape1, scale1, shape2, scale2)
     else:
         raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 

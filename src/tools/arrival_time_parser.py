@@ -85,7 +85,11 @@ def isVisibleSomeHosp(loc, facDict, patName):
     if loc is None:
         return False
     else:
-        cat = facDict[loc]['category']
+        if loc in facDict:
+            cat = facDict[loc]['category']
+        elif loc.endswith('cache'):
+            cat = facDict[loc[:-5]]['category']
+
         if cat == 'COMMUNITY':
             return False
         elif cat == 'HOSPITAL':

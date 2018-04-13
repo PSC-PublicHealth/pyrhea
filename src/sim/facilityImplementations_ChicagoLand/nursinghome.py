@@ -20,7 +20,7 @@ _rhea_svn_id_ = "$Id$"
 import os.path
 from random import random
 import math
-from scipy.stats import lognorm, expon
+from scipy.stats import lognorm, expon, weibull_min
 import logging
 
 import pyrheabase
@@ -67,10 +67,20 @@ class NursingHome(Facility):
         _c = _constants
         nBeds = int(descr['nBeds']['value'])
         losModel = descr['losModel']
-        assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
-            "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
+        lMP = losModel['parms']
+        if losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
+            self.initialResidentFrac = (1.0 - losModel['parms'][0])
+            self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
+                                                             scale=math.exp(lMP[1])))
+            self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
+        elif losModel['pdf'] == '$0*weibull(k=$1, lmda=$2)+(1-$0)*weibull(k=$3, lmda=$4)':
+            self.initialResidentFrac = (1.0 - losModel['parms'][0])
+            self.rehabCachedCDF = CachedCDFGenerator(weibull_min(lMP[1], scale=lMP[2]))
+            self.frailCachedCDF = CachedCDFGenerator(weibull_min(lMP[3], scale=lMP[4]))
+        else:
+            raise RuntimeError("Unexpected losModel form %s for %s!" % (losModel['pdf'],
+                                                                        descr['abbrev']))
 
-        self.initialResidentFrac = (1.0 - losModel['parms'][0])
         self.initialUnhealthyFrac = _c['initialUnhealthyFrac']['value'] # frac of non-residents
         self.initialNonResidentFrailFrac = _c['initialNonResidentFrailFrac']['value']
 
@@ -109,11 +119,7 @@ class NursingHome(Facility):
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
 
-        lMP = losModel['parms']
-        self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
-                                                         scale=math.exp(lMP[1])))
         self.rehabTreeCache = {}
-        self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
         self.frailTreeCache = {}
         self.frailRehabTreeCache = {}
         self.addWard(NursingWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
@@ -204,11 +210,7 @@ def _populate(fac, descr, patch):
         logger.warning('Nursing Home %s meanPop %s > nBeds %s'
                        % (descr['abbrev'], meanPop, descr['nBeds']['value']))
         meanPop = descr['nBeds']['value']
-    losModel = descr['losModel']
-    assert losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)', \
-        "Unexpected losModel form %s for %s!" % (losModel['pdf'], descr['abbrev'])
     # The following is approximate, but adequate...
-    residentFrac = (1.0 - losModel['parms'][0])
     agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.NURSING)

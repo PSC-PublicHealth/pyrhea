@@ -17,9 +17,9 @@ myconvert () {
 }
 
 grep DEBUG $inrecs | grep arrive > $workdir/arrivals.txt
-myconvert 0 100
-#myconvert 100 830
-#myconvert 100 465
-#myconvert 466 830
+#myconvert 0 100
+myconvert 100 830
+myconvert 100 465
+myconvert 466 830
 
 
