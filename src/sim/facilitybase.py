@@ -78,7 +78,7 @@ class PthStatusSetter(PatientStatusSetter):
         return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
 
 
-HackBedMultiplier = 5
+HackBedMultiplier = 1
 
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
@@ -129,7 +129,7 @@ class Ward(pyrheabase.Ward):
 
 class ForcedStateWard(Ward):
     def forceState(self, patientAgent, careTier, diagClassA, timeNow=None):
-        
+
         patientAgent.setStatus(diagClassA=diagClassA)
         patientAgent._diagnosis = self.fac.diagnose(patientAgent.ward,
                                                     patientAgent.id,
