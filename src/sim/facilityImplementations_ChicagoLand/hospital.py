@@ -226,10 +226,13 @@ class Hospital(Facility):
         self.pthRates = None
 
         self.icuDischargeViaDeathFrac = _constants['icuDischargeViaDeathFrac']['value']
+
+        bedCountMultiplier = (_c['bedCountMultiplier']['value'] if 'bedCountMultiplier' in _c
+                              else 1.0)
         if 'nBeds' in descr:
-            allBeds = descr['nBeds']['value']
+            allBeds = int(bedCountMultiplier * descr['nBeds']['value'])
             if 'nBedsICU' in descr:
-                icuBeds = descr['nBedsICU']['value']
+                icuBeds = int(bedCountMultiplier * descr['nBedsICU']['value'])
             else:
                 icuBeds = descr['fracAdultPatientDaysICU']['value'] * allBeds
             icuWards = int(icuBeds/bedsPerICUWard) + 1
@@ -239,8 +242,8 @@ class Hospital(Facility):
             meanPop = descr['meanPop']['value']
             meanICUPop = meanPop * descr['fracAdultPatientDaysICU']['value']
             meanNonICUPop = meanPop - meanICUPop
-            icuWards = int(math.ceil(meanICUPop / bedsPerICUWard))
-            nonICUWards = int(math.ceil(meanNonICUPop / bedsPerWard))
+            icuWards = int(math.ceil(bedCountMultiplier * meanICUPop / bedsPerICUWard))
+            nonICUWards = int(math.ceil(bedCountMultiplier * meanNonICUPop / bedsPerWard))
 
         icuBeds = icuWards * bedsPerICUWard
         nonICUBeds = nonICUWards * bedsPerWard

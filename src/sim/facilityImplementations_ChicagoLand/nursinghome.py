@@ -66,6 +66,8 @@ class NursingHome(Facility):
         descr = self.mapDescrFields(descr)
         _c = _constants
         nBeds = int(descr['nBeds']['value'])
+        if 'bedCountMultiplier' in _c:
+            nBeds = int(nBeds * _c['bedCountMultiplier']['value'])
         losModel = descr['losModel']
         lMP = losModel['parms']
         if losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
