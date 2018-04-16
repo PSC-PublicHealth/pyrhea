@@ -77,6 +77,10 @@
         '$ref': 'basics_schema.yaml#/definitions/fraction',
         'description': 'Fraction of non-long-term-resident patients who are initially UNHEALTHY rather than HEALTHY'
       }
+      'bedCountMultiplier': {
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'description': 'Scales the number of beds in each facility of this type'
+      }
     'required':
       - 'deathRate'
       - 'hospTransferToICURate'
