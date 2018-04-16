@@ -670,6 +670,8 @@ def main():
                           help="save the state and stop after n ticks")
         parser.add_option("-c", "--constantsFile", action="store", type="string", default=None,
                           help="python file defining the dict constantsReplacementData and/or facilitiesReplacementData")
+        parser.add_option("-b", "--bczmonitor", action="store", type="string", default=None,
+                          help="save pathogen status as a bcolz data structure in the file specified")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -692,6 +694,7 @@ def main():
                   'randomSeed': opts.seed,
                   'checkpoint': opts.checkpoint,
                   'constantsFile': opts.constantsFile,
+                  'bczmonitor': opts.bczmonitor,
         }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -814,6 +817,15 @@ def main():
                              policyClassList, policyRulesDict,
                              PthClass, noteHolderGroup, comm, totalRunDays)
 
+        monitorList = []
+        if clData['bczmonitor'] is not None:
+            import bcz_monitor
+            for patch in patchList:
+                m = bcz_monitor.Monitor(patch, totalRunDays)
+                monitorList.append(m)
+                patch.loop.addPerDayCallback(m.createDailyCallbackFn())
+                
+        
         # Check that all policy rules have been used, to avoid a common user typo problem
         quitNow = False
         for ruleKey, usedFlag in policyRulesDict.items():
@@ -876,6 +888,11 @@ def main():
             else:    
                 with open(outputNotesName, 'w') as f:
                     pickle.dump(d, f)
+
+            if clData['bczmonitor'] is not None:
+                for m in monitorList:
+                    m.writeData(clData['bczmonitor'])
+        
 
         logging.shutdown()
 
