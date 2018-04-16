@@ -12,7 +12,7 @@ import yaml
 import cPickle as pickle
 import glob
 
-SCHEMA_DIR = '../schemata'
+SCHEMA_DIR = os.path.join(os.path.dirname(__file__), os.path.pardir, 'schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
 
 
@@ -63,6 +63,8 @@ def readModelInputs(runDesc):
     if not os.path.isabs(modelDir):
         rootDir = os.path.abspath(os.path.dirname(runDesc))
         modelDir = os.path.join(rootDir, modelDir)
+    pyrheautils.PATH_STRING_MAP['BASEDIR'] = os.path.join(SCHEMA_DIR,
+                                                          os.path.pardir, os.path.pardir)
     pyrheautils.PATH_STRING_MAP['MODELDIR'] = modelDir
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
     if not os.path.isabs(implDir):
