@@ -19,9 +19,7 @@ class Monitor(object):
         ra = np.recarray((0,), dtype = dtype)
         self.pthData = bz.ctable(ra)
         self.pthDataDF = None    # pthData as a pandas dataframe
-        self.uniqueID = str(os.getpid()) + "_" + str(time.time())
-        
-
+        self.uniqueID = str(os.getpid()) + "_" + str(patch.patchId) + "_" + str(time.time())
 
     def XXXgetPthData(self, timeNow):
         """
@@ -73,14 +71,13 @@ class Monitor(object):
         """
         self.nextStop = when
         self.stopFn = fn
-    
+
     def daily(self, timeNow):
         self.collectPthData(timeNow)
         print "next stop: %s, timeNow: %s"%(self.nextStop, timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
                 self.nextStop = self.stopFn(timeNow, self)
-                
 
     def createDailyCallbackFn(self):
         def fn(loop, timeNow):
