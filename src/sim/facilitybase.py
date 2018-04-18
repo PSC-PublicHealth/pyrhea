@@ -89,7 +89,7 @@ class Ward(pyrheabase.Ward):
 
         try:
             self.wardNum = int(name.split('_')[-1])
-        except:
+        except ValueError:
             self.wardNum = 0
 
     def getPatientList(self):
