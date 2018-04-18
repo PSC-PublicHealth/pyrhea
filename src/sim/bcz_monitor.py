@@ -86,5 +86,5 @@ class Monitor(object):
 
     def writeData(self, fileName):
         pthData = self.getPthData()
-        fileName = "%s_%s.bcz"%(fileName, self.uniqueID)
+        fileName = "%s_%s.mpz"%(fileName, self.uniqueID)
         pthData.to_msgpack(fileName, compress="zlib")
