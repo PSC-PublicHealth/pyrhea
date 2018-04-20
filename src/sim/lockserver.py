@@ -1,8 +1,28 @@
+#! /usr/bin/env python
+
+###################################################################################
+# Copyright   2018, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
+# =============================================================================== #
+#                                                                                 #
+# Permission to use, copy, and modify this software and its documentation without #
+# fee for personal use within your organization is hereby granted, provided that  #
+# the above copyright notice is preserved in all copies and that the copyright    #
+# and this permission notice appear in supporting documentation.  All other       #
+# restrictions and obligations are defined in the GNU Affero General Public       #
+# License v3 (AGPL-3.0) located at http://www.gnu.org/licenses/agpl-3.0.html  A   #
+# copy of the license is also provided in the top level of the source directory,  #
+# in the file LICENSE.txt.                                                        #
+#                                                                                 #
+###################################################################################
+
 import select
 import socket
+import signal
+import random
 import sys
-import time
-
+import os
+import logging
+import optparse
 
 #############################################################
 #
@@ -10,8 +30,15 @@ import time
 #
 #############################################################
 
+LOGGER = logging.getLogger(__name__)
 
 # from https://stackoverflow.com/questions/6229073/how-to-make-a-python-dictionary-that-returns-key-for-keys-missing-from-the-dicti
+_DEFAULT_DICT_ID = 0
+'''
+Unique arbitrary identifier with which to uniquify the classname of the next
+:func:`DefaultDict`-derived type.
+'''
+
 def DefaultDict(keygen):
     '''
     Sane **default dictionary** (i.e., dictionary implicitly mapping a missing
@@ -59,16 +86,10 @@ def DefaultDict(keygen):
     return default_dict_class()
 
 
-_DEFAULT_DICT_ID = 0
-'''
-Unique arbitrary identifier with which to uniquify the classname of the next
-:func:`DefaultDict`-derived type.
-'''
-
 def getIp():
     """
-    gets the ip addr of the default route (or at least the route to the IP addr in the connect statement
-    Doesn't send any packets, just "connects" a datagram socket
+    gets the ip addr of the default route (or at least the route to the IP addr in
+    the connect statement). Doesn't send any packets, just "connects" a datagram socket
 
     stolen from a stackoverflow response
     """
@@ -117,11 +138,10 @@ class ServerLock(object):
             return True
 
         return False
-            
-        
+
     def request(self, shared, client, wait):
         """
-        requests lock asynchronously, 
+        requests lock asynchronously,
         returns True if lock is available immediately otherwise False
         if wait is set, adds client to the wait list and the client will be notified when the lock
         is given to them.
@@ -139,8 +159,8 @@ class ServerLock(object):
         if self.accessCount > 0:
             return
 
-        if len(self.clientsWaiting) == 0:
-            del(LockDict[self.lName])
+        if not self.clientsWaiting:
+            del LockDict[self.lName]
             return
 
         client, shared = self.clientsWaiting.pop(0)
@@ -162,8 +182,7 @@ class ServerLock(object):
 
     def clearWaiting(self, client, shared):
         self.clientsWaiting.remove((client, shared))
-        
-    
+
 
 class LockConnection(object):
     def __init__(self, clientSocket, address):
@@ -171,7 +190,7 @@ class LockConnection(object):
         ClientDict[self.fileno] = self
         self.clientSocket = clientSocket
         self.address = address
-        print "new client from %s on fd %s"%(address, self.fileno)
+        LOGGER.info("new client from %s on fd %s", address, self.fileno)
         self.readBuf = ""
         self.locks = {}  # True if shared, False if exclusive
         self.waiting = False  # True if waiting for a lock
@@ -186,13 +205,15 @@ class LockConnection(object):
                 return
             self.readBuf += data
         except:
-            print "got exception on read"
+            LOGGER.warning("got exception on read")
             self.killClient()
             return
         self.processReadBuf()
 
     def processReadBuf(self):
-        while self.waiting is False:  # process read buffer for as long as we have complete commands and aren't waiting for a lock
+        
+        # process read buffer for as long as we have complete commands and aren't waiting for a lock
+        while self.waiting is False:
             line, nl, rest = self.readBuf.partition('\n')
             if nl != '\n':
                 return
@@ -209,7 +230,7 @@ class LockConnection(object):
                     self.send("ERROR %s not already locked\n"%lName)
                     continue
                 LockDict[lName].release()
-                del(self.locks[lName])
+                del self.locks[lName]
                 self.send("RELEASED %s\n"%lName)
                 continue
 
@@ -217,7 +238,7 @@ class LockConnection(object):
             if lName in self.locks:
                 self.send("ERROR %s already locked\n"%lName)
                 continue
-                            
+
             if cmd == "xlock":
                 self.request(lName, shared=False, wait=False)
             elif cmd == "slock":
@@ -229,7 +250,7 @@ class LockConnection(object):
             else:
                 self.killClient()
                 return
-                
+
     def request(self, lName, shared, wait):
         if LockDict[lName].request(shared=shared, client=self, wait=wait):
             self.locks[lName] = shared
@@ -241,7 +262,7 @@ class LockConnection(object):
             self.waitShared = shared
             self.waiting = True
             return
-        
+
         self.send("FAILED %s\n"%lName)
 
     def notify(self):
@@ -251,8 +272,8 @@ class LockConnection(object):
 
     def send(self, data):
         """
-        send data back to the client.  For now I'm going to say that pipelining requests is not legal and if a 
-        send would block then the client is behaving badly and should die
+        send data back to the client.  For now I'm going to say that pipelining requests is
+        not legal and if a send would block then the client is behaving badly and should die
 
         this will fail on unicode strings
         """
@@ -271,7 +292,7 @@ class LockConnection(object):
         except:
             pass
 
-        del(ClientDict[self.fileno])
+        del ClientDict[self.fileno]
 
     def socketError(self):
         self.killClient()
@@ -282,9 +303,7 @@ class LockServer(object):
     def __init__(self, host='', port=29292):
         self.host = host
         self.port = port
-
-        self.serve()
-
+        self.run = True
 
     def serve(self):
         self.listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -293,21 +312,40 @@ class LockServer(object):
         self.listenSocket.listen(5)
 
         ClientDict[self.listenSocket.fileno()] = self
-        
-        while True:
-            readList, writeList, exceptList = select.select(ClientDict.keys(), [], ClientDict.keys())
-            for e in exceptList:
-                try:  # we're dealing with some error on the socket so just deal with it and stay alive
-                    ClientDict[e].socketError()
-                except:
-                    pass
-                
-            for r in readList:
-                if r in ClientDict:
-#                try:  # it's extremely possible that r has been expunged from ClientDict by now
-                    ClientDict[r].read()
-#                except:
-#                    pass
+
+        while self.run:
+            try:
+                readList, writeList, exceptList = select.select(ClientDict.keys(), # @UnusedVariable
+                                                                [],
+                                                                ClientDict.keys())
+                for e in exceptList:
+                    # we're dealing with some error on the socket - just deal with it and stay alive
+                    try:
+                        ClientDict[e].socketError()
+                    except Exception, ee:  # @UnusedVariable
+                        pass
+
+                for r in readList:
+                    if r in ClientDict:
+    #                try:  # it's extremely possible that r has been expunged from ClientDict by now
+                        ClientDict[r].read()
+    #                except:
+    #                    pass
+            except select.error, se:  # @UnusedVariable
+                pass  # select throws an error when we catch a signal
+
+    def shutdown(self):
+        """
+        Trigger exit of the main loop
+        """
+        self.run = False
+        # the signal that got us here will have broken us out of select
+
+    def cleanup(self):
+        """
+        Perform cleanup actions
+        """
+        pass
 
     def read(self):
         newSock, addr = self.listenSocket.accept()
@@ -316,7 +354,7 @@ class LockServer(object):
     def socketError(self):
         # something has gone to hell with the server.  Just shut down
         sys.exit()
-        
+
 
 LockDict = DefaultDict(lambda dd,key: ServerLock(key)) # key is name of lock, val is ServerLock
 ClientDict = {} # key is fileno of clientsocket, val is LockConnection
@@ -340,15 +378,34 @@ def setDefaultLockServer(host, port):
     DefaultLockHost = host
     DefaultLockPort = port
 
+def _tryPort(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = False
+    try:
+        sock.bind(("0.0.0.0", port))
+        result = True
+    except:
+        LOGGER.info("Port %s is in use", port)
+    sock.close()
+    return result
+
+def findFreePort():
+    port = DefaultLockPort
+    portRange = (DefaultLockPort, DefaultLockPort + 100)
+    maxTries = portRange[1] - portRange[0]
+    for i in range(maxTries):
+        if _tryPort(port):
+            break
+        port = random.randint(*portRange)
+    else:
+        sys.exit('No ports available between %s and %s' % portRange)
+    return port
 
 def discoverLockServer(fileName = None):
-    global DefaultLockFile
-    global DefaultLockHost
-    global DefaultLockPort
-
     host = DefaultLockHost
     port = DefaultLockPort
-    
+    pid = None
+
     if fileName is None:
         fileName = DefaultLockFile
 
@@ -367,13 +424,13 @@ def discoverLockServer(fileName = None):
             host = val
         elif key == 'port':
             port = int(val)
+        elif key == 'pid':
+            pid = int(val)
 
-    return host, port
+    return host, port, pid
+
 
 def writeLockServerHostFile(fileName=None, host=None, port=None):
-    global DefaultLockFile
-    global DefaultLockPort
-
     if fileName is None:
         fileName = DefaultLockFile
     if host is None:
@@ -384,7 +441,16 @@ def writeLockServerHostFile(fileName=None, host=None, port=None):
     with open(fileName, "w") as f:
         f.write("host = %s\n"%host)
         f.write("port = %s\n"%port)
-    
+        f.write("pid = %s\n"%os.getpid())
+
+    return fileName
+
+
+def rmLockServerHostFile(fileName=None):
+    if fileName is None:
+        fileName = DefaultLockFile
+
+
 ################################################################
 #
 # This is the client code
@@ -392,12 +458,12 @@ def writeLockServerHostFile(fileName=None, host=None, port=None):
 # use Lock() and SharedLock() as the main classes and it's
 # easiest to use them in the form of a context manager ie:
 #
-# with Lock():
+# with Lock(someNameStr):
 #     some code that needs exclusive access
 #
 #   or
 #
-# with SharedLock():
+# with SharedLock(someNameStr):
 #     some code that needs shared lock access
 #
 ################################################################
@@ -454,16 +520,16 @@ class LockClient(object):
 
 class Lock(object):
     """
-    This is our basic client lock class.  If used with defaults it will read the 
+    This is our basic client lock class.  If used with defaults it will read the
     """
-    
     cmdDict = {(False, False): "xlock",
                (False, True): "xlockwait",
                (True, False): "slock",
                (True, True): "slockwait"}
 
-    def __init__(self, lockName, shared=False, wait=True, discoverServer=True, host=None, port=None, lockClient=None):
-        """ 
+    def __init__(self, lockName, shared=False, wait=True, discoverServer=True,
+                 host=None, port=None, lockClient=None):
+        """
         wait can't be set to False if using this as a context manager
         """
         self.lName = lockName
@@ -497,23 +563,21 @@ class Lock(object):
                         filename = None
                     else:
                         filename = self.discoverServer
-                    self.host, self.port =  discoverLockServer(filename)
+                    self.host, self.port, _pid =  discoverLockServer(filename)
                     DefaultLockClient = LockClient(self.host, self.port)
-                    
+
             self.lockClient = DefaultLockClient
         cmd = Lock.cmdDict[(self.shared, self.wait)]
         return self.lockClient.getLock(cmd, self.lName)
-        
+
     def release(self):
         return self.lockClient.releaseLock(self.lName)
-        
+
 
 class SharedLock(Lock):
     def __init__(self, *args, **kwargs):
         kwargs['shared']=True
         super(SharedLock, self).__init__(*args, **kwargs)
-
-
 
 
 ################################################
@@ -523,8 +587,47 @@ class SharedLock(Lock):
 ################################################
 
 def main():
-    writeLockServerHostFile()
-    LockServer()
+    parser = optparse.OptionParser(usage="""
+    %prog [--debug]
+    """)
+    parser.add_option("-d", "--debug", action="store_true",
+                      help="debugging output")
+    opts, args = parser.parse_args()
+    if args:
+        parser.error('Invalid arguments %s' % args)
+    if opts.debug:
+        logLvl = 'debug'
+    else:
+        logLvl = 'info'
+    logging.basicConfig(level=getattr(logging, logLvl.upper(), None))
+    try:
+        host, port, pid = discoverLockServer()
+        if (host is not None and port is not None and pid is not None
+                and pid != os.getpid()):
+            # Valid file; now check for running lockserver
+            os.kill(pid, 0) # Throws an error if that pid is not live, no effect if it is
+            # OK, so there is already a live server pointed to by this file
+            sys.exit('A running lock server is already present')
+    except Exception, e:
+        pass # No old file or server
+    port = findFreePort()
+    LOGGER.info('Using port %s', port)
+
+    hostFileName = writeLockServerHostFile(port=port)
+    lockServer = LockServer(port=port)
+
+    def handle_signal(sig, frame):
+        lockServer.shutdown()
+
+    if os.name != "nt":
+        signal.signal(signal.SIGTERM, handle_signal)
+
+    try:
+        lockServer.serve()  # should never exit
+    finally:
+        lockServer.cleanup()
+        os.remove(hostFileName)
+        LOGGER.info('exiting')
 
 if __name__ == "__main__":
     main()
