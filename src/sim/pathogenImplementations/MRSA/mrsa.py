@@ -212,15 +212,20 @@ class MRSA(Pathogen):
         initialFractionColonized = self.core._getInitialPthFrac(PthStatus.COLONIZED,
                                                                 ward.fac.abbrev,
                                                                 ward.fac.category, ward.tier)
+        self.initialFracColonized = initialFractionColonized
         initialFractionInfected = self.core._getInitialPthFrac(PthStatus.INFECTED,
                                                                ward.fac.abbrev,
                                                                ward.fac.category, ward.tier)
+        self.initialFracInfected = initialFractionInfected
         initialFractionUndetCol = self.core._getInitialPthFrac(PthStatus.UNDETCOLONIZED,
                                                                ward.fac.abbrev,
                                                                ward.fac.category, ward.tier)
+        self.initialFracUndetCol = initialFractionUndetCol
         initialFractionChronic = self.core._getInitialPthFrac(PthStatus.CHRONIC,
                                                               ward.fac.abbrev,
                                                               ward.fac.category, ward.tier)
+        self.initialFracChronic = initialFractionChronic
+
         fracClear = 1.0 - (initialFractionColonized + initialFractionInfected
                            + initialFractionUndetCol + initialFractionChronic)
         self.initializationBayesTree = BayesTree.fromLinearCDF([(initialFractionColonized,

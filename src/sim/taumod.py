@@ -1,65 +1,78 @@
-import numpy as np
-import bcolz as bz
+#! /usr/bin/env python
+
+###################################################################################
+# Copyright   2018, Pittsburgh Supercomputing Center (PSC).  All Rights Reserved. #
+# =============================================================================== #
+#                                                                                 #
+# Permission to use, copy, and modify this software and its documentation without #
+# fee for personal use within your organization is hereby granted, provided that  #
+# the above copyright notice is preserved in all copies and that the copyright    #
+# and this permission notice appear in supporting documentation.  All other       #
+# restrictions and obligations are defined in the GNU Affero General Public       #
+# License v3 (AGPL-3.0) located at http://www.gnu.org/licenses/agpl-3.0.html  A   #
+# copy of the license is also provided in the top level of the source directory,  #
+# in the file LICENSE.txt.                                                        #
+#                                                                                 #
+###################################################################################
+
+import sys
 import time
 import cPickle as pickle
+import logging
+import optparse
 import pandas as pd
+import yaml
 
-if 0:
-    from fcntl import lockf, LOCK_UN, LOCK_EX
-
-    LockFile = "date.lock"
-    DateFile = "date.info"
-
-    def initLock():
-        with open(LockFile, "w") as f:
-            pass
-
-    class Lock(object):
-        def __init__(self):
-            self.f = open(LockFile, "w")
-            lockf(self.f.fileno(), LOCK_EX)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, type, value, traceback):
-            lockf(self.f.fileno(), LOCK_UN)
-            self.f.close()
-
-            
-from lockserver import Lock
+from lockserver import Lock, SharedLock
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 
 
-            
+CONFIG_FNAME = 'taumod_config.yaml'
+
+LOGGER = logging.getLogger(__name__)
+
+class Config(object):
+    """Seems like a long way to go to avoid globals, but I'll play along"""
+    __metaclass__ = SingletonMetaClass
+
+    def __init__(self):
+        with open(CONFIG_FNAME, 'rU') as f:
+            self.config = yaml.load(f)
+
+    def __getitem__(self, key):
+        return self.config[key]
+
+
 def writeDateFile(s):
     with Lock('taumod'):
-        with open(DateFile, "w") as f:
+        with open(Config()['DateFile'], "w") as f:
             f.write(s)
 
 def appendDateFile(s):
     with Lock('taumod'):
-        with open(DateFile, "a") as f:
+        with open(Config()['DateFile'], "a") as f:
             f.write(s)
 
 def readDateFile():
-    with Lock('taumod'):
-        with open(DateFile, "r") as f:
+    with SharedLock('taumod'):
+        with open(Config()['DateFile'], "r") as f:
             return f.readlines()
-
-
 
 # utilities for the pyrhea workers
 def getNewTauDict(lastDate):
-    while(True):
+    LOGGER.info('waiting')
+    while True:
         lines = readDateFile()
         nextDate = int(lines[0])
         if nextDate <= lastDate:
             time.sleep(1)
             continue
 
+        LOGGER.info('done waiting')
         tauFileName = lines[1].strip()
-        with open(tauFileName, "rb") as f:
-            tauDict = pickle.load(f)
+        with SharedLock(tauFileName):
+            with open(tauFileName, "rb") as f:
+                tauDict = pickle.load(f)
         return nextDate, tauDict
 
 # it's really dumb having the taufile and the expected prevalences being passed in this way but
@@ -69,37 +82,41 @@ def updateInfo(uid, prevStatsFile, tauFile, expectedFile):
     appendDateFile(s)
 
 
-TauFileName = "taudict.pkl"
-    
 class TauMod(object):
-    def __init__(self, workerCount, updatePeriod, dayList):
-        self.workerCount = workerCount    # number of processes we're waiting for responses from
-        self.updatePeriod = updatePeriod  # how frequently we want data from those processes
-        self.dayList = dayList            # list of days in the past that should be used for generating statistics
-                                          # ie if timeNow were 50 and dayList were [0,7,14], we'd use stats from
-                                          # days [50, 43, 36]
+    def __init__(self, workerCount=None):
+        """
+        workerCount is the expected number of workers, defaulting to the config file value.
+        All other adjustable parameters are drawn from the config file
+        """
+
+        # number of processes we're waiting for responses from
+        if workerCount is None:
+            self.workerCount=Config()['WorkerCount']
+        else:
+            self.workerCount = workerCount
+
+        # how frequently we want data from those processes
+        self.updatePeriod=Config()['UpdatePeriod']
+
+        # list of days in the past that should be used for generating statistics
+        # ie if timeNow were 50 and dayList were [0,7,14], we'd use stats from
+        # days [50, 43, 36]
+        self.dayList=Config()['DayList']
 
         self.nextDay = 0
 
         # factors for calculating tau adjustment
-        # probably should be passed in.
-        self.minRatio = 0.5
-        self.maxRatio = 2.0
-        self.adjFactor = 0.05
-
+        self.minRatio = Config()['MinRatio']
+        self.maxRatio = Config()['MaxRatio']
+        self.adjFactor = Config()['AdjFactor']
 
         self.createWorkFile({})
 
+        self.overridePrevalence = {(ent['fac'], ent['tier']): ent['value']
+                                   for ent in Config()['OverridePrevalence']}
+        self.isAdjustableDict = {(ent['fac'], ent['tier']): ent['value']
+                                 for ent in Config()['IsAdjustable']}
 
-        self.overridePrevalence = {
-            ('ALL','HOSP'):0.005,
-            ('ALL','ICU'):0.03,
-            ('ALL', 'NURSING'): 1.5,
-            ('ALL', 'SKILNRS'): 1.5,
-        }
-        
-
-        
     def getExpected(self, fac, tier):
         if (fac,tier) in self.overridePrevalence:
             return self.overridePrevalence[(fac,tier)]
@@ -111,16 +128,16 @@ class TauMod(object):
 
     def createWorkFile(self, tauFile):
         self.nextDay += self.updatePeriod
-        initLock()
 
         # create initial dummy taudict
-        with open(TauFileName, "w") as f:
-            pickle.dump(tauFile, f)
+        tFN = Config()['TauFileName']
+        with Lock(tFN):
+            with open(tFN, "w") as f:
+                pickle.dump(tauFile, f)
 
-        s = "%s\n%s\n"%(self.nextDay, TauFileName)
+        s = "%s\n%s\n"%(self.nextDay, tFN)
         writeDateFile(s)
-        
-        
+
     def waitForWorkers(self):
         while True:
             lines = readDateFile()
@@ -137,39 +154,38 @@ class TauMod(object):
             uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ")
 
             prevStats.append(pd.read_msgpack(prevStatsFileName))
-            with open(tauFileName, "rb") as f:
-                tauDicts.append(pickle.load(f))
+            with SharedLock(tauFileName):
+                with open(tauFileName, "rb") as f:
+                    tauDicts.append(pickle.load(f))
 
-            with open(expectedFileName, "rb") as f:
-                expectedDicts.append(pickle.load(f))
+            with SharedLock(expectedFileName):
+                with open(expectedFileName, "rb") as f:
+                    expectedDicts.append(pickle.load(f))
 
         return prevStats, tauDicts, expectedDicts
 
-                
     def isAdjustable(self, fac, tier):
-        # this is something that should be passed in but for now:
-        if tier == 'LTAC':
-            return True
-        if tier == 'ICU':
-            return True
-        return False
-
+        if (fac, tier) in self.isAdjustableDict:
+            return self.isAdjustableDict[(fac, tier)]
+        elif ('ALL', tier) in self.isAdjustableDict:
+            return self.isAdjustableDict[('ALL', tier)]
+        else:
+            return False
 
     def collatePrev(self, prevStats):
         days = [self.nextDay - d for d in self.dayList]
-        
+
         s = pd.concat(prevStats, ignore_index=True)
 
         # print overall stats
-        tierSums = s[s.day.isin(days)].groupby(['tier']).sum()
-        for tier in ['HOSP', 'ICU', 'LTAC', 'NURSING', 'SKILNRS', 'VENT']:
+        tierGroups = s[s.day.isin(days)].groupby(['tier'])
+        tierSums = tierGroups.sum()
+        for tier in tierGroups.groups.keys():
+            colRatio = float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)]
             print "%s Prevalence: %s, (colonized %s, total %s)"%(tier,
-                                                                 float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)],
+                                                                 colRatio,
                                                                  tierSums['COLONIZED'][(tier)],
                                                                  tierSums['TOTAL'][(tier)])
-
-        
-
 
         facSums = s[s.day.isin(days)].groupby(['tier', 'fac']).sum()
         return facSums
@@ -177,7 +193,7 @@ class TauMod(object):
     def adjustTaus(self, facSums, tauDicts):
         # assume all tauDicts are identical (maybe we should verify this?)
         tauDict = tauDicts[0]
-        
+
         for key, colonized in facSums['COLONIZED'].to_dict().items():
             tier, fac = key
             if not self.isAdjustable(fac, tier):
@@ -203,31 +219,51 @@ class TauMod(object):
             newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
 
 
-            print "%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"%(fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau)
+            print ("%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
+                   % (fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau))
             tauDict[(fac,tier)] = newTau
 
         return tauDict
-            
-            
+
 
     def process(self):
-        print "waiting!"
+        LOGGER.info("waiting!")
         self.waitForWorkers()
-        print "processing!"
+        LOGGER.info("processing!")
         prevStats, tauDicts, expectedDicts = self.getWorkerStats()
         self.expectedPrevalence = expectedDicts[0]
-        
+
         facSums = self.collatePrev(prevStats)
         tauDict = self.adjustTaus(facSums, tauDicts)
         self.createWorkFile(tauDict)
 
 
 def main():
-    tm = TauMod(workerCount=50, updatePeriod=50, dayList=[0,5,10,15,20,25,30,35])
+    parser = optparse.OptionParser(usage="""
+    %prog [--debug] [-N nWorkers]
+    """)
+    parser.add_option("-d", "--debug", action="store_true",
+                      help="debugging output")
+    parser.add_option("-N", "--workers", action="store", type="int",
+                      help="expected number of workers (optional)")
+    opts, args = parser.parse_args()
+    if args:
+        parser.error('Invalid arguments %s' % args)
+    if opts.debug:
+        logLvl = 'debug'
+    else:
+        logLvl = 'info'
+    logging.basicConfig(level=getattr(logging, logLvl.upper(), None))
 
-    while(1):
+    if opts.workers:
+        nWorkers = opts.workers
+    else:
+        nWorkers = None
+    tm = TauMod(workerCount=nWorkers)
+
+    while True:
         tm.process()
-    
-        
+
+
 if __name__ == "__main__":
     main()
