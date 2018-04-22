@@ -190,7 +190,7 @@ class LockConnection(object):
         ClientDict[self.fileno] = self
         self.clientSocket = clientSocket
         self.address = address
-        LOGGER.info("new client from %s on fd %s", address, self.fileno)
+        LOGGER.debug("new client from %s on fd %s", address, self.fileno)
         self.readBuf = ""
         self.locks = {}  # True if shared, False if exclusive
         self.waiting = False  # True if waiting for a lock
@@ -211,7 +211,7 @@ class LockConnection(object):
         self.processReadBuf()
 
     def processReadBuf(self):
-        
+
         # process read buffer for as long as we have complete commands and aren't waiting for a lock
         while self.waiting is False:
             line, nl, rest = self.readBuf.partition('\n')
@@ -293,6 +293,7 @@ class LockConnection(object):
             pass
 
         del ClientDict[self.fileno]
+        LOGGER.debug('killClient on fd %s', self.fileno)
 
     def socketError(self):
         self.killClient()
@@ -547,9 +548,11 @@ class Lock(object):
         if not self.lock():
             raise RuntimeError("Failed to acquire lock %s"%self.lName)
 
+        LOGGER.debug('enter Lock %s %s', self.lName, ('shared' if self.shared else ''))
+
     def __exit__(self, *args):
         self.release()
-
+        LOGGER.debug('exit Lock %s %s', self.lName, ('shared' if self.shared else ''))
 
     def lock(self):
         global DefaultLockClient

@@ -18,7 +18,6 @@
 import sys
 import os
 import yaml
-from imp import load_source
 from random import seed
 from collections import defaultdict
 import optparse
@@ -38,6 +37,7 @@ import pyrheautils
 from typebase import PatientOverallHealth
 from registry import Registry
 from policybase import ScenarioPolicy
+from tauadjuster import TauAdjuster
 import checkpoint
 
 BASE_DIR = os.path.dirname(__file__)
@@ -670,7 +670,7 @@ def main():
 
     global logger
     global clData
-    
+
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
 
@@ -757,7 +757,7 @@ def main():
         parser.destroy()
     else:
         clData = None
-        
+
     try:
         patchGroup = None  # for the benefit of diagnostics during init
         clData = comm.bcast(clData, root=0)
@@ -772,13 +772,13 @@ def main():
             pyrheautils.readConstantsReplacementFile(clData['constantsFile'])
 
         configureLogging(clData['logCfgDict'], clData['loggingExtra'])
-    
+
         verbose = clData['verbose']  # @UnusedVariable
         debug = clData['debug']  # @UnusedVariable
         trace = clData['trace']
         deterministic = clData['deterministic']
         inputDict = clData['input']
-    
+
         if deterministic:
             seed(1234 + comm.rank)  # Set the random number generator seed
         elif clData['randomSeed']:
@@ -837,7 +837,7 @@ def main():
             patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
                          for i in xrange(clData['patches'])]  # @UnusedVariable
         totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
-    
+
         # Add some things for which we need only one instance
         patchList[0].addAgents([BurnInAgent('burnInAgent', patchList[0],
                                             inputDict['burnInDays'], noteHolderGroup)])
@@ -861,14 +861,19 @@ def main():
                              PthClass, noteHolderGroup, comm, totalRunDays)
 
         monitorList = []
+        tauAdjusterList = []
         if clData['bczmonitor'] is not None:
             import bcz_monitor
             for patch in patchList:
                 m = bcz_monitor.Monitor(patch, totalRunDays)
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
-                
-        
+
+                ta = TauAdjuster(m)
+                tauAdjusterList.append(ta)
+                m.setStopTimeFn(1, ta.createCallbackFn())
+
+
         if clData['dumpFacilitiesMap'] is not None:
             dumpFacilitiesMap(clData['dumpFacilitiesMap'], patchList)
 
@@ -903,7 +908,7 @@ def main():
             logger.info('%s exiting due to exception during initialization' % '<no patchGroup yet>')
             logging.shutdown()
             sys.exit('Exception during initialization')
-    
+
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     try:
         exitMsg = patchGroup.start()
@@ -929,16 +934,15 @@ def main():
                     f.write('{\n')
                     for k,v in d.items():
                         f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
-                    
+
                     f.write("}\n")
-            else:    
+            else:
                 with open(outputNotesName, 'w') as f:
                     pickle.dump(d, f)
 
             if clData['bczmonitor'] is not None:
                 for m in monitorList:
                     m.writeData(clData['bczmonitor'])
-        
 
         logging.shutdown()
 
