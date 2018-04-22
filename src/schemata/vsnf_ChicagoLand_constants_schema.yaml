@@ -77,6 +77,10 @@
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTier',
         'description': 'Fraction of initial occupants by tier who have overall health UNHEALTHY rather than HEALTHY'
       }
+      'bedCountMultiplier': {
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'description': 'Scales the number of beds in each facility of this type'
+      }
     'required':
       - 'deathRate'
       - 'hospTransferToICURate'

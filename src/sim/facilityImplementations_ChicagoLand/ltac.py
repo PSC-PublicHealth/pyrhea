@@ -94,12 +94,14 @@ class LTAC(Facility):
         # be initialized lazily because the pathogen has not yet been defined.
         self.pthRates = None
 
+        bedCountMultiplier = (_c['bedCountMultiplier']['value'] if 'bedCountMultiplier' in _c
+                              else 1.0)
         if 'nBeds' in descr:
-            nBeds = descr['nBeds']['value']
+            nBeds = bedCountMultiplier * descr['nBeds']['value']
             nWards = int(float(nBeds)/bedsPerWard) + 1
         else:
             meanPop = descr['meanPop']['value']
-            nWards = int(math.ceil(meanPop / bedsPerWard))
+            nWards = int(bedCountMultiplier * math.ceil(meanPop / bedsPerWard))
 
         nBeds = nWards * bedsPerWard
 

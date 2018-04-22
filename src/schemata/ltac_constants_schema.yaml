@@ -40,6 +40,10 @@
       'bedsPerWard': {'$ref': '#/definitions/count'}
       'dischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
       'fracOfDischargesRequiringRehab': {'$ref': '#/definitions/fraction'}
+      'bedCountMultiplier': {
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'description': 'Scales the number of beds in each facility of this type'
+      }
     'required':
       - 'bedsPerWard'
       - 'dischargeViaDeathFrac'

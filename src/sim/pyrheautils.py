@@ -37,7 +37,7 @@ def prepPathTranslations(inp):
 
     simDir = os.path.dirname(os.path.abspath(__file__))
     baseDir = os.path.normpath(os.path.join(simDir, os.path.pardir, os.path.pardir))
-    
+
 
     primaryKeys = [('modelDir', 'MODELDIR'),
                    ('model', 'MODEL'),
@@ -95,24 +95,24 @@ def readConstantsReplacementFile(fileName):
     fileName = pathTranslate(fileName)
     file = os.path.basename(fileName)
     name, ext = os.path.splitext(file)
-    
+
     newMod = load_source(name, fileName)
 
     if hasattr(newMod, "constantsReplacementData"):
         constantsReplacementData = getattr(newMod, "constantsReplacementData")
     if hasattr(newMod, "facilitiesReplacementData"):
         facilitiesReplacementData = getattr(newMod, "facilitiesReplacementData")
-        
+
 def replaceData(fileName, yData):
     global constantsReplacementData
-    
+
     if fileName not in constantsReplacementData:
         return yData
 
     repl = constantsReplacementData[fileName]
 
     return replaceYamlData(repl, yData)
-    
+
 def replaceYamlData(replacementData, yData):
     for path, val in replacementData:
         pointer = yData
@@ -139,7 +139,7 @@ def replaceYamlData(replacementData, yData):
         pointer[path[-1]] = val
 
     return yData
-    
+
 def importConstants(valuePath, schemaPath, pathLookupDict=None):
     """
     Import a set of constants in YAML format, checking against its schema.

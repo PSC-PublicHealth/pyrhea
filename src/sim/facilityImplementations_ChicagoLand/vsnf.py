@@ -46,7 +46,7 @@ _validator = None
 class NursingWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
         super(NursingWard, self).__init__(name, patch, CareTier.NURSING, nBeds)
-        
+
 
 class SkilNrsWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
@@ -123,7 +123,9 @@ class VentSNF(Facility):
         for tier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]:
             self.rateD[tier] = (lclRates.copy(), None)
 
-        nBeds = int(descr['nBeds']['value'])
+        bedCountMultiplier = (_c['bedCountMultiplier']['value'] if 'bedCountMultiplier' in _c
+                              else 1.0)
+        nBeds = int(bedCountMultiplier * descr['nBeds']['value'])
         nBedsVent = int(nBeds * descr['fracVentBeds']['value'])
         nBedsSkil = int(nBeds * descr['fracSkilledBeds']['value'])
         nBedsOther = nBeds - (nBedsVent + nBedsSkil)
