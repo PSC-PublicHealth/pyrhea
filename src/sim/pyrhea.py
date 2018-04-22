@@ -228,6 +228,46 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
 
                           }
 
+def dumpFacilitiesMap(filename, patchList):
+    from facilitybase import CareTier
+    from collections import defaultdict
+    tau = {}
+    fracColonized = {}
+    category = {}
+    bedcounts = defaultdict(int)
+    wards = defaultdict(int)
+    startPop = defaultdict(int)
+
+    for patch in patchList:
+        for fac in patch.allFacilities:
+            abbr = fac.abbrev
+            for ward in fac.getWards():
+                if ward.tier == CareTier.HOME:
+                    continue
+                tier = CareTier.names[ward.tier]
+                key = (abbr,tier)
+                
+                category[key] = fac.category
+                bedcounts[key] += ward._nLocks  # must I really go this low level to get this info?
+                wards[key] += 1
+                startPop[key] += len(ward.getPatientList())
+
+                try: tau[key] = ward.iA.tau
+                except: tau[key] = ""
+                try: fracColonized[key] = ward.iA.initialFracColonized
+                except: fracColonized[key] = ""
+                
+
+    with open(filename, "w") as f:
+        f.write("fac,tier,category,wards,beds,startPop,tau,fracColonized\n")
+        for k in category.keys():
+            abbr,tier = k
+            f.write("%s,%s,%s,%s,%s,%s,%s,%s\n"%(abbr,tier,category[k],wards[k],
+                                                 bedcounts[k],startPop[k],
+                                                 tau[k],fracColonized[k]))
+            
+
+
 
 def loadPolicyImplementations(implementationDir):
     logger.info('Loading policy implementations')
@@ -671,7 +711,9 @@ def main():
         parser.add_option("-c", "--constantsFile", action="store", type="string", default=None,
                           help="python file defining the dict constantsReplacementData and/or facilitiesReplacementData")
         parser.add_option("-b", "--bczmonitor", action="store", type="string", default=None,
-                          help="save pathogen status as a bcolz data structure in the file specified")
+                          help="save pathogen status as a pandas data structure in the file specified")
+        parser.add_option("-m", "--dumpFacilitiesMap", action="store", type="string", default=None,
+                          help="write a facililties map to the file specified to facilitate post processing")
 
         opts, args = parser.parse_args()
         if opts.log is not None:
@@ -695,6 +737,7 @@ def main():
                   'checkpoint': opts.checkpoint,
                   'constantsFile': opts.constantsFile,
                   'bczmonitor': opts.bczmonitor,
+                  'dumpFacilitiesMap': opts.dumpFacilitiesMap,
         }
         if len(args) == 1:
             clData['input'] = checkInputFileSchema(args[0],
@@ -825,9 +868,14 @@ def main():
                 m = bcz_monitor.Monitor(patch, totalRunDays)
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
+
                 ta = TauAdjuster(m)
                 tauAdjusterList.append(ta)
                 m.setStopTimeFn(1, ta.createCallbackFn())
+
+
+        if clData['dumpFacilitiesMap'] is not None:
+            dumpFacilitiesMap(clData['dumpFacilitiesMap'], patchList)
 
         # Check that all policy rules have been used, to avoid a common user typo problem
         quitNow = False
