@@ -97,7 +97,7 @@ def getIp():
     try:
         # doesn't have to be reachable
         if 'SLURM_LAUNCH_NODE_IPADDR' in os.environ:
-            target = os.environ('SLURM_LAUNCH_NODE_IPADDR')
+            target = os.environ['SLURM_LAUNCH_NODE_IPADDR']
         else:
             target = '10.255.255.255'
         s.connect((target, 1))
