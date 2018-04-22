@@ -3,6 +3,7 @@ DateFile: date.info
 TauFileName: taudict.pkl
 #UpdatePeriod: 50
 UpdatePeriod: 3
+EndDay: 11
 #DayList: [0,5,10,15,20,25,30,35]
 DayList: [0,2]
 #WorkerCount: 50

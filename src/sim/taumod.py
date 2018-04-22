@@ -91,7 +91,7 @@ class TauMod(object):
 
         # number of processes we're waiting for responses from
         if workerCount is None:
-            self.workerCount=Config()['WorkerCount']
+            self.workerCount = Config()['WorkerCount']
         else:
             self.workerCount = workerCount
 
@@ -101,9 +101,10 @@ class TauMod(object):
         # list of days in the past that should be used for generating statistics
         # ie if timeNow were 50 and dayList were [0,7,14], we'd use stats from
         # days [50, 43, 36]
-        self.dayList=Config()['DayList']
+        self.dayList = Config()['DayList']
 
         self.nextDay = 0
+        self.endDay = Config()['EndDay']
 
         # factors for calculating tau adjustment
         self.minRatio = Config()['MinRatio']
@@ -261,8 +262,9 @@ def main():
         nWorkers = None
     tm = TauMod(workerCount=nWorkers)
 
-    while True:
+    while tm.nextDay <= tm.endDay:
         tm.process()
+        
 
 
 if __name__ == "__main__":
