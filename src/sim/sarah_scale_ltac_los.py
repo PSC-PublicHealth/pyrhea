@@ -5,7 +5,7 @@ import facilitybase
 onn = pyrheautils.outputNotesName
 
 sarahTest = int(onn.split('sarahltac_')[1].split('_')[0])
-bedMult, bedMultFrac, rest = onn.split('_capped_')[1].split('_',3)
+bedMult, bedMultFrac, rest = onn.split('_capped_')[1].split('_',2)
 bedMult = int(bedMult) + float(bedMultFrac) / 10**(len(bedMultFrac))
 
 facilitybase.HackBedMultiplier = bedMult
