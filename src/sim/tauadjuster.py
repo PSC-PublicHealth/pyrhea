@@ -23,13 +23,6 @@ Created on Apr 20, 2018
 
 import logging
 import cPickle as pickle
-import yaml
-
-import quilt.patches as patches
-import phacsl.utils.formats.yaml_tools as yaml_tools
-import phacsl.utils.notes.noteholder as noteholder
-import schemautils
-import pyrheautils
 import taumod
 from typebase import CareTier
 
