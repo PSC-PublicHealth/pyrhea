@@ -217,7 +217,8 @@ class TauMod(object):
                 elif ratio < self.minRatio:
                     ratio = self.minRatio
 
-            newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
+            #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
+            newTau = tauDict[(fac, tier)]/ratio
 
 
             print ("%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
