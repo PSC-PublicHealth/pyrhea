@@ -2,6 +2,7 @@ import csv
 import yaml
 import os.path
 from phacsl.utils.misc.util import isiterable
+import phacsl.utils.formats.yaml_tools as yaml_tools
 
 def readDictFromCsv(fileName, key, val):
     ret = {}
@@ -43,8 +44,6 @@ for site, parms in fitParms.items():
     yData['losModel']['parms'] = parms
     yData['losModel']['prov'] = provenance
 
-#    print yData
-    with open(updateFname, 'w') as f:
-        yaml.dump(yData, f)
+    yaml_tools.save_one(updateFname, yData)
 
 
