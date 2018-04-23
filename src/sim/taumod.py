@@ -17,6 +17,7 @@
 
 import sys
 import time
+from math import sqrt
 import cPickle as pickle
 import logging
 import optparse
@@ -30,6 +31,10 @@ from phacsl.utils.collections.phacollections import SingletonMetaClass
 CONFIG_FNAME = 'taumod_config.yaml'
 
 LOGGER = logging.getLogger(__name__)
+
+# Golden ratio, for use during iterative optimization
+GOLDEN_PHI = (1 + sqrt(5.0))/2.0
+GOLDEN_RESPHI = 2.0 - GOLDEN_PHI
 
 class Config(object):
     """Seems like a long way to go to avoid globals, but I'll play along"""
@@ -48,10 +53,12 @@ def writeDateFile(s):
         with open(Config()['DateFile'], "w") as f:
             f.write(s)
 
+
 def appendDateFile(s):
     with Lock('taumod'):
         with open(Config()['DateFile'], "a") as f:
             f.write(s)
+
 
 def readDateFile():
     with SharedLock('taumod'):
@@ -217,13 +224,15 @@ class TauMod(object):
                 elif ratio < self.minRatio:
                     ratio = self.minRatio
 
+                ctr = 0.5 * (ratio + 1.0)
+                ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
+
             #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
             newTau = ratio*tauDict[(fac, tier)]
 
-
             print ("%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
                    % (fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau))
-            tauDict[(fac,tier)] = newTau
+            tauDict[(fac, tier)] = newTau
 
         return tauDict
 
