@@ -23,6 +23,7 @@ import sys
 import os
 import logging
 import optparse
+import time
 
 #############################################################
 #
@@ -561,22 +562,28 @@ class Lock(object):
 
     def lock(self):
         global DefaultLockClient
+        
+        for i in xrange(60):
+            try:
+                if self.lockClient is None:
+                    if DefaultLockClient is None:
+                        if self.discoverServer is False:
+                            DefaultLockClient = LockClient(self.host, self.port)
+                        else:
+                            if self.discoverServer is True:
+                                filename = None
+                            else:
+                                filename = self.discoverServer
+                            self.host, self.port, _pid =  discoverLockServer(filename)
+                            DefaultLockClient = LockClient(self.host, self.port)
 
-        if self.lockClient is None:
-            if DefaultLockClient is None:
-                if self.discoverServer is False:
-                    DefaultLockClient = LockClient(self.host, self.port)
-                else:
-                    if self.discoverServer is True:
-                        filename = None
-                    else:
-                        filename = self.discoverServer
-                    self.host, self.port, _pid =  discoverLockServer(filename)
-                    DefaultLockClient = LockClient(self.host, self.port)
+                    self.lockClient = DefaultLockClient
+                cmd = Lock.cmdDict[(self.shared, self.wait)]
+                return self.lockClient.getLock(cmd, self.lName)
+            except:
+                self.lockClient = None
 
-            self.lockClient = DefaultLockClient
-        cmd = Lock.cmdDict[(self.shared, self.wait)]
-        return self.lockClient.getLock(cmd, self.lName)
+            time.sleep(5)
 
     def release(self):
         return self.lockClient.releaseLock(self.lName)

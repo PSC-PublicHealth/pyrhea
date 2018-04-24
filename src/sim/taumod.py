@@ -61,9 +61,15 @@ def appendDateFile(s):
 
 
 def readDateFile():
-    with SharedLock('taumod'):
-        with open(Config()['DateFile'], "r") as f:
-            return f.readlines()
+    # give time for taumod to have started up and dropped the date file
+    for i in xrange(60):
+        try:
+            with SharedLock('taumod'):
+                with open(Config()['DateFile'], "r") as f:
+                    return f.readlines()
+        except FileNotFoundError:
+            pass
+        time.sleep(5)
 
 # utilities for the pyrhea workers
 def getNewTauDict(lastDate):
