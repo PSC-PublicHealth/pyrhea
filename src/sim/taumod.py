@@ -228,7 +228,7 @@ class TauMod(object):
                 ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
 
             #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
-            newTau = ratio*tauDict[(fac, tier)]
+            newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
 
             print ("%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
                    % (fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau))
