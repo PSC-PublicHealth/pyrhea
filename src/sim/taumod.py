@@ -67,9 +67,11 @@ def readDateFile():
             with SharedLock('taumod'):
                 with open(Config()['DateFile'], "r") as f:
                     return f.readlines()
-        except FileNotFoundError:
+        except:
             pass
         time.sleep(5)
+        LOGGER.info("retry read datefile")
+    raise RuntimeError("Can't read date file")
 
 # utilities for the pyrhea workers
 def getNewTauDict(lastDate):

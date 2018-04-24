@@ -584,6 +584,8 @@ class Lock(object):
                 self.lockClient = None
 
             time.sleep(5)
+            LOGGER.info("retrying lock server")
+        raise RuntimeError("Can't reach lockserver")
 
     def release(self):
         return self.lockClient.releaseLock(self.lName)
