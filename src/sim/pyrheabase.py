@@ -41,7 +41,7 @@ class Ward(peopleplaces.Location):
 
     def getReqQueueAddr(self):
         return self.fac.reqQueues[0].getGblAddr()
-    
+
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         pass
