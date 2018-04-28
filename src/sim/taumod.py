@@ -18,6 +18,7 @@
 import sys
 import time
 from math import sqrt
+from collections import defaultdict
 import cPickle as pickle
 import logging
 import optparse
@@ -132,6 +133,8 @@ class TauMod(object):
                                    for ent in Config()['OverridePrevalence']}
         self.isAdjustableDict = {(ent['fac'], ent['tier']): ent['value']
                                  for ent in Config()['IsAdjustable']}
+        self.pastData = None
+        self.nUpdates = 0
 
     def getExpected(self, fac, tier):
         if (fac,tier) in self.overridePrevalence:
@@ -167,7 +170,7 @@ class TauMod(object):
         tauDicts = []
         expectedDicts = []
         for line in lines[2:]:
-            uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ")
+            uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ") # @UnusedVariable
 
             prevStats.append(pd.read_msgpack(prevStatsFileName))
             with SharedLock(tauFileName):
@@ -210,38 +213,97 @@ class TauMod(object):
         # assume all tauDicts are identical (maybe we should verify this?)
         tauDict = tauDicts[0]
 
-        for key, colonized in facSums['COLONIZED'].to_dict().items():
-            tier, fac = key
-            if not self.isAdjustable(fac, tier):
-                continue
-            total = facSums['TOTAL'][key]
+        #algorithm = 'gr_independent'
+        algorithm = 'running_average'
 
-            if total:
-                prevalence = float(colonized) / total
-            else:
-                prevalence = 0.0
+        if algorithm == 'gr_independent':
+            for key, colonized in facSums['COLONIZED'].to_dict().items():
+                tier, fac = key
+                if not self.isAdjustable(fac, tier):
+                    continue
 
-            expected = self.getExpected(fac, tier)
+                total = facSums['TOTAL'][key]
+                if total:
+                    prevalence = float(colonized) / total
+                else:
+                    prevalence = 0.0
 
-            if prevalence == 0.0:
-                ratio = self.maxRatio
-            else:
-                ratio = expected / prevalence
-                if ratio > self.maxRatio:
+                expected = self.getExpected(fac, tier)
+
+                if prevalence == 0.0:
                     ratio = self.maxRatio
-                elif ratio < self.minRatio:
-                    ratio = self.minRatio
+                else:
+                    ratio = expected / prevalence
+                    if ratio > self.maxRatio:
+                        ratio = self.maxRatio
+                    elif ratio < self.minRatio:
+                        ratio = self.minRatio
+
+                    ctr = 0.5 * (ratio + 1.0)
+                    ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
+
+                #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
+                newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+
+                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
+                       % (fac, tier, total, prevalence, expected, ratio, tauDict[(fac,tier)],
+                          newTau))
+                tauDict[(fac, tier)] = newTau
+
+        elif algorithm == 'running_average':
+            if self.pastData is None:
+                self.pastData = defaultdict(float)
+
+            icuTauMultiplier = 1.10
+
+            for key, colonized in facSums['COLONIZED'].to_dict().items():
+                tier, fac = key
+                if not self.isAdjustable(fac, tier):
+                    continue
+                total = facSums['TOTAL'][key]
+
+                if total:
+                    prevalence = float(colonized) / total
+                else:
+                    prevalence = 0.0
+
+                expected = self.getExpected(fac, tier)
+
+                if self.nUpdates == 0:
+                    prevalence = float(colonized)/total
+                elif tier == 'ICU':
+                    prevalence = (1.0/3.0) * (self.pastData[(fac, tier)]
+                                              + min(1.0,
+                                                    icuTauMultiplier*self.pastData[(fac,'HOSP')])
+                                              + prevalence)
+                else:
+                    prevalence = 0.5 * (prevalence + self.pastData[(fac, tier)])
+                self.pastData[(fac, tier)] = prevalence
+
+                if prevalence == 0.0:
+                    ratio = self.maxRatio
+                else:
+                    ratio = expected / prevalence
+                    if ratio > self.maxRatio:
+                        ratio = self.maxRatio
+                    elif ratio < self.minRatio:
+                        ratio = self.minRatio
 
                 ctr = 0.5 * (ratio + 1.0)
                 ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
 
-            #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
-            newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+                newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
 
-            print ("%s %s: prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
-                   % (fac, tier, prevalence, expected, ratio, tauDict[(fac,tier)], newTau))
-            tauDict[(fac, tier)] = newTau
+                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
+                       % (fac, tier, total, prevalence, expected, ratio, tauDict[(fac,tier)],
+                          newTau))
 
+                tauDict[(fac, tier)] = newTau
+
+        else:
+            raise RuntimeError('unknown tau update algorithm %s' % algorithm)
+
+        self.nUpdates += 1
         return tauDict
 
 

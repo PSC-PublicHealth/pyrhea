@@ -56,7 +56,6 @@ scenarioWaitDays: 2
 
 'trackedFacilities':
   - ACNC
-  - AGBP
   - ALAM
   - ALTA
   - ANGL

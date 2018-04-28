@@ -41,7 +41,7 @@ class Ward(peopleplaces.Location):
 
     def getReqQueueAddr(self):
         return self.fac.reqQueues[0].getGblAddr()
-    
+
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         pass
@@ -318,8 +318,15 @@ class PatientAgent(peopleplaces.Person):
             return None  # signal death
         else:
             facAddrList = self.getCandidateFacilityList(timeNow, tier)
-            assert facAddrList, ("%s tier change %s to %s has no available facilities"
-                                 % (self.name, self.tier, tier))
+            if not facAddrList:
+                print 'FAILING - patient id %s' % str(self.id)
+                if hasattr(self, 'agentHistory'):
+                    print 'patient history %s' % str(self.agentHistory)
+                else:
+                    print 'patient has no history!'
+                print "%s tier change %s to %s has no available facilities" % (self.name, self.tier, tier)
+#             assert facAddrList, ("%s tier change %s to %s has no available facilities"
+#                                  % (self.name, self.tier, tier))
             homeAddr = self._status.homeAddr
 
             # do we want to test for homeAddr in weighted lists?  how would we weight it?
