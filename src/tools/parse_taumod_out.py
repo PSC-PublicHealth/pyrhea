@@ -46,7 +46,7 @@ __date__ = '2018-04-30'
 __updated__ = '2018-04-30'
 
 TESTRUN = 0
-PROFILE = 1
+PROFILE = 0
 VERBOSITY = 0
 DEBUG = 0
 
