@@ -253,6 +253,9 @@ class TauMod(object):
         elif algorithm == 'running_average':
             if self.pastData is None:
                 self.pastData = defaultdict(float)
+                
+            if self.current_best_tau is None:
+                self.current_best_tau = defaultdict(float)
 
             icuTauMultiplier = 1.10
 
@@ -294,9 +297,11 @@ class TauMod(object):
 
                 newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
 
-                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
+                self.current_best_tau[(fac, tier)] = (self.current_best_tau[(fac, tier)] + newTau) / 2
+                
+                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s, current_best_tau %s"
                        % (fac, tier, total, prevalence, expected, ratio, tauDict[(fac,tier)],
-                          newTau))
+                          newTau, self.current_best_tau[(fac, tier)]))
 
                 tauDict[(fac, tier)] = newTau
 
