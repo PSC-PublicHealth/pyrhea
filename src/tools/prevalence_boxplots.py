@@ -41,7 +41,9 @@ import yaml
 import cPickle as pickle
 from optparse import OptionParser
 import pandas as pd
-import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg') # Hack for no display w/ pyplot. Change pyplot backend *before* loading it.
+import matplotlib.pyplot as plt # use plt.savefig(<path>) rather than plt.show()
 
 __all__ = []
 __version__ = 0.1
@@ -68,7 +70,7 @@ def expandGlobbedList(pathList):
 
 def prevalenceBoxPlots(sampDF, targetD, tier):
     tierDF = sampDF[sampDF['tier']==tier]
-    tierGps = tierDF.groupby('fac')
+b    tierGps = tierDF.groupby('fac')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
     tupleL = [tpl for tpl in tierGps]
     for block in range(nBlocks):
