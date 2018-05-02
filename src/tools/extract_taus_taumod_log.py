@@ -32,7 +32,7 @@ def readTaumodLog(fname):
 
                 print "%s, %s: %s %s %s %s %s"%(fac, tier, prevalence, expected, ratio, tau, newTau)
             except:
-                pass
+                continue
 
             if newTau > 0.9:
                 newTau = 0.9
