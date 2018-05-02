@@ -68,7 +68,7 @@ def expandGlobbedList(pathList):
 
 def prevalenceBoxPlots(sampDF, targetD, tier):
     tierDF = sampDF[sampDF['tier']==tier]
-b    tierGps = tierDF.groupby('fac')
+    tierGps = tierDF.groupby('fac')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
     tupleL = [tpl for tpl in tierGps]
     for block in range(nBlocks):
