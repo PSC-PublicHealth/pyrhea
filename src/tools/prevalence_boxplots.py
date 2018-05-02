@@ -61,15 +61,14 @@ def expandGlobbedList(pathList):
     """
     newPathList = []
     for fName in pathList:
-        print '%s yields %s' % (fName, glob.glob(fName))
+        #print '%s yields %s' % (fName, glob.glob(fName))
         newPathList += glob.glob(fName)
     return newPathList
 
 
 def prevalenceBoxPlots(sampDF, targetD, tier):
     tierDF = sampDF[sampDF['tier']==tier]
-    tierDF['prev_sample'] = tierDF['COLONIZED'].astype(float)/tierDF['TOTAL'].astype(float)
-    tierGps = tierDF.groupby('fac')
+b    tierGps = tierDF.groupby('fac')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
     tupleL = [tpl for tpl in tierGps]
     for block in range(nBlocks):
@@ -99,7 +98,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
 
 def main(argv=None):
     '''Command line options.'''
-    
+
     global VERBOSE
     global DEBUG
 
@@ -157,6 +156,7 @@ def main(argv=None):
         sampDFL = []
         maxDay = None
         for sampFile in sampFileL:
+            print 'parsing ', sampFile
             df = pd.read_msgpack(sampFile)
             mD = df['day'].max()
             if maxDay is None:
@@ -168,6 +168,7 @@ def main(argv=None):
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
         sampDF = pd.concat(sampDFL)
+        sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
         for tier in sampDF.tier.unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
 
