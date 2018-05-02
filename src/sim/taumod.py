@@ -134,6 +134,7 @@ class TauMod(object):
         self.isAdjustableDict = {(ent['fac'], ent['tier']): ent['value']
                                  for ent in Config()['IsAdjustable']}
         self.pastData = None
+        self.current_best_tau = None
         self.nUpdates = 0
 
     def getExpected(self, fac, tier):
@@ -225,10 +226,13 @@ class TauMod(object):
         facSampQ1 = facSampGrps.quantile(q=0.25)['prev_sample']
         facSampQ3 = facSampGrps.quantile(q=0.75)['prev_sample']
 
-        #algorithm = 'gr_independent'
-        algorithm = 'running_average'
+        algorithm = 'gr_independent'
+        #algorithm = 'running_average'
 
         if algorithm == 'gr_independent':
+            if self.current_best_tau is None:
+                self.current_best_tau = defaultdict(float)
+
             for key, colonized in facSums['COLONIZED'].to_dict().items():
                 tier, fac = key
                 if not self.isAdjustable(fac, tier):
@@ -256,18 +260,25 @@ class TauMod(object):
 
                 #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
                 newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+                self.current_best_tau[(fac, tier)] = (self.current_best_tau[(fac, tier)] + newTau) / 2
 
-                print ("%s %s: total: %s, prevalence %s, expected %s," 
+                print (("%s %s: total: %s, prevalence %s, expected %s," 
                        " prev_mean %s, prev_stdv %s prev_min %s, prev_q1 %s, prev_q2 %s, prev_q3 %s, prev_max %s,"
-                       " ratio %s, tau %s, newTau %s") % (fac, tier, total, prevalence, expected,
-                                                          facSampMean[key], facSampStdv[key], facSampMin[key],
-                                                          facSampQ1[key], facSampMedian[key], facSampQ3[key],
-                                                          facSampMax[key], ratio, tauDict[(fac,tier)], newTau)
+                       " ratio %s, tau %s, newTau %s, current_best_tau %s")
+                        % (fac, tier, total, prevalence, expected,
+                           facSampMean[key], facSampStdv[key], facSampMin[key],
+                           facSampQ1[key], facSampMedian[key], facSampQ3[key],
+                           facSampMax[key], ratio, tauDict[(fac,tier)], newTau,
+                           self.current_best_tau[(fac, tier)]))
+
                 tauDict[(fac, tier)] = newTau
 
         elif algorithm == 'running_average':
             if self.pastData is None:
                 self.pastData = defaultdict(float)
+
+            if self.current_best_tau is None:
+                self.current_best_tau = defaultdict(float)
 
             icuTauMultiplier = 1.10
 
@@ -308,13 +319,16 @@ class TauMod(object):
                 ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
 
                 newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+                self.current_best_tau[(fac, tier)] = (self.current_best_tau[(fac, tier)] + newTau) / 2
 
-                print ("%s %s: total: %s, prevalence %s, expected %s," 
+                print (("%s %s: total: %s, prevalence %s, expected %s," 
                        " prev_mean %s, prev_stdv %s prev_min %s, prev_q1 %s, prev_q2 %s, prev_q3 %s, prev_max %s,"
-                       " ratio %s, tau %s, newTau %s") % (fac, tier, total, prevalence, expected,
-                                                          facSampMean[key], facSampStdv[key], facSampMin[key],
-                                                          facSampQ1[key], facSampMedian[key], facSampQ3[key],
-                                                          facSampMax[key], ratio, tauDict[(fac,tier)], newTau)
+                       " ratio %s, tau %s, newTau %s, current_best_tau %s")
+                        % (fac, tier, total, prevalence, expected,
+                           facSampMean[key], facSampStdv[key], facSampMin[key],
+                           facSampQ1[key], facSampMedian[key], facSampQ3[key],
+                           facSampMax[key], ratio, tauDict[(fac,tier)], newTau,
+                           self.current_best_tau[(fac, tier)]))
 
                 tauDict[(fac, tier)] = newTau
 

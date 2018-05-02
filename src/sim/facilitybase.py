@@ -712,6 +712,10 @@ class PatientAgent(pyrheabase.PatientAgent):
         self.agentHistory = []
         self.addHistoryEntry(self.ward, timeNow)
 
+    @classmethod
+    def allocateIds(cls, fac, count):
+        cls.idCounters[fac.abbrev] += count
+
     def addHistoryEntry(self, ward, timeNow):
         self.agentHistory.append((timeNow, ward.fac.abbrev, ward.fac.category, ward.tier))
 

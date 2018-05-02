@@ -806,6 +806,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
         fac.patientStats = patientStats
         TotalCommunity += agentCount
+        PatientAgent.allocateIds(fac, agentCount)
         logger.info('read population for %s from cache (%s freeze-dried people, %s)'
                     %(fDesc['abbrev'], agentCount, TotalCommunity))
 

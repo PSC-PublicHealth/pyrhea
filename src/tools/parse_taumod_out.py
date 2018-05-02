@@ -94,7 +94,7 @@ def parseTaumodOut(fname):
     counts = defaultdict(int)
     for rec in outRecs:
         sepL1 = rec.split(',')
-        if len(sepL1) == 12:
+        if len(sepL1) == 13:
             sepL10 = sepL1[0].split(':')
             sepL10 = [word.strip() for word in sepL10]
             assert sepL10[1] == 'total', 'bad first sep %s'%sepL1
