@@ -211,9 +211,10 @@ def main(argv=None):
             sampDFL.append(df[df.day.isin(days)])
         sampDF = pd.concat(sampDFL)
         sampDF = sampDF.groupby(['tier', 'fac', 'day', 'run']).sum()  # Sum over wards within a sample
-        print sampDF
+        sampDF = sampDF.drop(columns=['ward'])
+        print sampDF.columns
         sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
-        for tier in sampDF.tier.unique():
+        for tier in sampDF['tier'].unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
         #tierPrevalenceBoxPlot(sampDF, targetD)
 
