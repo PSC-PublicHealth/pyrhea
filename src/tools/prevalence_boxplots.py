@@ -94,10 +94,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             markerXL.append(1.0 + idx)
             markerYL.append(targetD[(key, tier)])
         print 'plotting %s' % str(labelL)
-        oldSz = rcParams['xtick.labelsize']
-        print 'oldSz: ', oldSz
-        rcParams['xtick.labelsize'] = 'small'
-        axes.boxplot(sampL, labels=labelL)
+        axes.boxplot(sampL, labels=labelL, fontsize=1)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
             axes.set_title('%s %d' % (tier, blockNum))
@@ -105,7 +102,6 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             axes.set_title(tier)
         axes.set_yscale('log')
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
-        rcParams['xtick.labelsize'] = oldSz
         plt.cla()  # to save memory
 
 
