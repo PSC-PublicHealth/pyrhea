@@ -196,9 +196,10 @@ def main(argv=None):
             sampFileL = expandGlobbedList(sampFileL)
         sampDFL = []
         maxDay = None
-        for sampFile in sampFileL:
+        for idx, sampFile in enumerate(sampFileL):
             print 'parsing ', sampFile
             df = pd.read_msgpack(sampFile)
+            df['run'] = idx
             mD = df['day'].max()
             if maxDay is None:
                 maxDay = mD
@@ -208,7 +209,7 @@ def main(argv=None):
                                        % (sampFile, mD, maxDay))
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
-        sampDF = pd.concat(sampDFL, names=['run'])
+        sampDF = pd.concat(sampDFL)
         print sampDF
         sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
         for tier in sampDF.tier.unique():
