@@ -37,6 +37,7 @@ import sys
 import os
 import glob
 import yaml
+from collections import defaultdict
 
 import cPickle as pickle
 from optparse import OptionParser
@@ -91,7 +92,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             sampL.append(subDF['prev_sample'].dropna())
             markerXL.append(1.0 + idx)
             markerYL.append(targetD[(key, tier)])
-        print 'ready %d: %d %s' % (block, len(sampL), labelL)
+        print 'plotting %s' % str(labelL)
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
@@ -102,40 +103,36 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
         plt.cla()  # to save memory
 
-# def tierPrevalenceBoxPlots(sampDF, targetD):
-#     tierDF = sampDF[sampDF['tier']==tier]
-#     tierGps = tierDF.groupby('fac')
-#     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
-#     tupleL = [tpl for tpl in tierGps]
-#     fig, axes = plt.subplots(1, 1)  # @UnusedVariable
-#     print 'starting tier %s' % tier
-#     for block in range(nBlocks):
-#         blockNum = block + 1
-#         tupleBlockL = tupleL[block * BOXES_PER_FIG : (block + 1) * BOXES_PER_FIG]
-#         if not tupleBlockL:
-#             break  # annoying edge case
-#         labelL = []
-#         sampL = []
-#         markerXL = []
-#         markerYL = []
-#         for idx, (key, subDF) in enumerate(tupleBlockL):
-#             #print 'fac %s tier %s' % (key, tier)
-#             #print subDF
-#             labelL.append(key)
-#             sampL.append(subDF['prev_sample'].dropna())
-#             markerXL.append(1.0 + idx)
-#             markerYL.append(targetD[(key, tier)])
-#         print 'ready %d: %d %s' % (block, len(sampL), labelL)
-#         axes.boxplot(sampL, labels=labelL)
-#         axes.plot(markerXL, markerYL, 'D')
-#         if nBlocks > 1:
-#             axes.set_title('%s %d' % (tier, blockNum))
-#         else:
-#             axes.set_title(tier)
-#         axes.set_yscale('log')
-#         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
-#         plt.cla()  # to save memory
-    
+def tierPrevalenceBoxPlots(sampDF, targetD):
+    # Need a different summing pattern for this copy of sampDF
+    sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
+    sampDF = sampDF.drop(columns=['ward', 'fac'])
+    sampDF = sampDF.add_suffix('_sum').reset_index()
+    sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
+
+    tierTargetD = defaultdict(set)
+    for (fac, tier), val in targetD.items():  # @UnusedVariable
+        tierTargetD[tier].add(val)
+
+    labelL = []
+    sampL = []
+    markerXL = []
+    markerYL = []
+    for col, tier in enumerate(sampDF['tier'].unique()):
+        labelL.append(tier)
+        tierDF = sampDF[sampDF['tier']==tier]
+        sampL.append(tierDF['prev_sample'].dropna())
+        for val in tierTargetD[tier]:
+            markerXL.append(1.0 + col)
+            markerYL.append(val)
+
+    fig, axes = plt.subplots(1, 1)  # @UnusedVariable
+    print 'plotting tier collective boxplots'
+    axes.boxplot(sampL, labels=labelL)
+    axes.plot(markerXL, markerYL, 'D')
+    axes.set_yscale('log')
+    plt.savefig('prevalence_pooled_over_tiers.png')
+
 
 def main(argv=None):
     '''Command line options.'''
@@ -210,14 +207,14 @@ def main(argv=None):
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
         sampDF = pd.concat(sampDFL)
+        savSampDF = sampDF.copy()
         sampDF = sampDF.groupby(['tier', 'fac', 'day', 'run']).sum()  # Sum over wards within a sample
         sampDF = sampDF.drop(columns=['ward'])
         sampDF = sampDF.add_suffix('_sum').reset_index()
-        print sampDF.columns
         sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
         for tier in sampDF['tier'].unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
-        #tierPrevalenceBoxPlot(sampDF, targetD)
+        tierPrevalenceBoxPlot(savSampDF, targetD)
 
     except Exception, e:
         indent = len(program_name) * " "
