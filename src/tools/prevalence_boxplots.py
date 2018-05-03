@@ -78,6 +78,8 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
     for block in range(nBlocks):
         blockNum = block + 1
         tupleBlockL = tupleL[block * BOXES_PER_FIG : (block + 1) * BOXES_PER_FIG]
+        if not tupleBlockL:
+            break  # annoying edge case
         labelL = []
         sampL = []
         markerXL = []
