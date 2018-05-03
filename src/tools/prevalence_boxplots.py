@@ -94,7 +94,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             markerXL.append(1.0 + idx)
             markerYL.append(targetD[(key, tier)])
         print 'plotting %s' % str(labelL)
-        axes.tick_params(axis='x', labelsize='small')
+        axes.tick_params(axis='x', labelsize='small', labelrotation=45.0)
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
