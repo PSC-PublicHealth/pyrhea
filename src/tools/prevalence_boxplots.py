@@ -97,8 +97,6 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         axes.tick_params(axis='x', labelrotation=45.0)
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
-        axes.setp(axes, xticks=[y + 1 for y in range(len(sampL))],
-                  xticklabels=labelL, )
         if nBlocks > 1:
             axes.set_title('%s %d' % (tier, blockNum))
         else:
