@@ -4,6 +4,15 @@
 prevalence_boxplots -- This module generates boxplots of prevalence values from collections of test runs.
 
 prevalence_boxplots is a tool that generates boxplots of prevalence values from collections of test runs.
+A typical usage command would be something like:
+
+  ./prevalence_boxplots.py -s $workdir/cre_prev_run_\*.mpk --glob -t $workdir/expected.pkl -y $workdir/taumod_config.yaml
+
+where $workdir is the directory containing run inputs and results.  taumod_config is used to supply the
+sampling days to be used.
+
+Output is a set of files prevalence_TIER_nn.png (where TIER is for example HOSP and nn is an integer)
+and prevalence_pooled_over_tiers.png .
 
 It defines prevalenceBoxPlots, tierPrevalenceBoxPlots
 
