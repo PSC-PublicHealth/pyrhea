@@ -5,7 +5,7 @@ prevalence_boxplots -- This module generates boxplots of prevalence values from 
 
 prevalence_boxplots is a tool that generates boxplots of prevalence values from collections of test runs.
 
-It defines prevalenceBoxPlots
+It defines prevalenceBoxPlots, tierPrevalenceBoxPlots
 
 @author:     welling
 
@@ -102,6 +102,40 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
         plt.cla()  # to save memory
 
+def tierPrevalenceBoxPlots(sampDF, targetD):
+    tierDF = sampDF[sampDF['tier']==tier]
+    tierGps = tierDF.groupby('fac')
+    nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
+    tupleL = [tpl for tpl in tierGps]
+    fig, axes = plt.subplots(1, 1)  # @UnusedVariable
+    print 'starting tier %s' % tier
+    for block in range(nBlocks):
+        blockNum = block + 1
+        tupleBlockL = tupleL[block * BOXES_PER_FIG : (block + 1) * BOXES_PER_FIG]
+        if not tupleBlockL:
+            break  # annoying edge case
+        labelL = []
+        sampL = []
+        markerXL = []
+        markerYL = []
+        for idx, (key, subDF) in enumerate(tupleBlockL):
+            #print 'fac %s tier %s' % (key, tier)
+            #print subDF
+            labelL.append(key)
+            sampL.append(subDF['prev_sample'].dropna())
+            markerXL.append(1.0 + idx)
+            markerYL.append(targetD[(key, tier)])
+        print 'ready %d: %d %s' % (block, len(sampL), labelL)
+        axes.boxplot(sampL, labels=labelL)
+        axes.plot(markerXL, markerYL, 'D')
+        if nBlocks > 1:
+            axes.set_title('%s %d' % (tier, blockNum))
+        else:
+            axes.set_title(tier)
+        axes.set_yscale('log')
+        plt.savefig('prevalence_%s_%02d.png' % (tier, block))
+        plt.cla()  # to save memory
+    
 
 def main(argv=None):
     '''Command line options.'''
@@ -174,10 +208,12 @@ def main(argv=None):
                                        % (sampFile, mD, maxDay))
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
-        sampDF = pd.concat(sampDFL)
+        sampDF = pd.concat(sampDFL, keys=range(len(sampDFL)), names=['run'])
+        print 'columns: ', sampDF.columns
         sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
         for tier in sampDF.tier.unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
+        tierPrevalenceBoxPlot(sampDF, targetD)
 
     except Exception, e:
         indent = len(program_name) * " "
