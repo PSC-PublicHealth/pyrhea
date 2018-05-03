@@ -103,10 +103,10 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
         plt.cla()  # to save memory
 
+
 def tierPrevalenceBoxPlot(sampDF, targetD):
     # Need a different summing pattern for this copy of sampDF
     sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
-    sampDF = sampDF.drop(columns=['ward', 'fac'])
     sampDF = sampDF.add_suffix('_sum').reset_index()
     sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
 
