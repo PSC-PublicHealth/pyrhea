@@ -102,6 +102,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         else:
             axes.set_title(tier)
         axes.set_yscale('log')
+        plt.tight_layout()
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
         plt.cla()  # to save memory
 
