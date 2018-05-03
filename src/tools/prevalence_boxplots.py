@@ -212,8 +212,9 @@ def main(argv=None):
         sampDF = pd.concat(sampDFL)
         sampDF = sampDF.groupby(['tier', 'fac', 'day', 'run']).sum()  # Sum over wards within a sample
         sampDF = sampDF.drop(columns=['ward'])
+        sampDF = sampDF.add_suffix('_sum').reset_index()
         print sampDF.columns
-        sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
+        sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
         for tier in sampDF['tier'].unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
         #tierPrevalenceBoxPlot(sampDF, targetD)
@@ -221,7 +222,8 @@ def main(argv=None):
     except Exception, e:
         indent = len(program_name) * " "
         sys.stderr.write(program_name + ": " + repr(e) + "\n")
-        sys.stderr.write(indent + "  for help use --help")
+        sys.stderr.write(indent + "  for help use --help\n")
+        raise
         return 2
 
 
