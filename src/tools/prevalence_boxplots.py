@@ -208,8 +208,8 @@ def main(argv=None):
                                        % (sampFile, mD, maxDay))
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
-        sampDF = pd.concat(sampDFL, keys=range(len(sampDFL)), names=['run'])
-        print 'columns: ', sampDF.columns
+        sampDF = pd.concat(sampDFL, names=['run'])
+        print sampDF
         sampDF['prev_sample'] = sampDF['COLONIZED'].astype(float)/sampDF['TOTAL'].astype(float)
         for tier in sampDF.tier.unique():
             prevalenceBoxPlots(sampDF, targetD, tier)
