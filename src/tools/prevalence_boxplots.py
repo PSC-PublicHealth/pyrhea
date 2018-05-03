@@ -96,7 +96,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
         print 'plotting %s' % str(labelL)
         oldSz = rcParams['xtick.labelsize']
         print 'oldSz: ', oldSz
-        rcParams['xtick.labelsize'] = 2
+        rcParams['xtick.labelsize'] = 'small'
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
