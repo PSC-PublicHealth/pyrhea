@@ -45,6 +45,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg') # Hack for no display w/ pyplot. Change pyplot backend *before* loading it.
 import matplotlib.pyplot as plt # use plt.savefig(<path>) rather than plt.show()
+from matplotlib import rcParams
 
 __all__ = []
 __version__ = 0.1
@@ -93,6 +94,8 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             markerXL.append(1.0 + idx)
             markerYL.append(targetD[(key, tier)])
         print 'plotting %s' % str(labelL)
+        oldSz = rcParams['xtick.labelsize']
+        rcParams['xtick.labelsize'] = 6
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
@@ -101,6 +104,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             axes.set_title(tier)
         axes.set_yscale('log')
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
+        rcParams['xtick.labelsize'] = oldSz
         plt.cla()  # to save memory
 
 
