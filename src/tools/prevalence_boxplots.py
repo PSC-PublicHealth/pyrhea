@@ -73,6 +73,8 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
     tierGps = tierDF.groupby('fac')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
     tupleL = [tpl for tpl in tierGps]
+    fig, axes = plt.subplots(1, 1)  # @UnusedVariable
+    print 'starting tier %s' % tier
     for block in range(nBlocks):
         blockNum = block + 1
         tupleBlockL = tupleL[block * BOXES_PER_FIG : (block + 1) * BOXES_PER_FIG]
@@ -87,7 +89,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             sampL.append(subDF['prev_sample'].dropna())
             markerXL.append(1.0 + idx)
             markerYL.append(targetD[(key, tier)])
-        fig, axes = plt.subplots(1, 1)  # @UnusedVariable
+        print 'ready %d: %d %s' % (block, len(sampL), labelL)
         axes.boxplot(sampL, labels=labelL)
         axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
@@ -96,6 +98,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             axes.set_title(tier)
         axes.set_yscale('log')
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
+        plt.cla()  # to save memory
 
 
 def main(argv=None):
