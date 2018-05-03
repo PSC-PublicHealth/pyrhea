@@ -79,7 +79,7 @@ def expandGlobbedList(pathList):
     return newPathList
 
 
-def prevalenceBoxPlots(sampDF, targetD, tier):
+def prevalenceBoxPlots(sampDF, targetD, tier, logy=False):
     tierDF = sampDF[sampDF['tier']==tier]
     tierGps = tierDF.groupby('fac')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
@@ -110,13 +110,14 @@ def prevalenceBoxPlots(sampDF, targetD, tier):
             axes.set_title('%s %d' % (tier, blockNum))
         else:
             axes.set_title(tier)
-        axes.set_yscale('log')
+        if logy:
+            axes.set_yscale('log')
         plt.tight_layout()
         plt.savefig('prevalence_%s_%02d.png' % (tier, block))
         plt.cla()  # to save memory
 
 
-def tierPrevalenceBoxPlot(sampDF, targetD):
+def tierPrevalenceBoxPlot(sampDF, targetD, logy=False):
     # Need a different summing pattern for this copy of sampDF
     sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
     sampDF = sampDF.add_suffix('_sum').reset_index()
@@ -142,7 +143,8 @@ def tierPrevalenceBoxPlot(sampDF, targetD):
     print 'plotting tier collective boxplots'
     axes.boxplot(sampL, labels=labelL)
     axes.plot(markerXL, markerYL, 'D')
-    axes.set_yscale('log')
+    if logy:
+        axes.set_yscale('log')
     plt.savefig('prevalence_pooled_over_tiers.png')
 
 
@@ -177,12 +179,17 @@ def main(argv=None):
                           help="yaml file containing taumod options [default: %default]", metavar="FILE")
         parser.add_option("-v", "--verbose", dest="verbose", action="count",
                           help="set verbosity level [default: %default]")
+        parser.add_option("--log", dest="log", action="store_true",
+                          help="use log scale on the Y axis", metavar="FLAG")
 
         # set defaults
-        parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl")
+        parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl", log=False)
 
         # process options
         (opts, args) = parser.parse_args(argv)
+        
+        if args:
+            parser.error('This program takes no arguments, just options')
 
         if opts.verbose > 0:
             VERBOSE = True
@@ -225,8 +232,8 @@ def main(argv=None):
         sampDF = sampDF.add_suffix('_sum').reset_index()
         sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
         for tier in sampDF['tier'].unique():
-            prevalenceBoxPlots(sampDF, targetD, tier)
-        tierPrevalenceBoxPlot(savSampDF, targetD)
+            prevalenceBoxPlots(sampDF, targetD, tier, logy=opts.log)
+        tierPrevalenceBoxPlot(savSampDF, targetD, logy=opts.log)
 
     except Exception, e:
         indent = len(program_name) * " "
