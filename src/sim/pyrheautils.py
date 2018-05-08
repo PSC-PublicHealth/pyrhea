@@ -21,6 +21,7 @@ import os.path
 import logging
 from imp import load_source
 import yaml
+import phacsl.utils.formats.yaml_tools as yaml_tools
 from collections import defaultdict
 
 import schemautils
@@ -87,6 +88,7 @@ def pathTranslate(rawPath, lookupDict=None):
 constantsReplacementData = {}
 facilitiesReplacementData = {}
 outputNotesName = ""
+saveNewConstants = None
 
 def readConstantsReplacementFile(fileName):
     global constantsReplacementData
@@ -105,13 +107,22 @@ def readConstantsReplacementFile(fileName):
 
 def replaceData(fileName, yData):
     global constantsReplacementData
+    global saveNewConstants
 
     if fileName not in constantsReplacementData:
         return yData
 
     repl = constantsReplacementData[fileName]
 
-    return replaceYamlData(repl, yData)
+    yaml = replaceYamlData(repl, yData)
+
+    if saveNewConstants is not None:
+        fName = os.path.join(saveNewConstants, os.path.basename(fileName))
+        yaml_tools.save_one(fName, yaml)
+
+    return yaml
+
+        
 
 def replaceYamlData(replacementData, yData):
     for path, val in replacementData:

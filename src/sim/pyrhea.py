@@ -710,8 +710,12 @@ def main():
                           help="save the state and stop after n ticks")
         parser.add_option("-c", "--constantsFile", action="store", type="string", default=None,
                           help="python file defining the dict constantsReplacementData and/or facilitiesReplacementData")
+        parser.add_option("--saveNewConstants", action="store", type="string", default=None,
+                          help="save any modified constants files (from -c) to the specified directory")
         parser.add_option("-b", "--bczmonitor", action="store", type="string", default=None,
                           help="save pathogen status as a pandas data structure in the file specified")
+        parser.add_option("--taumod", action="store_true", default=False,
+                          help="run pyrhea in the taumod mode")
         parser.add_option("-m", "--dumpFacilitiesMap", action="store", type="string", default=None,
                           help="write a facililties map to the file specified to facilitate post processing")
 
@@ -736,7 +740,9 @@ def main():
                   'randomSeed': opts.seed,
                   'checkpoint': opts.checkpoint,
                   'constantsFile': opts.constantsFile,
+                  'saveNewConstants': opts.saveNewConstants,
                   'bczmonitor': opts.bczmonitor,
+                  'taumod': opts.taumod,
                   'dumpFacilitiesMap': opts.dumpFacilitiesMap,
         }
         if len(args) == 1:
@@ -766,6 +772,7 @@ def main():
 
         # make output notes name available to the constants file for magic reasons
         pyrheautils.outputNotesName = clData['outputNotesName']
+        pyrheautils.saveNewConstants = clData['saveNewConstants']
 
         # loading up the constants replacements needs to happen fairly early
         if clData['constantsFile'] is not None:
@@ -869,9 +876,10 @@ def main():
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
 
-                ta = TauAdjuster(m)
-                tauAdjusterList.append(ta)
-                m.setStopTimeFn(1, ta.createCallbackFn())
+                if clData['taumod']:
+                    ta = TauAdjuster(m)
+                    tauAdjusterList.append(ta)
+                    m.setStopTimeFn(1, ta.createCallbackFn())
 
 
         if clData['dumpFacilitiesMap'] is not None:
