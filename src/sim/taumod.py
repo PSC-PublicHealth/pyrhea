@@ -134,6 +134,7 @@ class TauMod(object):
         self.isAdjustableDict = {(ent['fac'], ent['tier']): ent['value']
                                  for ent in Config()['IsAdjustable']}
         self.pastData = None
+        self.current_best_tau = None
         self.nUpdates = 0
 
     def getExpected(self, fac, tier):
@@ -169,10 +170,12 @@ class TauMod(object):
         prevStats = []
         tauDicts = []
         expectedDicts = []
+        days = [self.nextDay - d for d in self.dayList]
         for line in lines[2:]:
             uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ") # @UnusedVariable
 
-            prevStats.append(pd.read_msgpack(prevStatsFileName))
+            pS = pd.read_msgpack(prevStatsFileName)
+            prevStats.append(pS[pS.day.isin(days)])
             with SharedLock(tauFileName):
                 with open(tauFileName, "rb") as f:
                     tauDicts.append(pickle.load(f))
@@ -192,12 +195,11 @@ class TauMod(object):
             return False
 
     def collatePrev(self, prevStats):
-        days = [self.nextDay - d for d in self.dayList]
 
         s = pd.concat(prevStats, ignore_index=True)
 
         # print overall stats
-        tierGroups = s[s.day.isin(days)].groupby(['tier'])
+        tierGroups = s.groupby(['tier'])
         tierSums = tierGroups.sum()
         for tier in tierGroups.groups.keys():
             colRatio = float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)]
@@ -206,17 +208,31 @@ class TauMod(object):
                                                                  tierSums['COLONIZED'][(tier)],
                                                                  tierSums['TOTAL'][(tier)])
 
-        facSums = s[s.day.isin(days)].groupby(['tier', 'fac']).sum()
-        return facSums
+        return s
 
-    def adjustTaus(self, facSums, tauDicts):
+    def adjustTaus(self, facDF, tauDicts):
         # assume all tauDicts are identical (maybe we should verify this?)
         tauDict = tauDicts[0]
+        facGrps = facDF.groupby(['tier', 'fac'])
+        facSums = facGrps.sum()
+
+        facDF['prev_sample'] = facDF['COLONIZED'].astype(float)/facDF['TOTAL'].astype(float)
+        facSampGrps = facDF.groupby(['tier', 'fac'])
+        facSampMax = facSampGrps.max()['prev_sample']
+        facSampMin = facSampGrps.min()['prev_sample']
+        facSampMean = facSampGrps.mean()['prev_sample']
+        facSampMedian = facSampGrps.median()['prev_sample']
+        facSampStdv = facSampGrps.std()['prev_sample']
+        facSampQ1 = facSampGrps.quantile(q=0.25)['prev_sample']
+        facSampQ3 = facSampGrps.quantile(q=0.75)['prev_sample']
 
         #algorithm = 'gr_independent'
         algorithm = 'running_average'
 
         if algorithm == 'gr_independent':
+            if self.current_best_tau is None:
+                self.current_best_tau = defaultdict(float)
+
             for key, colonized in facSums['COLONIZED'].to_dict().items():
                 tier, fac = key
                 if not self.isAdjustable(fac, tier):
@@ -244,15 +260,25 @@ class TauMod(object):
 
                 #newTau = ((ratio - 1) * self.adjFactor + 1) * tauDict[(fac, tier)]
                 newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+                self.current_best_tau[(fac, tier)] = (self.current_best_tau[(fac, tier)] + newTau) / 2
 
-                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
-                       % (fac, tier, total, prevalence, expected, ratio, tauDict[(fac,tier)],
-                          newTau))
+                print (("%s %s: total: %s, prevalence %s, expected %s," 
+                       " prev_mean %s, prev_stdv %s prev_min %s, prev_q1 %s, prev_q2 %s, prev_q3 %s, prev_max %s,"
+                       " ratio %s, tau %s, newTau %s, current_best_tau %s")
+                        % (fac, tier, total, prevalence, expected,
+                           facSampMean[key], facSampStdv[key], facSampMin[key],
+                           facSampQ1[key], facSampMedian[key], facSampQ3[key],
+                           facSampMax[key], ratio, tauDict[(fac,tier)], newTau,
+                           self.current_best_tau[(fac, tier)]))
+
                 tauDict[(fac, tier)] = newTau
 
         elif algorithm == 'running_average':
             if self.pastData is None:
                 self.pastData = defaultdict(float)
+
+            if self.current_best_tau is None:
+                self.current_best_tau = defaultdict(float)
 
             icuTauMultiplier = 1.10
 
@@ -293,10 +319,16 @@ class TauMod(object):
                 ratio = ctr + GOLDEN_RESPHI * (ratio - ctr)
 
                 newTau = min(ratio*tauDict[(fac, tier)], 0.9999)
+                self.current_best_tau[(fac, tier)] = (self.current_best_tau[(fac, tier)] + newTau) / 2
 
-                print ("%s %s: total: %s, prevalence %s, expected %s, ratio %s, tau %s, newTau %s"
-                       % (fac, tier, total, prevalence, expected, ratio, tauDict[(fac,tier)],
-                          newTau))
+                print (("%s %s: total: %s, prevalence %s, expected %s," 
+                       " prev_mean %s, prev_stdv %s prev_min %s, prev_q1 %s, prev_q2 %s, prev_q3 %s, prev_max %s,"
+                       " ratio %s, tau %s, newTau %s, current_best_tau %s")
+                        % (fac, tier, total, prevalence, expected,
+                           facSampMean[key], facSampStdv[key], facSampMin[key],
+                           facSampQ1[key], facSampMedian[key], facSampQ3[key],
+                           facSampMax[key], ratio, tauDict[(fac,tier)], newTau,
+                           self.current_best_tau[(fac, tier)]))
 
                 tauDict[(fac, tier)] = newTau
 
@@ -314,8 +346,8 @@ class TauMod(object):
         prevStats, tauDicts, expectedDicts = self.getWorkerStats()
         self.expectedPrevalence = expectedDicts[0]
 
-        facSums = self.collatePrev(prevStats)
-        tauDict = self.adjustTaus(facSums, tauDicts)
+        facDF = self.collatePrev(prevStats)
+        tauDict = self.adjustTaus(facDF, tauDicts)
         self.createWorkFile(tauDict)
 
 

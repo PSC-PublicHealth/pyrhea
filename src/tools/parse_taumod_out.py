@@ -94,7 +94,7 @@ def parseTaumodOut(fname):
     counts = defaultdict(int)
     for rec in outRecs:
         sepL1 = rec.split(',')
-        if len(sepL1) == 6:
+        if len(sepL1) == 13:
             sepL10 = sepL1[0].split(':')
             sepL10 = [word.strip() for word in sepL10]
             assert sepL10[1] == 'total', 'bad first sep %s'%sepL1
@@ -141,7 +141,7 @@ def main(argv=None):
                           help="set verbosity level [default: %default]")
 
         # set defaults
-        parser.set_defaults(outfile="./taumod.out", infile="./taumod.mpk")
+        parser.set_defaults(outfile="./taumod.mpk", infile="./taumod.out")
 
         # process options
         (opts, args) = parser.parse_args(argv)
