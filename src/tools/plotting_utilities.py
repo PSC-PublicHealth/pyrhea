@@ -428,41 +428,42 @@ def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facD
     figs.tight_layout(h_pad=2)
     figs.canvas.set_window_title(abbrev)
 
-def plotLogImg(mtx, minVal, maxVal):
+def plotLogImg(axes, mtx, minVal, maxVal):
     fltIm = np.log10(mtx.astype(np.float32) + 1.0)
     myMin = np.log10(float(minVal) + 1.0)
     myMax = np.log10(float(maxVal) + 1.0)
 #     fltIm = mtx.astype(np.float32)
 #     myMin, myMax = minVal, maxVal
-    return plt.imshow(fltIm,
+    return axes.imshow(fltIm,
 #                       cmap=cm.RdYlGn,
-                      cmap=cm.viridis,
-                      vmin=myMin, vmax=myMax,
+                       cmap=cm.viridis,
+                       vmin=myMin, vmax=myMax,
 #                       interpolation='bilinear',
 #                       origin='lower',
 #                       extent=[-3, 3, -3, 3]
                )
 
-def plotImg(mtx, minVal, maxVal):
+def plotImg(axes, mtx, minVal, maxVal):
     fltIm = mtx.astype(np.float32)
     myMin, myMax = minVal, maxVal
-    return plt.imshow(fltIm,
-                      cmap=cm.bwr,
-                      vmin=myMin, vmax=myMax,
-                      )
+    return axes.imshow(fltIm,
+                       cmap=cm.bwr,
+                       vmin=myMin, vmax=myMax,
+                       )
 
 def pltMtxImageFig(directMtx, measDirectMtx, indirectMtx, measIndirectMtx):
     maxVal = max(np.max(directMtx), np.max(indirectMtx))
 
-    ax11 = plt.subplot(2, 2, 1)
+    fig, axesL = plt.subplots(nrows=2, ncols=2)
+    ax11 = axesL[0,0]
     ax11.set_title('log direct')
-    plotLogImg(directMtx, 0.0, float(maxVal))
+    mappable11 = plotLogImg(ax11, directMtx, 0.0, float(maxVal))
 
-    ax12 = plt.subplot(2, 2, 2)
+    ax12 = axesL[0,1]
     ax12.set_title('log indirect')
-    plotLogImg(indirectMtx, 0.0, float(maxVal))
+    mappable12 = plotLogImg(ax12, indirectMtx, 0.0, float(maxVal))
 
-    plt.colorbar(ax=[ax11, ax12])
+    plt.colorbar(mappable=mappable12, ax=[ax11, ax12])
 
     sclMtx = (float(np.sum(directMtx))/float(np.sum(measDirectMtx))) * measDirectMtx
     #deltaMtx = (2.0*(directMtx - sclMtx)/(directMtx + sclMtx))
@@ -475,16 +476,54 @@ def pltMtxImageFig(directMtx, measDirectMtx, indirectMtx, measIndirectMtx):
     #indirectDeltaMtx[0:100, 0:100] = 0.0
     lim = max(np.max(np.fabs(directDeltaMtx)), np.max(np.fabs(indirectDeltaMtx)))
 
-    ax21 = plt.subplot(2, 2, 3)
+    ax21 = axesL[1,0]
     ax21.set_title('normalized direct delta')
-    plotImg(directDeltaMtx, -lim, lim)
+    mappable21 = plotImg(ax21, directDeltaMtx, -lim, lim)
 
-    ax22 = plt.subplot(2, 2, 4)
+    ax22 = axesL[1,1]
     ax22.set_title('normalized indirect delta')
-    plotImg(indirectDeltaMtx, -lim, lim)
+    mappable22 = plotImg(ax22, indirectDeltaMtx, -lim, lim)
 
-    plt.colorbar(ax=[ax21, ax22])
+    plt.colorbar(mappable=mappable21, ax=[ax21, ax22])
 
+
+def pltCurvesWithBounds(df, axes, valKey, dayKey, gpKey, gpValL, labelL):
+    """
+    df is a Pandas DataFrame
+    axes is a pyplot axes object
+    valKey is the key specifying the field of interest in the dataframe, for example 'prevalence'
+    dayKey is the key to be used to extract x coordinate info from the dataframe, for example 'day'
+    gpKey is the key to be used to extract y sample data from the dataframe, for example 'tier'
+    gpValL is a list of values of gpKey to be plotted, for example ['HOSP', 'NURSING']
+    labelL is the list of labels to be associated with curves specified by gpValL
+    """
+    allSelGrps = df.groupby([gpKey, dayKey])
+    allSelMedian = allSelGrps.median().reset_index()
+    allSelQ1 = allSelGrps.quantile(0.25).reset_index()
+    allSelQ3 = allSelGrps.quantile(0.75).reset_index()
+    for gpVal, label in zip(gpValL, labelL):
+        dayV = allSelMedian[allSelMedian[gpKey]==gpVal][dayKey]
+        prevV = allSelMedian[allSelMedian[gpKey]==gpVal][valKey]
+        q1V = allSelQ1[allSelQ1[gpKey]==gpVal][valKey]
+        q3V = allSelQ3[allSelQ3[gpKey]==gpVal][valKey]
+        axes.plot(dayV, prevV, '-', label='%s median' % label)
+        axes.fill_between(dayV, q1V, q3V, alpha=0.4, label='%s IQR' % label)
+
+def testPltCurvesWithBounds():
+    x = np.linspace(0, 180, 180)
+    y = np.sin(x/50.0)
+    dfL = []
+    for tier, bias in [('high', 1.0), ('low', 0.5)]:
+        for i in xrange(10):
+            df = pd.DataFrame({'day': x, 'tier': tier,
+                               'value': y + bias +np.random.normal(0.0, 0.3, size=y.shape)})
+            dfL.append(df)
+    allDF = pd.concat(dfL)
+    fig, axes = plt.subplots(1, 1)
+    pltCurvesWithBounds(allDF, axes, 'value', 'day', 'tier',
+                        ['high', 'low'], ['bias high', 'bias low'])
+    axes.legend()
+    axes.set_title('PltCurvesWithBounds test')
 
 def main():
     input_yaml = '../sim/twoyear_run_ChicagoLand.yaml'
@@ -565,8 +604,10 @@ def main():
                ],
                ['measured', 'run0', 'run1', 'run2', 'run3'],
                idxFacTbl, facDict)
-    
+
     pltMtxImageFig(sMx0, mMx, siMx0, miMx)
+
+    testPltCurvesWithBounds()
 
     plt.show()
 
