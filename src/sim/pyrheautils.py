@@ -118,7 +118,7 @@ def replaceData(fileName, yData):
 
     if saveNewConstants is not None:
         fName = os.path.join(saveNewConstants, os.path.basename(fileName))
-        yaml_tools.save_one(fName, yaml)
+        yaml_tools.save_one(fName, yaml, [])
 
     return yaml
 
