@@ -187,7 +187,7 @@ def main(argv=None):
 
         # process options
         (opts, args) = parser.parse_args(argv)
-        
+
         if args:
             parser.error('This program takes no arguments, just options')
 

@@ -9,6 +9,7 @@ from ggplot import *
 import concurrent.futures
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from matplotlib.legend_handler import HandlerTuple
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import os.path
 
@@ -501,13 +502,16 @@ def pltCurvesWithBounds(df, axes, valKey, dayKey, gpKey, gpValL, labelL):
     allSelMedian = allSelGrps.median().reset_index()
     allSelQ1 = allSelGrps.quantile(0.25).reset_index()
     allSelQ3 = allSelGrps.quantile(0.75).reset_index()
+    artistPairs = []
     for gpVal, label in zip(gpValL, labelL):
         dayV = allSelMedian[allSelMedian[gpKey]==gpVal][dayKey]
         prevV = allSelMedian[allSelMedian[gpKey]==gpVal][valKey]
         q1V = allSelQ1[allSelQ1[gpKey]==gpVal][valKey]
         q3V = allSelQ3[allSelQ3[gpKey]==gpVal][valKey]
-        axes.plot(dayV, prevV, '-', label='%s median' % label)
-        axes.fill_between(dayV, q1V, q3V, alpha=0.4, label='%s IQR' % label)
+        lineArtist, = axes.plot(dayV, prevV, '-')
+        fillArtist = axes.fill_between(dayV, q1V, q3V, alpha=0.4)
+        artistPairs.append((lineArtist, fillArtist))
+    return artistPairs, [(lbl + ' median and IQR') for lbl in labelL]
 
 def testPltCurvesWithBounds():
     x = np.linspace(0, 180, 180)
@@ -520,9 +524,9 @@ def testPltCurvesWithBounds():
             dfL.append(df)
     allDF = pd.concat(dfL)
     fig, axes = plt.subplots(1, 1)
-    pltCurvesWithBounds(allDF, axes, 'value', 'day', 'tier',
-                        ['high', 'low'], ['bias high', 'bias low'])
-    axes.legend()
+    artistPairL, labelL = pltCurvesWithBounds(allDF, axes, 'value', 'day', 'tier',
+                                              ['high', 'low'], ['bias high', 'bias low'])
+    axes.legend(artistPairL, labelL, handler_map={tuple: HandlerTuple()})
     axes.set_title('PltCurvesWithBounds test')
 
 def main():
