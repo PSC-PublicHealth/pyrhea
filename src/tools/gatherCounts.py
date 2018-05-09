@@ -315,20 +315,60 @@ def main():
                                    'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} for k in valuesToGather.keys()}
                 #statTierDict = {k:np.array([0.0 for x in range(0,len(totalCounts))]) for k in valuesToGather.keys()}
                 #statTierDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} 
-            cDs = np.array([float(x[abbrev][tier]['colonizedDays']) for x in totalCounts])
-            bDs = np.array([float(x[abbrev][tier]['bedDays']) for x in totalCounts])
+            cDList = []
+            bDList = []
             if opts.producetimeseries:
-                cTs = [ x[abbrev][tier]['colonizedDaysTS'] for x in totalCounts ]
-                bTs = [ x[abbrev][tier]['bedDaysTS'] for x in totalCounts ]
-                #print "bTs = {0}".format(bTs)
-            
+                cTs = []
+                bTs = []
             for k in valuesToGather.keys():
-                #if k == "newColonized":
-                #    print np.array([float(x[abbrev][tier][k]) for x in totalCounts])
-                statTierDict[k]['value'] = np.array([float(x[abbrev][tier][k]) for x in totalCounts])
+                statTierDict[k]['value'] = []
                 if opts.producetimeseries:
-                    statTierDict[k]['ts'] = [ x[abbrev][tier]["{0}TS".format(k)] for x in totalCounts ]
-                
+                    statTierDict[k]['ts'] = []
+
+            for x in totalCounts:
+                try:
+                    cDList.append(float(x[abbrev][tier]['colonizedDays']))
+                    bDList.append(float(x[abbrev][tier]['bedDays']))
+                    if opts.producetimeseries:
+                        cTs.append(x[abbrev][tier]['colonizedDaysTS'])
+                        bTs.append(x[abbrev][tier]['bedDaysTS'])
+
+                    for k in valuesToGather.keys():
+                        statTierDict[k]['value'].append(float(x[abbrev][tier][k]))
+                        if opts.producetimeseries:
+                            statTierDict[k]['ts'].append(x[abbrev][tier]["{0}TS".format(k)])
+                        
+                except:
+                    cDList.append(0.0)
+                    bDList.append(0.0)
+                    if opts.producetimeseries:
+                        cTList.append(0)
+                        bTList.append(0)
+                    for k in valuesToGather.keys():
+                        statTierDict[k]['value'].append(0.0)
+                        if opts.producetimeseries:
+                            statTierDict[k]['ts'].append(0)
+ 
+            cDs = np.array(cDList)
+            bDs = np.array(bDList)
+            for k in valuesToGather.keys():
+                statTierDict[k]['value'] = np.array(statTierDict[k]['value'])
+
+
+#            cDs = np.array([float(x[abbrev][tier]['colonizedDays']) for x in totalCounts])
+#            bDs = np.array([float(x[abbrev][tier]['bedDays']) for x in totalCounts])
+#            if opts.producetimeseries:
+#                cTs = [ x[abbrev][tier]['colonizedDaysTS'] for x in totalCounts ]
+#                bTs = [ x[abbrev][tier]['bedDaysTS'] for x in totalCounts ]
+#                #print "bTs = {0}".format(bTs)
+#            
+#            for k in valuesToGather.keys():
+#                #if k == "newColonized":
+#                #    print np.array([float(x[abbrev][tier][k]) for x in totalCounts])
+#                statTierDict[k]['value'] = np.array([float(x[abbrev][tier][k]) for x in totalCounts])
+#                if opts.producetimeseries:
+#                    statTierDict[k]['ts'] = [ x[abbrev][tier]["{0}TS".format(k)] for x in totalCounts ]
+
             #ncDs = np.array([float(x[abbrev][tier]['newColonized']) for x in totalCounts])
             #caDs = np.array([float(x[abbrev][tier]['creArrivals']) for x in totalCounts])
             #aDs = np.array([float(x[abbrev][tier]['arrivals']) for x in totalCounts])
