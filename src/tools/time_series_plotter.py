@@ -385,44 +385,45 @@ def getTimeSeriesList(locKey, specialDict, specialDictKey):
     specialDict is of the form output by mergeNotesFiles().
     specialDictKey is one of the second-level keys of specialDict, for example 'localpathogen'.
     Returns a list of tuples, of three possible forms.
-    
+
     The first form appears if the time series contains
     entries for multiple different status levels for multiple tiers, for example
     populations sorted by CareTier at different PthLevel values.
     That form is:
-    
+
           [(dayArray, valArrayD), (dayArray, valArrayD), ...]
-          
+
     where dayArray is a numpy array of dates and valArrayD has the form:
-    
+
           {(intLvl, intLvl): valArray, (intLvl, intLvl): valArray, ...}
-          
+
     and the ints in the tuple represent the two indices, for example (tier, pthStatus).
-          
+
     The second form appears if the time series contains
     entries for multiple different status levels, for example populations at different PthLevel values.
     That form is:
-    
+
           [(dayArray, valArrayD), (dayArray, valArrayD), ...]
-          
+
     where dayArray is a numpy array of dates and valArrayD has the form:
-    
+
           {intLvl: valArray, intLvl: valArray, ...}
-          
+
     with pathLvl being an integer status index (like a PthLevel) and fracArray being a numpy array counts at
     that level.
-    
+
     The third form appears if the time series data is not classified by level, for example a simple population
     count.  That form is:
 
           [(dayArray, valArray), (dayArray, valArray), ...]
-    
+
     """
-    
+
     global _CACHED_PARSE_DICT
     global _CACHED_PARSE_ID
-    
+
     if _CACHED_PARSE_ID != id(specialDict) or specialDictKey not in _CACHED_PARSE_DICT:
+        _CACHED_PARSE_ID = id(specialDict)
         thisCD = _CACHED_PARSE_DICT[specialDictKey] = defaultdict(list)
         for tpl in timeSeriesListGenerator(specialDict, specialDictKey):
             notesInd, patchName, (loc, ind1, ind2), dayV, dataV = tpl
