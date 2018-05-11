@@ -123,7 +123,6 @@ class NursingHome(Facility):
 
         self.rehabTreeCache = {}
         self.frailTreeCache = {}
-        self.frailRehabTreeCache = {}
         self.addWard(NursingWard('%s_%s_%s' % (category, patch.name, descr['abbrev']),
                                  patch, CareTier.NURSING, nBeds))
 
@@ -135,7 +134,6 @@ class NursingHome(Facility):
         flush.
         """
         self.rehabTreeCache = {}
-        self.frailRehabTreeCache = {}
         self.frailTreeCache = {}
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
@@ -149,28 +147,17 @@ class NursingHome(Facility):
         key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
         _c = _constants
         if patientDiagnosis.overall == PatientOverallHealth.FRAIL:
-            if treatment.rehab:
-                if key in self.frailRehabTreeCache:
-                    return self.frailRehabTreeCache[key]
-                else:
-                    # If no major changes happen, allow for the patient's completing rehab
-                    innerTree = BayesTree(ClassASetter(DiagClassA.WELL),
-                                          PatientStatusSetter(),
-                                          self.rehabCachedCDF.intervalProb(*key))
+            if key in self.frailTreeCache:
+                return self.frailTreeCache[key]
             else:
-                if key in self.frailTreeCache:
-                    return self.frailTreeCache[key]
-                else:
-                    innerTree = PatientStatusSetter()  # No change of state
-            changeTree = buildChangeTree(self.lclRates, forceRelocateDiag=DiagClassA.NEEDSREHAB)
-
-            tree = BayesTree(changeTree, innerTree,
-                             self.frailCachedCDF.intervalProb, tag='LOS')
-            if treatment.rehab:
-                self.frailRehabTreeCache[key] = tree
-            else:
+                innerTree = ClassASetter(DiagClassA.WELL)  # We declare them done with any rehab
+                changeTree = buildChangeTree(self.lclRates, forceRelocateDiag=DiagClassA.NEEDSREHAB)
+    
+                tree = BayesTree(changeTree, innerTree,
+                                 self.frailCachedCDF.intervalProb, tag='LOS')
                 self.frailTreeCache[key] = tree
-            return tree
+                return tree
+
         else:  # overall health is not FRAIL, hence HEALTHY or UNHEALTHY
             if treatment.rehab:
                 if key in self.rehabTreeCache:
