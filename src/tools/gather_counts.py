@@ -68,7 +68,7 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
         for dayVec, curves in tplList:
             #print dayVec
             dayIndex = np.where(dayVec==burninDays)[0][0]
-            print dayIndex
+            #print dayIndex
             tmpVecD = defaultdict(list)
             totVecD = {}
             for tpl, lVec in curves.items():
@@ -80,7 +80,7 @@ def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDay
             for tpl, lVec in curves.items():
                 tier, pthStatus = tpl
                 if pthStatus == PthStatus.COLONIZED:
-                    print len(lVec[dayIndex:])
+                    #print len(lVec[dayIndex:])
                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
                                                                 'colonizedDaysTS':lVec[dayIndex:],
@@ -258,7 +258,6 @@ def main():
     nprocs = opts.nprocs
     print "nprocs = {0}".format(nprocs)
     print "notes = {0}".format(notes)
-    totalCounts = [{} for x in range(0,len(notes))]
 
     argsList = [(notes[i], abbrevList, facDict, valuesToGather, burninDays)
                 for i in range(0, len(notes))]
@@ -282,39 +281,47 @@ def main():
             totalStats.append(pool_helper(args))
     print 'Finished scanning notes'
 
-    '''
-    for i in range(0,len(notes),nprocs):
-        print "i = {0}".format(i)
-        manager = Manager()
-        totalStats = manager.dict()
-        #newColsReturn = manager.dict()
-        print "HERE"
-        jobs = []
-        end = i + nprocs
-        if end > len(notes):
-            end = len(notes)
+    numNotesFiles = len(totalStats)
+    tsDFL = []
+    scalarDL = []
+    for idx, dct in enumerate(totalStats):
+        for abbrev, subD in dct.items():
+            for tier, subSubD in subD.items():
+                
+                tsD = {}
+                scalarD = {}
+                for key, val in subSubD.items():
+                    if key.endswith('TS'):
+                        tsD[key[:-2]] = val
+                    else:
+                        scalarD[key] = val
+                maxLen = max([len(val) for val in tsD.values()])
+                newTSD = {}
+                for key, vec in tsD.items():
+                    if len(vec) < maxLen:
+                        newTSD[key] = np.pad(vec, (maxLen - len(vec), 0),
+                                             'constant', constant_values=(0, 0))
+                    else:
+                        newTSD[key] = vec
+                df = pd.DataFrame.from_dict(newTSD)
+                df['abbrev'] = abbrev
+                df['tier'] = tier
+                df['run'] = idx
+                df.index.name = 'day'
+                tsDFL.append(df)
+                scalarD['abbrev'] = abbrev
+                scalarD['tier'] = tier
+                scalarD['run'] = idx
+                scalarDL.append(scalarD)
+    tsDF = pd.concat(tsDFL).reset_index()
+    scalarDF = pd.DataFrame(scalarDL)
+    #print tsDF
+    #print scalarDF
 
-        for j in range(i,end):
-            print "j = {0}".format(j)
-            #p = Process(target=shit,args=())
-            p = Process(target=extractCountsFromNotes, args=(notes[j],abbrevList, facDict, j,totalStats))
-            jobs.append(p)
-            p.start()
 
-        for proc in jobs:
-            proc.join()
-    '''
-    #print totalStats
+    print "totalStats = {0}".format(totalStats)
+    tsDF.to_msgpack('/tmp/total_counts.mpz')
 
-    for i in range(0,len(totalStats)):
-        totalCounts[i] = totalStats[i]  # Not sure what the point of this is...
-
-    print "totalCounts = {0}".format(totalCounts)
-    import cPickle as pickle
-    with open('/tmp/total_counts.pkl', 'w') as f:
-        pickle.dump(totalCounts, f)
-    #totalCountsDF = pd.concat([pd.DataFrame.from_dict(tC) for tC in totalCounts])
-    #totalCountsDF.to_msgpack('/tmp/total_counts.mpz')
     ### By Tier
     ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
 
@@ -329,30 +336,30 @@ def main():
         if abbrev not in statsByTier.keys():
             statsByTier[abbrev] = {}
             statsByAbbrev[abbrev] = {}
-            statDict = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-                           'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]}
+            statDict = {k:{'value': np.array([0.0 for x in range(0,numNotesFiles)]),
+                           'ts': [[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]}
                            for k in valuesToGather.keys()}
-            #statDictTS = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-            #               'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} for k in valuesToGather.keys()}
-            #statDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]}
-            cDAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            bDAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            prevAs = np.array([0.0 for x in range(0,len(totalCounts))])
+            #statDictTS = {k:{'value': np.array([0.0 for x in range(0,numNotesFiles)]),
+            #               'ts': [[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]} for k in valuesToGather.keys()}
+            #statDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]}
+            cDAs = np.array([0.0 for x in range(0,numNotesFiles)])
+            bDAs = np.array([0.0 for x in range(0,numNotesFiles)])
+            prevAs = np.array([0.0 for x in range(0,numNotesFiles)])
             
             
             if opts.producetimeseries:
-                cTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
-                bTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
+                cTAs = [[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]
+                bTAs = [[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]
           
         for tier,d in tD.items():
             time1 = time.time()
             if tier not in statsByTier[abbrev].keys():
                 statsByTier[abbrev][tier] = {}
                 #statsByTierTS[abbrev][tier] = {}
-                statTierDict = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-                                   'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} for k in valuesToGather.keys()}
-                #statTierDict = {k:np.array([0.0 for x in range(0,len(totalCounts))]) for k in valuesToGather.keys()}
-                #statTierDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} 
+                statTierDict = {k:{'value': np.array([0.0 for x in range(0,numNotesFiles)]),
+                                   'ts': [[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]} for k in valuesToGather.keys()}
+                #statTierDict = {k:np.array([0.0 for x in range(0,numNotesFiles)]) for k in valuesToGather.keys()}
+                #statTierDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,numNotesFiles)]} 
             cDList = []
             bDList = []
             if opts.producetimeseries:
