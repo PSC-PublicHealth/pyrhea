@@ -21,7 +21,8 @@ import os
 import glob
 from multiprocessing import Process,Manager,cpu_count,Pool
 from optparse import OptionParser
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
+import types
 
 import numpy as np
 import pandas as pd
@@ -52,54 +53,103 @@ import time
 DEFAULT_OUT_FILE = 'counts_output.yaml'
 
 
-def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDays):
+def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
+    """Convert the time series contents of a notes file to a Pandas DataFrame"""
     print "note = {0}".format(note)
-    returnDict = {}
     ### totalStats is assumed to be a Manager
+    bigDF = pd.DataFrame(columns=['day', 'abbrev', 'tier'])
     try:
         specialDict = mergeNotesFiles([note],False)
+        print "here {0}".format(note)
+        for key, noteKey in translationDict.items():
+            print "key = {0}".format(key)
+            entryDF = None
+            for abbrev in abbrevList:
+                facDF = None
+                tplList = getTimeSeriesList(abbrev, specialDict, noteKey)
+                if not tplList:
+                    continue
+                for dayVec, curves in tplList:
+                    dayIndex = np.where(dayVec==burninDays)[0][0]
+                    for innerKey, lVec in curves.items():
+                        thisD = {'day': dayVec[dayIndex:]}
+                        if isinstance(innerKey, (int, long)):
+                            tier = CareTier.names[innerKey]
+                            thisD['tier'] = tier
+                            thisD[key] = lVec[dayIndex:]
+                        elif isinstance(innerKey, types.TupleType) and len(innerKey) == 2:
+                            tier, pthStatus = innerKey
+                            tier = CareTier.names[tier]
+                            pthStatus = PthStatus.names[pthStatus]
+                            thisD['tier'] = tier
+                            thisD[pthStatus] = lVec[dayIndex:]
+                        else:
+                            raise RuntimeError('Unknown time series key format {0} for {1} {2}'
+                                               .format(innerKey, abbrev, noteKey))
+                        thisDF = pd.DataFrame(thisD)
+                        if facDF is None:
+                            facDF = thisDF
+                        else:
+                            facDF = pd.merge(facDF, thisDF, how='outer')
+                facDF['abbrev'] = abbrev
+                if entryDF is None:
+                    entryDF = facDF
+                else:
+                    entryDF = pd.concat((entryDF, facDF))
+            entryDF.reset_index(drop=True)
+            bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
         print "for file {0} there is an exception {1}".format(note,e)
-        return {}
-    print "here {0}".format(note)
-    for abbrev in abbrevList:
-        returnDict[abbrev] = {}
-        tplList = getTimeSeriesList(abbrev,specialDict,'localtierpathogen')
-        for dayVec, curves in tplList:
-            #print dayVec
-            dayIndex = np.where(dayVec==burninDays)[0][0]
-            #print dayIndex
-            tmpVecD = defaultdict(list)
-            totVecD = {}
-            for tpl, lVec in curves.items():
-                tier, pthStatus = tpl
-                tmpVecD[tier].append(lVec)
-            for tier, lVecList in tmpVecD.items():
-                totVecD[tier] = sum(lVecList)
-            found = False
-            for tpl, lVec in curves.items():
-                tier, pthStatus = tpl
-                if pthStatus == PthStatus.COLONIZED:
-                    #print len(lVec[dayIndex:])
-                    returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
-                                                                'bedDays':np.sum(totVecD[tier][dayIndex:]),
-                                                                'colonizedDaysTS':lVec[dayIndex:],
-                                                                'bedDaysTS':totVecD[tier][dayIndex:]}
 
-                    for key in translationDict.keys():
-                        returnDict[abbrev][CareTier.names[tier]][key] = 0.0
+    return bigDF
 
-    for key,noteKey in translationDict.items():
-        print "key = {0}".format(key)
-        for abbrev in abbrevList:
-            tplList = getTimeSeriesList(abbrev, specialDict, noteKey)
-            for dayVec, curves in tplList:
-                dayIndex = np.where(dayVec==(burninDays+1))[0][0]
-                for tpl, curve in curves.items():
-                    returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
-                    returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
-
-    return returnDict
+# def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDays):
+#     print "note = {0}".format(note)
+#     returnDict = {}
+#     ### totalStats is assumed to be a Manager
+#     try:
+#         specialDict = mergeNotesFiles([note],False)
+#     except Exception as e:
+#         print "for file {0} there is an exception {1}".format(note,e)
+#         return {}
+#     print "here {0}".format(note)
+#     for abbrev in abbrevList:
+#         returnDict[abbrev] = {}
+#         tplList = getTimeSeriesList(abbrev,specialDict,'localtierpathogen')
+#         for dayVec, curves in tplList:
+#             #print dayVec
+#             dayIndex = np.where(dayVec==burninDays)[0][0]
+#             #print dayIndex
+#             tmpVecD = defaultdict(list)
+#             totVecD = {}
+#             for tpl, lVec in curves.items():
+#                 tier, pthStatus = tpl
+#                 tmpVecD[tier].append(lVec)
+#             for tier, lVecList in tmpVecD.items():
+#                 totVecD[tier] = sum(lVecList)
+#             for tpl, lVec in curves.items():
+#                 tier, pthStatus = tpl
+#                 if pthStatus == PthStatus.COLONIZED:
+#                     #print len(lVec[dayIndex:])
+#                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
+#                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
+#                                                                 'colonizedDaysTS':lVec[dayIndex:],
+#                                                                 'bedDaysTS':totVecD[tier][dayIndex:]}
+# 
+#                     for key in translationDict.keys():
+#                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
+# 
+#     for key,noteKey in translationDict.items():
+#         print "key = {0}".format(key)
+#         for abbrev in abbrevList:
+#             tplList = getTimeSeriesList(abbrev, specialDict, noteKey)
+#             for dayVec, curves in tplList:
+#                 dayIndex = np.where(dayVec==(burninDays+1))[0][0]
+#                 for tpl, curve in curves.items():
+#                     returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
+#                     returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
+# 
+#     return returnDict
 
 
 def combineTimeSeries(tsArray,runDays, tsIncrement=1):
@@ -175,6 +225,8 @@ def main():
     parser.add_option('-m','--nprocs',type='int',default=1,
                       help='number of cpus to run the costing model over')
     parser.add_option('-t','--producetimeseries',action='store_true',default=False)
+    parser.add_option('--producetable', action='store_true', default=False,
+                      help='write the entire dataset as a Pandas DataFrame in .mpz format')
 
 
     opts, args = parser.parse_args()
@@ -186,6 +238,7 @@ def main():
         outFileName = opts.out
     else:
         outFileName = DEFAULT_OUT_FILE
+    dfOutFileName = os.path.splitext(outFileName)[0] + '_dataframe.mpz'
 
     if 'trackedFacilities' not in inputDict or not len(inputDict['trackedFacilities']):
         raise RuntimeError('Run description file does not list any tracked facilities')
@@ -216,37 +269,38 @@ def main():
     print "burninDays = {0}".format(burninDays)
     runDays = int(inputDict['runDurationDays'])
     print "runDays = {0}".format(runDays)
+    scenarioWaitDays = int(inputDict['scenarioWaitDays'])
 
     ### Translation Dict
-    valuesToGatherList = ['newColonized', 'creArrivals', 'arrivals', 'contactPrecautionDays',
-                          'creBundlesHandedOut','creSwabsUsed','newPatientsOnCP','passiveCPDays',
-                          'swabCPDays','xdroCPDays','otherCPDays']
+    # Format for the tuple value is (notesKey, offsetDays, tableHeading)
+    valuesToGather = OrderedDict([('newColonized', ('localtiernewcolonized', 1,
+                                                    'Newly Colonized')),
+                                  ('creArrivals', ('localtiercrearrivals', 1,
+                                                   'CRE Colonized Patients Admissions')),
+                                  ('arrivals', ('localtierarrivals', 1,
+                                                'Patient Admissions')),
+                                  ('contactPrecautionDays', ('localtierCP', 1,
+                                                             'Contact Precaution Days')),
+                                  ('creBundlesHandedOut', ('localtierCREBundle', 1,
+                                                           'CRE Baths Given Out')),
+                                  ('creSwabsUsed', ('localtierCRESwabs', 1,
+                                                    'CRE Swabs Used')),
+                                  ('newPatientsOnCP', ('localtierpatientsOnCP', 1,
+                                                       'Number of Patients Put on CP')),
+                                  ('passiveCPDays', ('localtierpassiveCP', 1,
+                                                     'CRE CP Days due to passive surveillance')),
+                                  ('swabCPDays', ('localtierswabCP', 1,
+                                                  'CRE CP Days due to acitve surveillance')),
+                                  ('xdroCPDays', ('localtierxdroCP', 1,
+                                                  'CRE CP Days due to xdro registry')),
+                                  ('otherCPDays', ('localtierotherCP', 1,
+                                                   'CP Days for other reasons')),
+                                  ('pathStatus', ('localtierpathogen', 0, None))
+                                  ])
 
-    valuesToGather = {'newColonized':'localtiernewcolonized',
-                      'creArrivals':'localtiercrearrivals',
-                      'arrivals':'localtierarrivals',
-                      'contactPrecautionDays': 'localtierCP',
-                      'creBundlesHandedOut': 'localtierCREBundle',
-                      'creSwabsUsed':'localtierCRESwabs',
-                      'newPatientsOnCP': 'localtierpatientsOnCP',
-                      'passiveCPDays':'localtierpassiveCP',
-                      'swabCPDays':'localtierswabCP',
-                      'xdroCPDays':'localtierxdroCP',
-                      'otherCPDays':'localtierotherCP',
-                      }
+    valuesToGatherList = valuesToGather.keys()
 
-    tableHeadings = {'newColonized':'Newly Colonized',
-                      'creArrivals':'CRE Colonized Patients Admissions',
-                      'arrivals':'Patient Admissions',
-                      'contactPrecautionDays': 'Contact Precaution Days',
-                      'creBundlesHandedOut': 'CRE Baths Given Out',
-                      'creSwabsUsed':'CRE Swabs Used',
-                      'newPatientsOnCP':'Number of Patients Put on CP',
-                      'passiveCPDays':'CRE CP Days due to passive surveillance',
-                      'swabCPDays':'CRE CP Days due to acitve surveillance',
-                      'xdroCPDays':'CRE CP Days due to xdro registry',
-                      'otherCPDays':'CP Days for other reasons'
-                      }
+    tableHeadings = {key: tpl[2] for key, tpl in valuesToGather.items()}
 
     notes = []
     if opts.glob:
@@ -259,7 +313,8 @@ def main():
     print "nprocs = {0}".format(nprocs)
     print "notes = {0}".format(notes)
 
-    argsList = [(notes[i], abbrevList, facDict, valuesToGather, burninDays)
+    argsList = [(notes[i], abbrevList,
+                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
                 for i in range(0, len(notes))]
 
     xdroAbbrevs = []
@@ -283,44 +338,16 @@ def main():
 
     numNotesFiles = len(totalStats)
     tsDFL = []
-    scalarDL = []
-    for idx, dct in enumerate(totalStats):
-        for abbrev, subD in dct.items():
-            for tier, subSubD in subD.items():
-                
-                tsD = {}
-                scalarD = {}
-                for key, val in subSubD.items():
-                    if key.endswith('TS'):
-                        tsD[key[:-2]] = val
-                    else:
-                        scalarD[key] = val
-                maxLen = max([len(val) for val in tsD.values()])
-                newTSD = {}
-                for key, vec in tsD.items():
-                    if len(vec) < maxLen:
-                        newTSD[key] = np.pad(vec, (maxLen - len(vec), 0),
-                                             'constant', constant_values=(0, 0))
-                    else:
-                        newTSD[key] = vec
-                df = pd.DataFrame.from_dict(newTSD)
-                df['abbrev'] = abbrev
-                df['tier'] = tier
-                df['run'] = idx
-                df.index.name = 'day'
-                tsDFL.append(df)
-                scalarD['abbrev'] = abbrev
-                scalarD['tier'] = tier
-                scalarD['run'] = idx
-                scalarDL.append(scalarD)
+    for idx, df in enumerate(totalStats):
+        df['run'] = idx
+        tsDFL.append(df)
     tsDF = pd.concat(tsDFL).reset_index()
-    scalarDF = pd.DataFrame(scalarDL)
     #print tsDF
-    #print scalarDF
 
 
     print "totalStats = {0}".format(totalStats)
-    tsDF.to_msgpack('/tmp/total_counts.mpz')
+    if opts.producetable:
+        tsDF.to_msgpack(dfOutFileName)
 
     ### By Tier
     ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
@@ -445,6 +472,7 @@ def main():
             time1Counter += time2-time1
             
             time1 = time.time()
+            
             statsByTier[abbrev][tier]['colonizedDays'] = {'mean':np.mean(cDs),
                                                           'median':np.median(cDs),
                                                           'stdv':np.std(cDs),

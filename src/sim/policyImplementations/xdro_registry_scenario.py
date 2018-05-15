@@ -35,7 +35,7 @@ class XDRORegistryScenario(BaseScenarioPolicy):
         self.logThisString = _constants['stringToLogWhenStarting']
         self.facSet = frozenset(_constants['locationsImplementingScenario']['locAbbrevList'])
         self.newEffectiveness = _constants['enhancedDetectionFraction']['value']
-        
+
     def begin(self, callingAgent, timeNow):
         logger.warn(self.logThisString)
         assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
