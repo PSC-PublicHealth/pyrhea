@@ -208,6 +208,17 @@ def combineTimeSeries(tsArray,runDays, tsIncrement=1):
 def pool_helper(args):
     return extractCountsFromNotes(*args)
 
+def computeConfidenceIntervals(df, fieldsOfInterest):
+    """This is used via pd.Groupby.apply() to provide CIs for data columns"""
+    rsltL = []
+    rsltIdx = []
+    for fld in fieldsOfInterest:
+        valV = df[fld]
+        lo, hi = st.t.interval(0.95,len(valV)-1, loc=np.mean(valV),scale=st.sem(valV))
+        rsltL.extend([lo, hi])
+        rsltIdx.extend([fld+'_5%CI', fld+'_95%CI'])
+    return pd.Series(rsltL, index=rsltIdx)
+
 def main():
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl [--out outname.yaml] run_descr.yaml
@@ -295,7 +306,7 @@ def main():
                                                   'CRE CP Days due to xdro registry')),
                                   ('otherCPDays', ('localtierotherCP', 1,
                                                    'CP Days for other reasons')),
-                                  ('pathStatus', ('localtierpathogen', 0, None))
+                                  ('pthStatus', ('localtierpathogen', 0, None))
                                   ])
 
     valuesToGatherList = valuesToGather.keys()
@@ -349,12 +360,44 @@ def main():
     if opts.producetable:
         tsDF.to_msgpack(dfOutFileName)
 
-    ### By Tier
-    ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
-
     print "Processing Outputs"
 
     sys.stdout.flush()
+
+    dayOffset = valuesToGather['pthStatus'][1]
+    tsDF = tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]  # clip date range
+    tsGpByTier = tsDF.groupby(['abbrev', 'tier', 'run'])
+    tsSumByTier = tsGpByTier.sum().add_suffix('_sum').reset_index()
+    cols = [nm + '_sum' for nm in PthStatus.names.values()]
+    tierDF = tsSumByTier[['abbrev', 'tier', 'run']].copy()
+    tierDF = tierDF.assign(colonizedDays=tsSumByTier['COLONIZED_sum'],
+                           bedDays=tsSumByTier[cols].sum(axis=1))
+    tierDF = tierDF.assign(prevalence=tierDF['colonizedDays'].divide(tierDF['bedDays']))
+
+    tierGp = tierDF.groupby(['abbrev', 'tier'])
+    tierStatDF = tierGp.mean().add_suffix('_mean').reset_index().drop(['run_mean'],
+                                                                      axis=1)
+    fieldsOfInterest = ['colonizedDays', 'bedDays', 'prevalence']
+    suffix = '_median'
+    df = tierGp.median().add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    tierStatDF = tierStatDF.assign(**kwargs)
+    suffix = '_stdv'
+    df = tierGp.std().add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    tierStatDF = tierStatDF.assign(**kwargs)
+    df = tierGp.apply(computeConfidenceIntervals, fieldsOfInterest).reset_index()
+    for suffix in ['_5%CI', '_95%CI']:
+        kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+        tierStatDF = tierStatDF.assign(**kwargs)
+    
+    print tierStatDF
+    
+    sys.exit('done')
+
+    ### By Tier
+    ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
+
     statsByTier = {}
     statsByAbbrev = {}
     time1Counter = 0.0
@@ -466,13 +509,14 @@ def main():
 #                 aDAs[i] += aDs[i]
 #                 
             #print "{0} {1} {2}".format(abbrev,tier,cDs)
-            #print statsByTier  
-            
+            #print statsByTier
+
             time2 = time.time()
             time1Counter += time2-time1
-            
+
             time1 = time.time()
-            
+
+
             statsByTier[abbrev][tier]['colonizedDays'] = {'mean':np.mean(cDs),
                                                           'median':np.median(cDs),
                                                           'stdv':np.std(cDs),
