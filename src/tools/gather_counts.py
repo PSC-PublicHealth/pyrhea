@@ -50,7 +50,7 @@ import time
 
 #os.system("taskset -p 0xff %d"%os.getpid())
 
-DEFAULT_OUT_FILE = 'counts_output.yaml'
+DEFAULT_OUT_FILE = 'counts_output'
 
 
 def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
@@ -103,53 +103,6 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
 
     return bigDF
 
-# def extractCountsFromNotes(note, abbrevList, facDict, translationDict, burninDays):
-#     print "note = {0}".format(note)
-#     returnDict = {}
-#     ### totalStats is assumed to be a Manager
-#     try:
-#         specialDict = mergeNotesFiles([note],False)
-#     except Exception as e:
-#         print "for file {0} there is an exception {1}".format(note,e)
-#         return {}
-#     print "here {0}".format(note)
-#     for abbrev in abbrevList:
-#         returnDict[abbrev] = {}
-#         tplList = getTimeSeriesList(abbrev,specialDict,'localtierpathogen')
-#         for dayVec, curves in tplList:
-#             #print dayVec
-#             dayIndex = np.where(dayVec==burninDays)[0][0]
-#             #print dayIndex
-#             tmpVecD = defaultdict(list)
-#             totVecD = {}
-#             for tpl, lVec in curves.items():
-#                 tier, pthStatus = tpl
-#                 tmpVecD[tier].append(lVec)
-#             for tier, lVecList in tmpVecD.items():
-#                 totVecD[tier] = sum(lVecList)
-#             for tpl, lVec in curves.items():
-#                 tier, pthStatus = tpl
-#                 if pthStatus == PthStatus.COLONIZED:
-#                     #print len(lVec[dayIndex:])
-#                     returnDict[abbrev][CareTier.names[tier]] = {'colonizedDays': np.sum(lVec[dayIndex:]),
-#                                                                 'bedDays':np.sum(totVecD[tier][dayIndex:]),
-#                                                                 'colonizedDaysTS':lVec[dayIndex:],
-#                                                                 'bedDaysTS':totVecD[tier][dayIndex:]}
-# 
-#                     for key in translationDict.keys():
-#                         returnDict[abbrev][CareTier.names[tier]][key] = 0.0
-# 
-#     for key,noteKey in translationDict.items():
-#         print "key = {0}".format(key)
-#         for abbrev in abbrevList:
-#             tplList = getTimeSeriesList(abbrev, specialDict, noteKey)
-#             for dayVec, curves in tplList:
-#                 dayIndex = np.where(dayVec==(burninDays+1))[0][0]
-#                 for tpl, curve in curves.items():
-#                     returnDict[abbrev][CareTier.names[tpl]][key] = np.sum(curve[dayIndex:])
-#                     returnDict[abbrev][CareTier.names[tpl]]["{0}TS".format(key)] = curve[dayIndex:]
-# 
-#     return returnDict
 
 
 def combineTimeSeries(tsArray,runDays, tsIncrement=1):
@@ -180,33 +133,13 @@ def combineTimeSeries(tsArray,runDays, tsIncrement=1):
 
     returnDict['5%CI'] = rf['c95_lower']
     returnDict['95%CI'] = rf['c95_upper']
-    #ciTmp = df.apply(lambda x: pd.Series(sms.DescrStatsW(x).tconfint_mean(), index=['ci5','ci95']), axis=1)
-    #returnDict['5%CI'] = np.zeciTmp.ci5
-    #returnDict['95%CI'] = ciTmp.ci95
-    
-#     semArray = np.apply_along_axis(st.sem, 0, tsArray)
-#     #[0.0 for i in range(0,runDays)]
-#     #returnDict['95%CI'] = [0.0 for i in range(0,runDays)]
-#     lenArray= np.array(tsArray.shape[1])
-#     
-#     print "len = {0}".format(lenArray)
-#     for i in range(0,runDays):
-#         #print "array = {0}".format([x[i] for x in tsArray])
-#         #print "mean = {0}".format(np.mean([x[i] for x in tsArray]))
-# #        returnDict['mean'].append(np.mean([x[i] for x in tsArray]))
-# #        returnDict['median'].append(np.median([x[i] for x in tsArray]))
-# #        returnDict['stdv'].append(np.std([x[i] for x in tsArray]))
-#         ci = st.t.interval(0.95, lenArray - 1, loc=returnDict['mean'][i], scale=semArray[i])
-#         returnDict['5%CI'].append(ci[0])
-#         returnDict['95%CI'].append(ci[1])
-#         
-#     #print "returnDict mean = {0}".format(returnDict['mean'])
 
     return returnDict
 
 
 def pool_helper(args):
     return extractCountsFromNotes(*args)
+
 
 def computeConfidenceIntervals(df, fieldsOfInterest):
     """This is used via pd.Groupby.apply() to provide CIs for data columns"""
@@ -219,20 +152,52 @@ def computeConfidenceIntervals(df, fieldsOfInterest):
         rsltIdx.extend([fld+'_5%CI', fld+'_95%CI'])
     return pd.Series(rsltL, index=rsltIdx)
 
+
+def addStatColumns(baseGp, fieldsOfInterest):
+    """
+    This creates a new DataFrame containing _median, _mean, _stdv, _5%CT, and _95%CT for
+    each of the columns in fieldsOfInterest
+    """
+    statDF = baseGp.mean()
+    dropL = [key + '_mean' for key in statDF.columns if key not in fieldsOfInterest]
+    statDF = statDF.add_suffix('_mean').reset_index().drop(dropL, axis=1)
+    suffix = '_median'
+    df = baseGp.median().add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    statDF = statDF.assign(**kwargs)
+    suffix = '_stdv'
+    df = baseGp.std().add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    statDF = statDF.assign(**kwargs)
+    df = baseGp.apply(computeConfidenceIntervals, fieldsOfInterest).reset_index()
+    for suffix in ['_5%CI', '_95%CI']:
+        kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+        statDF = statDF.assign(**kwargs)
+    return statDF
+
+
+def generateXDROAdmissions(df, xdroAbbrevs):
+    admV = df['arrivals']
+    flagV = [(abbrev in xdroAbbrevs) for abbrev in df['abbrev']]
+    rsltV = np.where(flagV, admV, 0.0)
+    return rsltV
+
+
 def main():
     parser = OptionParser(usage="""
     %prog [--notes notes_file.pkl [--out outname.yaml] run_descr.yaml
     """)
-    
+
     parser.add_option('-n', '--notes', action='append', type='string',
                      help="Notes filename - may be repeated")
     parser.add_option('-o', '--out', action='store', type='string',
-                     help="Output file (defaults to %s)" % DEFAULT_OUT_FILE)
+                     help="Output file prefix (defaults to %s)" % DEFAULT_OUT_FILE)
     parser.add_option('-g','--glob', action='store_true',
                       help=("Apply filename globbing for notes files."
                             "  (Remember to protect the filename string from the shell!)"))
     parser.add_option('-x','--xdroyamlfile',type='string', default=None,
-                      help="specify the xdro scenario yaml file if there is one, if not, XDRO won't be costed")
+                      help=("specify the xdro scenario yaml file if there is one,"
+                            " if not, XDRO won't be costed"))
     parser.add_option('-m','--nprocs',type='int',default=1,
                       help='number of cpus to run the costing model over')
     parser.add_option('-t','--producetimeseries',action='store_true',default=False)
@@ -355,44 +320,95 @@ def main():
     tsDF = pd.concat(tsDFL).reset_index()
     #print tsDF
 
-
-    print "totalStats = {0}".format(totalStats)
+    #print "totalStats = {0}".format(totalStats)
     if opts.producetable:
         tsDF.to_msgpack(dfOutFileName)
 
     print "Processing Outputs"
-
     sys.stdout.flush()
 
     dayOffset = valuesToGather['pthStatus'][1]
-    tsDF = tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]  # clip date range
-    tsGpByTier = tsDF.groupby(['abbrev', 'tier', 'run'])
-    tsSumByTier = tsGpByTier.sum().add_suffix('_sum').reset_index()
+    tsSumByTier = (tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]
+                   .groupby(['abbrev', 'tier', 'run'])
+                   .sum().add_suffix('_sum').reset_index())
     cols = [nm + '_sum' for nm in PthStatus.names.values()]
     tierDF = tsSumByTier[['abbrev', 'tier', 'run']].copy()
     tierDF = tierDF.assign(colonizedDays=tsSumByTier['COLONIZED_sum'],
                            bedDays=tsSumByTier[cols].sum(axis=1))
     tierDF = tierDF.assign(prevalence=tierDF['colonizedDays'].divide(tierDF['bedDays']))
 
-    tierGp = tierDF.groupby(['abbrev', 'tier'])
-    tierStatDF = tierGp.mean().add_suffix('_mean').reset_index().drop(['run_mean'],
-                                                                      axis=1)
     fieldsOfInterest = ['colonizedDays', 'bedDays', 'prevalence']
-    suffix = '_median'
-    df = tierGp.median().add_suffix(suffix).reset_index()
-    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
-    tierStatDF = tierStatDF.assign(**kwargs)
-    suffix = '_stdv'
-    df = tierGp.std().add_suffix(suffix).reset_index()
-    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
-    tierStatDF = tierStatDF.assign(**kwargs)
-    df = tierGp.apply(computeConfidenceIntervals, fieldsOfInterest).reset_index()
-    for suffix in ['_5%CI', '_95%CI']:
-        kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
-        tierStatDF = tierStatDF.assign(**kwargs)
-    
-    print tierStatDF
-    
+    for key in valuesToGather.keys():
+        if key == 'pthStatus':
+            continue  # Did this one as a special case
+        if dayOffset != valuesToGather[key][1]:
+            # We need to regenerate the intermediate DataFrame
+            dayOffset = valuesToGather[key][1]
+            tsSumByTier = (tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]
+                          .groupby(['abbrev', 'tier', 'run'])
+                          .sum().add_suffix('_sum').reset_index())
+        tierDF = tierDF.assign(**{key: tsSumByTier[key + '_sum']})
+        fieldsOfInterest.append(key)
+    if xdroAbbrevs:
+        fieldsOfInterest.append('xdroAdmissions')
+        tierDF = tierDF.assign(xdroAdmissions=generateXDROAdmissions(tierDF, xdroAbbrevs))
+
+    tierAbbrevStatDF = addStatColumns(tierDF.groupby(['abbrev', 'tier']), fieldsOfInterest)
+    abbrevStatDF = addStatColumns(tierDF.groupby(['abbrev']), fieldsOfInterest)
+    tierStatDF = addStatColumns(tierDF.groupby(['tier']), fieldsOfInterest)
+
+    print tierAbbrevStatDF.columns
+    #print abbrevStatDF.columns
+    #print tierStatDF.columns
+
+    print "Writing Files"
+    sys.stdout.flush()
+
+    # Means by tier
+    headingRow = ['Facility Abbrev', 'Tier Of Care', 'Colonized Patient Days', 'Patient Bed Days',
+                  'Prevalence']
+    entries = ['abbrev', 'tier', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
+    for key, tpl in valuesToGather.items():
+        if key != 'pthStatus':
+            headingRow.append(tpl[2])
+            entries.append(key + '_mean')
+    if xdroAbbrevs:
+        headingRow.append("XDRO Admissions")
+        entries.append('xdroAdmissions_mean')
+    tierAbbrevStatDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
+                            columns=entries, header=headingRow)
+
+    # Means by abbrev
+    headingRow = ['Facility Abbrev','Colonized Patient Days','Patient Bed Days','Prevalence']
+    entries = ['abbrev', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
+    for key, tpl in valuesToGather.items():
+        if key != 'pthStatus':
+            headingRow.append(tpl[2])
+            entries.append(key + '_mean')
+    if xdroAbbrevs > 0:
+        headingRow.append("XDRO Admissions")
+        entries.append('xdroAdmissions_mean')
+    abbrevStatDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
+                        columns=entries, header=headingRow)
+
+    # Prevalence intervals by abbrev
+    headingRow = ['Facility Abbrev','Prevalence Mean','Prevalence Median',
+                  'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI']
+    entries = ['abbrev', 'prevalence_mean', 'prevalence_median', 'prevalence_stdv',
+               'prevalence_5%CI', 'prevalence_95%CI']
+    abbrevStatDF.to_csv("{0}_stats_intervals_by_abbrev.csv".format(outFileName), index=False,
+                        columns=entries, header=headingRow)
+
+    # Prevalence by tier - naming suggests it was originally by facility category?
+    headingRow = ['Facility Type','Prevalence Mean']
+    entries = ['tier', 'prevalence_mean']
+    for key, tpl in valuesToGather.items():
+        if key != 'pthStatus':
+            headingRow.append(tpl[2])
+            entries.append(key + '_mean')
+    tierStatDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
+                      columns=entries, header=headingRow)
+
     sys.exit('done')
 
     ### By Tier
@@ -632,75 +648,75 @@ def main():
     print "time 2 = {0}".format(time2Counter)
     print "Writing Files"
     sys.stdout.flush()        
-    with open("{0}_stats_by_tier.csv".format(outFileName),"wb") as f:
-        csvWriter = csv.writer(f)
-        headingRow = ['Facility Abbrev','Tier Of Care','Colonized Patient Days','Paitent Bed Days','Prevalence']
-        for k in valuesToGatherList:
-            headingRow.append(tableHeadings[k])
-        if len(xdroAbbrevs) > 0:
-            headingRow.append("XDRO Admissions")
-         
-        csvWriter.writerow(headingRow)
-        #csvWriter.writerow(['Facility Abbrev','Tier Of Care','Colonized Patient Days',','New Colonizations','CRE Colonized Admissions','Admissions'])
-        for abbrev,tD in statsByTier.items():
-            for tier,d in tD.items():
-                entryRow = [abbrev,tier,
-                            d['colonizedDays']['mean'],
-                            d['bedDays']['mean'],
-                            d['prevalence']['mean']]
-                for k in valuesToGatherList:
-                    entryRow.append(d[k]['mean'])
+#     with open("{0}_stats_by_tier.csv".format(outFileName),"wb") as f:
+#         csvWriter = csv.writer(f)
+#         headingRow = ['Facility Abbrev','Tier Of Care','Colonized Patient Days','Paitent Bed Days','Prevalence']
+#         for k in valuesToGatherList:
+#             headingRow.append(tableHeadings[k])
+#         if len(xdroAbbrevs) > 0:
+#             headingRow.append("XDRO Admissions")
+#          
+#         csvWriter.writerow(headingRow)
+#         #csvWriter.writerow(['Facility Abbrev','Tier Of Care','Colonized Patient Days',','New Colonizations','CRE Colonized Admissions','Admissions'])
+#         for abbrev,tD in statsByTier.items():
+#             for tier,d in tD.items():
+#                 entryRow = [abbrev,tier,
+#                             d['colonizedDays']['mean'],
+#                             d['bedDays']['mean'],
+#                             d['prevalence']['mean']]
+#                 for k in valuesToGatherList:
+#                     entryRow.append(d[k]['mean'])
+#                 
+#                 if len(xdroAbbrevs) > 0:
+#                     entryRow.append(d['xdroAdmissions']['mean'])
+#                     
+#                 csvWriter.writerow(entryRow)
                 
-                if len(xdroAbbrevs) > 0:
-                    entryRow.append(d['xdroAdmissions']['mean'])
-                    
-                csvWriter.writerow(entryRow)
-                
-    with open("{0}_stats_by_abbrev.csv".format(outFileName),"wb") as f:
-        csvWriter = csv.writer(f)
-        headingRow = ['Facility Abbrev','Colonized Patient Days','Paitent Bed Days','Prevalence']
-        for k in valuesToGatherList:
-            headingRow.append(tableHeadings[k])
-        if len(xdroAbbrevs) > 0:
-            headingRow.append("XDRO Admissions")
-            
-        csvWriter.writerow(headingRow)
-        for abbrev,d in statsByAbbrev.items():
-            entryRow = [abbrev,
-                        d['colonizedDays']['mean'],
-                        d['bedDays']['mean'],
-                        d['prevalence']['mean']]
-            for k in valuesToGatherList:
-                entryRow.append(d[k]['mean'])
-            if len(xdroAbbrevs) > 0:
-                entryRow.append(d['xdroAdmissions']['mean'])
-            csvWriter.writerow(entryRow)
+#     with open("{0}_stats_by_abbrev.csv".format(outFileName),"wb") as f:
+#         csvWriter = csv.writer(f)
+#         headingRow = ['Facility Abbrev','Colonized Patient Days','Paitent Bed Days','Prevalence']
+#         for k in valuesToGatherList:
+#             headingRow.append(tableHeadings[k])
+#         if len(xdroAbbrevs) > 0:
+#             headingRow.append("XDRO Admissions")
+#             
+#         csvWriter.writerow(headingRow)
+#         for abbrev,d in statsByAbbrev.items():
+#             entryRow = [abbrev,
+#                         d['colonizedDays']['mean'],
+#                         d['bedDays']['mean'],
+#                         d['prevalence']['mean']]
+#             for k in valuesToGatherList:
+#                 entryRow.append(d[k]['mean'])
+#             if len(xdroAbbrevs) > 0:
+#                 entryRow.append(d['xdroAdmissions']['mean'])
+#             csvWriter.writerow(entryRow)
 
-    with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
-        csvWriter = csv.writer(f)
-        csvWriter.writerow(['Facility Abbrev','Prevalence Mean','Prevalence Median',
-                            'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI'])
-        for abbrev,d in statsByAbbrev.items():
-            csvWriter.writerow([abbrev,
-                                d['prevalence']['mean'],
-                                d['prevalence']['median'],
-                                d['prevalence']['stdv'],
-                                d['prevalence']['5%CI'],
-                                d['prevalence']['95%CI']])
-
-    
-
-    with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
-        csvWriter = csv.writer(f)
-        csvWriter.writerow(['Facility Abbrev','Prevalence Mean','Prevalence Median',
-                            'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI'])
-        for abbrev,d in statsByAbbrev.items():
-            csvWriter.writerow([abbrev,
-                                d['prevalence']['mean'],
-                                d['prevalence']['median'],
-                                d['prevalence']['stdv'],
-                                d['prevalence']['5%CI'],
-                                d['prevalence']['95%CI']])
+#     with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
+#         csvWriter = csv.writer(f)
+#         csvWriter.writerow(['Facility Abbrev','Prevalence Mean','Prevalence Median',
+#                             'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI'])
+#         for abbrev,d in statsByAbbrev.items():
+#             csvWriter.writerow([abbrev,
+#                                 d['prevalence']['mean'],
+#                                 d['prevalence']['median'],
+#                                 d['prevalence']['stdv'],
+#                                 d['prevalence']['5%CI'],
+#                                 d['prevalence']['95%CI']])
+# 
+#     
+# 
+#     with open("{0}_stats_intervals_by_abbrev.csv".format(outFileName),"wb") as f:
+#         csvWriter = csv.writer(f)
+#         csvWriter.writerow(['Facility Abbrev','Prevalence Mean','Prevalence Median',
+#                             'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI'])
+#         for abbrev,d in statsByAbbrev.items():
+#             csvWriter.writerow([abbrev,
+#                                 d['prevalence']['mean'],
+#                                 d['prevalence']['median'],
+#                                 d['prevalence']['stdv'],
+#                                 d['prevalence']['5%CI'],
+#                                 d['prevalence']['95%CI']])
             
     if opts.producetimeseries:
         with open("{0}_prevalence_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
@@ -917,32 +933,32 @@ def main():
     
                 
                       
-    with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
-        csvWriter = csv.writer(f)
-        headingRow = ['Facility Type','Prevalence Mean']
-        for k in valuesToGatherList:
-            headingRow.append(tableHeadings[k])
-        csvWriter.writerow(headingRow)
-        typeDict = {}
-        for abbrev,tD in statsByTier.items():
-            for tier,d in tD.items():
-                if tier not in typeDict.keys():
-                    typeDict[tier] = {'prev':[]}
-                    for k in valuesToGatherList:
-                        typeDict[tier][k] = []
-                        
-                if not np.isnan(d['prevalence']['mean']):
-                    #print d['prevalence']['mean']
-                    typeDict[tier]['prev'].append(d['prevalence']['mean'])
-                    for k in valuesToGatherList:
-                        typeDict[tier][k].append(d[k]['mean'])
-            
-        for tier,p in typeDict.items():
-            entryRow = [tier,np.mean(typeDict[tier]['prev'])]
-            for k in valuesToGatherList:
-                entryRow.append(np.mean(typeDict[tier][k]))
-            
-            csvWriter.writerow(entryRow)
+#     with open("{0}_prev_by_cat.csv".format(outFileName),"wb") as f:
+#         csvWriter = csv.writer(f)
+#         headingRow = ['Facility Type','Prevalence Mean']
+#         for k in valuesToGatherList:
+#             headingRow.append(tableHeadings[k])
+#         csvWriter.writerow(headingRow)
+#         typeDict = {}
+#         for abbrev,tD in statsByTier.items():
+#             for tier,d in tD.items():
+#                 if tier not in typeDict.keys():
+#                     typeDict[tier] = {'prev':[]}
+#                     for k in valuesToGatherList:
+#                         typeDict[tier][k] = []
+#                         
+#                 if not np.isnan(d['prevalence']['mean']):
+#                     #print d['prevalence']['mean']
+#                     typeDict[tier]['prev'].append(d['prevalence']['mean'])
+#                     for k in valuesToGatherList:
+#                         typeDict[tier][k].append(d[k]['mean'])
+#             
+#         for tier,p in typeDict.items():
+#             entryRow = [tier,np.mean(typeDict[tier]['prev'])]
+#             for k in valuesToGatherList:
+#                 entryRow.append(np.mean(typeDict[tier][k]))
+#             
+#             csvWriter.writerow(entryRow)
 
 if __name__ == "__main__":
     main()
