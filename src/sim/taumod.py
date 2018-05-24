@@ -15,11 +15,12 @@
 #                                                                                 #
 ###################################################################################
 
+from __future__ import print_function
 import sys
 import time
 from math import sqrt
 from collections import defaultdict
-import cPickle as pickle
+import six.moves.cPickle as pickle
 import logging
 import optparse
 import pandas as pd
@@ -203,10 +204,10 @@ class TauMod(object):
         tierSums = tierGroups.sum()
         for tier in tierGroups.groups.keys():
             colRatio = float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)]
-            print "%s Prevalence: %s, (colonized %s, total %s)"%(tier,
-                                                                 colRatio,
-                                                                 tierSums['COLONIZED'][(tier)],
-                                                                 tierSums['TOTAL'][(tier)])
+            print("%s Prevalence: %s, (colonized %s, total %s)") % (tier,
+                                                                    colRatio,
+                                                                    tierSums['COLONIZED'][(tier)],
+                                                                    tierSums['TOTAL'][(tier)])
 
         return s
 

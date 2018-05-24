@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 
+from __future__ import print_function
 import sys
 import os
 import yaml
@@ -24,7 +25,7 @@ import optparse
 import logging
 import logging.config
 import pika
-import cPickle as pickle
+import six.moves.cPickle as pickle
 import re
 import signal
 import ujson 
@@ -70,7 +71,7 @@ def buildFacOccupancyDict(patch, timeNow):
             facTypeDict[tpName] += patientCount
             facTypeDict[tpName + '_all'] += allCount
 
-    #print 'buildFacOccupancyDict: %s' % facTypeDict
+    #print('buildFacOccupancyDict: %s') % facTypeDict
     return facTypeDict
 
 def buildFacOverallHealthDict(patch, timeNow):
@@ -405,7 +406,7 @@ class TweakedOptParser(optparse.OptionParser):
             code = -1
         if msg is None:
             msg = ""
-        print msg
+        print(msg)
         # logger.critical(msg)
         if hasattr(self, 'comm') and self.comm.size > 1:
             self.comm.Abort(code)
@@ -437,7 +438,7 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
                     return inputJSON
             else:
                 return inputJSON
-    except Exception, e:
+    except Exception as e:
         myLogger.error('Error checking input against its schema: %s' % e)
         if comm:
             comm.Abort(2)
@@ -477,10 +478,10 @@ def getLoggerConfig():
         with open(cfgFname, 'rU') as f:
             cfgDict = yaml.safe_load(f)
     except IOError:
-        print 'Cannot find %s - using default logging' % cfgFname
+        print('Cannot find %s - using default logging' % cfgFname)
         cfgDict = {'version': 1}
-    except Exception, e:
-        print 'Failed to read or parse %s: %s' % (cfgFname, e)
+    except Exception as e:
+        print('Failed to read or parse %s: %s' % (cfgFname, e))
         cfgDict = {'version': 1}
     return cfgDict
 
@@ -921,7 +922,7 @@ def main():
     try:
         exitMsg = patchGroup.start()
         logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
-    except Exception, e:
+    except Exception as e:
         logger.error('%s exception %s; traceback follows' % (patchGroup.name, e))
         import traceback
         traceback.print_exc(file=sys.stderr)

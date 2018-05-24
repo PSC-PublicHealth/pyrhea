@@ -329,7 +329,7 @@ class LockServer(object):
                     # we're dealing with some error on the socket - just deal with it and stay alive
                     try:
                         ClientDict[e].socketError()
-                    except Exception, ee:  # @UnusedVariable
+                    except Exception as ee:  # @UnusedVariable
                         pass
 
                 for r in readList:
@@ -338,7 +338,7 @@ class LockServer(object):
                         ClientDict[r].read()
     #                except:
     #                    pass
-            except select.error, se:  # @UnusedVariable
+            except select.error as se:  # @UnusedVariable
                 pass  # select throws an error when we catch a signal
 
     def shutdown(self):
@@ -625,7 +625,7 @@ def main():
             os.kill(pid, 0) # Throws an error if that pid is not live, no effect if it is
             # OK, so there is already a live server pointed to by this file
             sys.exit('A running lock server is already present')
-    except Exception, e:
+    except Exception as e:
         pass # No old file or server
     port = findFreePort()
     LOGGER.info('Using port %s', port)

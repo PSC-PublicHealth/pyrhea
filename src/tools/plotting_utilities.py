@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 
+from __future__ import print_function
 import pylab
 import numpy as np
 import pandas as pd
@@ -547,7 +548,7 @@ def main():
         d = np.load('arrays_%s.npz' % dataCase)
         allD[dataCase] = d
 
-    print os.path.abspath(input_yaml)
+    print(os.path.abspath(input_yaml))
     schemautils.setSchemaBasePath(SCHEMA_DIR)
     inputDict = checkInputFileSchema(input_yaml,
                                      #os.path.join(SCHEMA_DIR,'rhea_input_schema.yaml'),
@@ -562,9 +563,9 @@ def main():
     pathPrefix = os.path.dirname(os.path.abspath(input_yaml))
     facDirs = [os.path.join(pathPrefix, fD) for fD in facDirs]
     facDict = parseFacilityData(facDirs)
-    print 'IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H'
+    print('IMPLEMENTING SPECIAL PATCH FOR WAUK_2615_H')
     facDict['WAUK_2615_H'] = {'category':'HOSPITAL'}
-    print 'FIND OUT THE REAL ANSWER AND DELETE THIS!'
+    print('FIND OUT THE REAL ANSWER AND DELETE THIS!')
     
     # Sort by category, then alphabetically by name
     facL = [(facDict[fac]['category'], fac) for fac in facDict.keys()
@@ -590,8 +591,8 @@ def main():
     siMx1 = allD['directonly_466_830_case1']['indirect_simulated']
 
     # The following is done as a test of partition
-    print 'partition test matrix:'
-    print partition(mMx, facL, facDict)
+    print('partition test matrix:')
+    print(partition(mMx, facL, facDict))
 
     #sampleAndPlot(mMx, sMx0, 'test of sampleAndPlot').show()
 
