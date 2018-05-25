@@ -22,7 +22,7 @@ Created on Apr 20, 2018
 '''
 
 import logging
-import cPickle as pickle
+import six.moves.cPickle as pickle
 import taumod
 from typebase import CareTier
 

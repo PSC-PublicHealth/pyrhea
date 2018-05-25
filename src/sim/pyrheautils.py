@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 
+from __future__ import print_function
 import sys
 import os
 import os.path
@@ -155,7 +156,7 @@ def importConstants(valuePath, schemaPath, pathLookupDict=None):
     """
     Import a set of constants in YAML format, checking against its schema.
     """
-    print valuePath
+    print(valuePath)
     with open(pathTranslate(valuePath, pathLookupDict), 'rU') as f:
         cJSON = yaml.safe_load(f)
         cJSON = replaceData(valuePath, cJSON)
@@ -200,7 +201,7 @@ def loadModulesFromDir(implementationDir,
                                            (os.path.join(implementationDir, fname),
                                             requiredAttr))
                 yield newMod
-            except IOError, e:
+            except IOError as e:
                 logger.warning('Unable to load %s - is a config file missing? %s',
                                fname, str(e))
         elif ext.startswith('.py'):

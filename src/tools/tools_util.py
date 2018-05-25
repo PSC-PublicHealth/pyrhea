@@ -1,15 +1,15 @@
+from __future__ import print_function
 import os.path
 import sys
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
 
 #import map_transfer_matrix as mtm
-import types
 import schemautils
 import pyrheautils
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import yaml
-import cPickle as pickle
+import six.moves.cPickle as pickle
 import glob
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), os.path.pardir, 'schemata')
@@ -25,21 +25,21 @@ def checkInputFileSchema(fname, schemaFname):
                                                               schemaFname))
             nErrors = sum([1 for e in validator.iter_errors(inputJSON)])  # @UnusedVariable
             if nErrors:
-                print 'Input file violates schema:'
+                print('Input file violates schema:')
                 for e in validator.iter_errors(inputJSON):
-                    print ('Schema violation: %s: %s' %
-                           (' '.join([str(word) for word in e.path]), e.message))
+                    print(('Schema violation: %s: %s' %
+                           (' '.join([str(word) for word in e.path]), e.message)))
                 sys.exit('Input file violates schema')
             else:
                 return inputJSON
         else:
             return inputJSON
-    except Exception, e:
+    except Exception as e:
         sys.exit('Error checking input against its schema: %s' % e)
 
 
 def parseFacilityData(fnameOrNameList):
-    if not isinstance(fnameOrNameList, types.ListType):
+    if not isinstance(fnameOrNameList, list):
         fnameOrNameList = [fnameOrNameList]
     facDict = {}
     for fn in fnameOrNameList:
@@ -83,7 +83,7 @@ def getNotesFileList(notesPathList, globFlag=False):
     if globFlag:
         newNotesPathList = []
         for notesFName in notesPathList:
-            print '%s yields %s' % (notesFName, glob.glob(notesFName))
+            print('%s yields %s' % (notesFName, glob.glob(notesFName)))
             newNotesPathList += glob.glob(notesFName)
         newNotesPathList.sort()
         notesPathList = newNotesPathList

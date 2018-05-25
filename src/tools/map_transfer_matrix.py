@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 
+from __future__ import print_function
 _rhea_svn_id_ = "$Id$"
 
 ###############################
@@ -113,7 +114,7 @@ def facToNodeAttrs(facRec):
             else:
                 szFac = float(facRec['nBeds']['value'])
         except ValueError:
-            print '%s has a bad nBeds value' % facRec['abbrev']
+            print('%s has a bad nBeds value') % facRec['abbrev']
             szFac = None
     elif 'meanPop' in facRec:
         if isinstance(facRec['meanPop'], (types.IntType, types.FloatType)):
@@ -122,11 +123,11 @@ def facToNodeAttrs(facRec):
             try:
                 szFac = float(facRec['meanPop']['value'])
             except ValueError:
-                print ('%s meanPop invalid value <%s>' %
+                print('%s meanPop invalid value <%s>' %
                        (facRec['abbrev'], facRec['meanPop']['value']))
                 szFac = None
     else:
-        print '%s has no nBeds or meanPop' % facRec['abbrev']
+        print('%s has no nBeds or meanPop') % facRec['abbrev']
         szFac = None
 
     if facRec['category'] == 'HOSPITAL':
@@ -266,8 +267,8 @@ def initializeMapCoordinates(facRecs):
     mapCtr = scale(ctr, 1.0/float(n))
     ctrLatRad = math.asin(mapCtr[2] / worldRadius)
     ctrLonRad = math.atan2(mapCtr[0], mapCtr[1])
-    print 'Map Center: %s' % str(mapCtr)
-    print 'Map Center latitude and longitude: %s %s' % (180.*ctrLatRad/math.pi,
+    print('Map Center: %s') % str(mapCtr)
+    print('Map Center latitude and longitude: %s %s') % (180.*ctrLatRad/math.pi,
                                                         180.*ctrLonRad/math.pi)
 
     # X and Y vectors are normalized vectors in the longitude and latitude directions
@@ -277,8 +278,8 @@ def initializeMapCoordinates(facRecs):
     mapYVec = (-math.sin(ctrLatRad) * math.sin(ctrLonRad),
                -math.sin(ctrLatRad) * math.cos(ctrLonRad),
                math.cos(ctrLatRad))
-    print 'mapXVec: %s' % str(mapXVec)
-    print 'mapYVec: %s' % str(mapYVec)
+    print('mapXVec: %s' % str(mapXVec))
+    print('mapYVec: %s' % str(mapYVec))
 
 
 def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
@@ -291,7 +292,7 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
         src = src.lower()
         totTransfersOut = float(sum([v for v in r.values()]))
         if totTransfersOut == 0.0:
-            print '%s has no outgoing transfers' % src
+            print('%s has no outgoing transfers') % src
         transOutDict[src] = totTransfersOut
         for dst, v in r.items():
             dst = dst.lower()
@@ -366,11 +367,10 @@ def writeDotGraph(fname, title, facDict, transferDict, inclusionSet=None):
                             createdSet.add((src, dst))
                             createdSet.add((dst, src))
 
-    print 'wrote %s' % fname
+    print('wrote %s')% fname
     oname = '%s.svg' % os.path.splitext(os.path.basename(fname))[0]
-    print 'A good post-processing command might be:'
-    print ('neato -Gspline=true -Nfontsize=5 -Nheight=0.1 -Efontsize=5'
-           ' -n2 -Tsvg -o%s %s' % (oname, fname))
+    print('A good post-processing command might be:')
+    print('neato -Gspline=true -Nfontsize=5 -Nheight=0.1 -Efontsize=5 -n2 -Tsvg -o%s %s') % (oname, fname)
     return transInDict, transOutDict
 
 
@@ -460,9 +460,7 @@ def main():
     for src in orderedSources:
         key = None
         bedCt = None
-        print ('%s (%s): %d %d;' %
-               (src, facDict[src]['category'], transInDict[src.lower()],
-                transOutDict[src.lower()])),
+        print('%s (%s): %d %d;') % src, facDict[src]['category'], transInDict[src.lower()], transOutDict[src.lower()]
         totalIn += transInDict[src.lower()]
         totalOut += transOutDict[src.lower()]
         if facDict[src]['category'] in ['NURSINGHOME', 'SNF', 'VSNF']:
@@ -473,7 +471,7 @@ def main():
             elif 'meanPop' in facDict[src]:
                 key = 'meanPop'
             else:
-                print ' no nBeds and no meanPop'
+                print(' no nBeds and no meanPop')
             if key:
                 if isinstance(facDict[src][key], types.IntType):
                     bedCt = facDict[src][key]
@@ -485,9 +483,9 @@ def main():
             if bedCt:
                 totBeds += bedCt
                 totBedsNH += bedCt
-                print '%s beds' % bedCt
+                print('%s beds') % bedCt
             else:
-                print ' no nBeds and no meanPop'
+                print(' no nBeds and no meanPop')
                 totBedsNHFail = True
         else:
             totalInHosp += transInDict[src.lower()]
@@ -497,7 +495,7 @@ def main():
             elif 'nBeds' in facDict[src]:
                 key = 'nBeds'
             else:
-                print ' no nBeds and no meanPop'
+                print(' no nBeds and no meanPop')
             if key:
                 if isinstance(facDict[src][key], types.FloatType):
                     bedCt = facDict[src][key]
@@ -509,24 +507,23 @@ def main():
             if bedCt:
                 totBeds += bedCt
                 totBedsHosp += bedCt
-                print '%s beds' % bedCt
+                print('%s beds') % bedCt
             else:
-                print ' no nBeds and no meanPop'
+                print(' no nBeds and no meanPop')
                 totBedsHospFail = True
 
 
-    print 'Total incoming transfers: %s (%s hospitals, %s NH)' % (totalIn, totalInHosp, totalInNH)
-    print 'Total outgoing transfers: %s (%s hospitals, %s NH)' % (totalOut, totalOutHosp,
-                                                                  totalOutNH)
+    print('Total incoming transfers: %s (%s hospitals, %s NH)') % (totalIn, totalInHosp, totalInNH)
+    print('Total outgoing transfers: %s (%s hospitals, %s NH)') % (totalOut, totalOutHosp, totalOutNH)
     if totBedsHospFail:
         if totBedsNHFail:
-            print 'Incomplete data; beds were not counted'
+            print('Incomplete data; beds were not counted')
         else:
-            print 'Tot NH beds: %s (others not counted)' % totBedsNH
+            print('Tot NH beds: %s (others not counted)') % totBedsNH
     elif totBedsNHFail:
-        print 'Tot HOSP beds: %s (others not counted)' % totBedsHosp
+        print('Tot HOSP beds: %s (others not counted)') % totBedsHosp
     else:
-        print 'Total beds: %s (%s hospital beds, %s NH beds)' % (totBeds, totBedsHosp, totBedsNH)
+        print('Total beds: %s (%s hospital beds, %s NH beds)') % (totBeds, totBedsHosp, totBedsNH)
 
     # fig, ax = plt.subplots()
     # ax.scatter(catchLocX, catchLocY, s=catchSize, c=catchColor, alpha=0.3)

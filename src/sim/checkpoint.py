@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 
+from __future__ import print_function
 import random
 import sys
 
@@ -26,7 +27,7 @@ class checkpoint(object):
 
         if dmtcp.isEnabled is False:
             raise RuntimeError("dmtcp is not enabled.  Checkpointing can't work without it")
-        print "checkpointing turned on"
+        print("checkpointing turned on")
 
     def checkpoint(self, ticks):
         if ticks != self.ticks:
@@ -37,7 +38,7 @@ class checkpoint(object):
         dmtcp.checkpoint()
 
         if dmtcp.isResume():
-            print "The checkpoint filename is: %s"%dmtcp.checkpointFilename()
+            print("The checkpoint filename is: %s"%dmtcp.checkpointFilename())
             sys.exit()
 
         # at this point we should be a restarted image.  Let's invoke a new random seed.

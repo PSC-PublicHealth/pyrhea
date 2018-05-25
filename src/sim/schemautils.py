@@ -21,7 +21,7 @@ import os.path
 import json
 import yaml
 import jsonschema
-import urlparse
+import six.moves.urllib.parse as urlparse
 import urllib
 
 import phacsl.utils.formats.yaml_ordered as yaml_ordered

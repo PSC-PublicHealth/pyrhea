@@ -19,7 +19,7 @@ import logging
 from typebase import CareTier, PatientDiagnosis, PatientOverallHealth, DiagClassA
 from pathogenbase import PthStatus, defaultPthStatus
 
-from phacsl.utils.classutils import ClassIsInstanceMeta
+from phacsl.utils.classutils.metaclasses import ClassIsInstanceMeta
 
 logger = logging.getLogger(__name__)
 
