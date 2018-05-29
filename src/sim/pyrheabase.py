@@ -81,13 +81,17 @@ class FacilityManager(peopleplaces.Manager):
         payload = req.payload
         tier = req.tier
         ward = self.allocateAvailableBed(tier)
-        req.payload = self.fac.handleBedRequestResponse(ward, payload, timeNow)
+        if ward is None and logDebug:
+            if tier in self.fac.wardTierDict:
+                self.logger.debug('%s: no beds available for %s' % (self.name, req.name))
+            else:
+                self.logger.debug('%s: no such ward for %s' % (self.name, req.name))
+        req.payload, newWard = self.fac.handleBedRequestResponse(ward, payload, timeNow)
+        if newWard is None and ward is not None and logDebug:
+            self.logger.debug('%s: a bed was available for %s but was denied',
+                              self.name, req.name)
+        ward = newWard
         if ward is None:
-            if logDebug:
-                if tier in self.fac.wardTierDict:
-                    self.logger.debug('%s: no beds available for %s' % (self.name, req.name))
-                else:
-                    self.logger.debug('%s: no such ward for %s' % (self.name, req.name))
             req.fsmstate = BedRequest.STATE_DENIEDWARD
         else:
             req.fsmstate = BedRequest.STATE_GOTWARD
@@ -164,9 +168,10 @@ class Facility(peopleplaces.ManagementBase):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
-        The return value of this message becomes the new payload.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
         """
-        return None
+        return None, ward
 
     def handleBedRequestFate(self, ward, payload, timeNow):
         """
@@ -324,9 +329,10 @@ class PatientAgent(peopleplaces.Person):
                     print 'patient history %s' % str(self.agentHistory)
                 else:
                     print 'patient has no history!'
-                print "%s tier change %s to %s has no available facilities" % (self.name, self.tier, tier)
-#             assert facAddrList, ("%s tier change %s to %s has no available facilities"
-#                                  % (self.name, self.tier, tier))
+                print "%s tier change %s to %s has no available facilities" % (self.name, self.tier,
+                                                                               tier)
+            assert facAddrList, ("%s tier change %s to %s has no available facilities"
+                                 % (self.name, self.tier, tier))
             homeAddr = self._status.homeAddr
 
             # do we want to test for homeAddr in weighted lists?  how would we weight it?
