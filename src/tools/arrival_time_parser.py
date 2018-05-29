@@ -111,7 +111,8 @@ def isVisibleSomeHosp(loc, facDict, patName):
 
 def addDepartureTime(tupleL):
     """
-    Arriving tuples have the form (placeName, arrivalDate).  Return (placeName, arrivalDate, departureDate).
+    Arriving tuples have the form (placeName, arrivalDate).
+    Return (placeName, arrivalDate, departureDate).
     """
     rslt = []
     prevLoc, prevArrival = tupleL[0]
@@ -148,6 +149,8 @@ def accumulate(mtx, tplL, lowThresh, highThresh, lowDate, highDate, facIdxTbl, f
     counts = 0
     if len(tplL) > 1:
         oldLoc, oldArrive, oldDepart = tplL[0]
+        if oldLoc.endswith('cache'):
+            oldLoc = oldLoc[:-5]
         oldInHosp = (facDict[oldLoc]['category'] in HOSP_CAT_LIST)
         if oldInHosp:
             lastHospDate = oldDepart
@@ -176,6 +179,8 @@ def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct, accumStayDct
         foundOverlap = False
         for loc, arrive, depart in tplL:
             if overlapsRange(arrive, depart, rangeLow, rangeHigh):
+                if loc.endswith('cache'):
+                    loc = loc[:-5]
                 ctg = facDict[loc]['category']
                 dct[ctg] += 1
                 sDct[ctg] += (depart - arrive)
@@ -312,7 +317,8 @@ def main():
     netEffEnd = None
     for patName, tupleL in patientLocs.items():
 
-        filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
+        #filtTupleL = filterPath(addDepartureTime(tupleL), isVisibleSomeHosp, facDict, patName)
+        filtTupleL = filterPath(addDepartureTime(tupleL), allVisible, facDict, patName)
         filtTupleL = mergeSelfTransfers(filtTupleL)
         countD, effStart, effEnd = countVisits(filtTupleL, lowDate, highDate, facDict,
                                                accumCountsD, accumStayD)
@@ -345,12 +351,29 @@ def main():
 
     measDirectMtx = mtxFromYaml(DIRECT_TRANSFER_DATA, directMtx, facIdxTbl, commIdx)
 
+    for abbrev in facL:
+        rec = facDict[abbrev]
+        try:
+            transToComm = (rec['totalDischarges']['value']
+                           - sum([subR['count']['value'] for subR in rec['totalTransfersOut']]))
+        except KeyError as e:
+            transToComm = 0
+        try:
+            totAdmissions = rec['totalAdmissions']['value']
+        except KeyError as e:
+            totAdmissions = 0
+        transToComm *= float(netEffEnd + 1 - netEffStart)/365.  # scale to proper time range
+        measDirectMtx[facIdxTbl[abbrev], commIdx] += transToComm
+        measDirectMtx[commIdx, facIdxTbl[abbrev]] += (totAdmissions
+                                                      - np.sum(measDirectMtx[:, facIdxTbl[abbrev]]))
+        np.fill_diagonal(measDirectMtx, 0.0)  # ignore self transfers
+
     measIndirectMtx = mtxFromYaml(INDIRECT_TRANSFER_DATA, indirectMtx, facIdxTbl, commIdx)
 
     pltMtxImageFig(directMtx, measDirectMtx, indirectMtx, measIndirectMtx)
 
     plt.savefig('arrival_time_plots.svg', bbox_inches='tight')
-   
+
     np.savez('arrival_time_arrays.npz',
             indirect_simulated=indirectMtx,
             direct_simulated=directMtx,
