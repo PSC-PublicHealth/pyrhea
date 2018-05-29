@@ -410,12 +410,14 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict,
     ax.set_yticks([])
 
 def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facDict,
-                hideDirectTransfersToSelf=False):
+                hideDirectTransfersToSelf=False, titleSuffix=None):
+    if titleSuffix is None:
+        titleSuffix = ""
     facIdxTbl = {val: key for key, val in idxFacTbl.items()}
     idx = facIdxTbl[abbrev]
 
     figs, axisL = plt.subplots(nrows=2, ncols=1)
-    axisL[0].set_title("%s (%s)" % (abbrev, facDict[abbrev]['category']))
+    axisL[0].set_title("%s (%s) %s" % (abbrev, facDict[abbrev]['category'], titleSuffix))
     if hideDirectTransfersToSelf:
         hideThisIdx = idx
     else:
