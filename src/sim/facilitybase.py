@@ -204,6 +204,16 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.SKILNRS: SKILNRSQueue}
 
 
+def findQueueForTier(careTier, queueList):
+    """
+    Given a list of queues of various types (for example Facility.reqQueues), find
+    and return the first which matches the given CareTier.
+    """
+    for queue in queueList:
+        if isinstance(queue, tierToQueueMap[careTier]):
+            return queue
+    return None
+
 
 class PatientRecord(object):
     _boolProps = ['isFrail',
@@ -273,7 +283,7 @@ class PatientRecord(object):
                                                    self.arrivalDate,
                                                    self.departureDate,
                                                    'Frail' if self.isFrail else 'not frail',
-                                                   ('Contagious' if self.isContagious 
+                                                   ('Contagious' if self.isContagious
                                                     else 'NonContagious'))
 
 class PatientStats(object):
@@ -474,7 +484,7 @@ class Facility(pyrheabase.Facility):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
-            a.setStatus(homeAddr=ward.getGblAddr())
+            a.setStatus(homeAddr=findQueueForTier(ward.tier, self.reqQueues).getGblAddr())
             a.setStatus(overall=payload)
             ward.lock(a)
             self.handleIncomingMsg(pyrheabase.ArrivalMsg,
@@ -497,7 +507,8 @@ class Facility(pyrheabase.Facility):
         The format used here is (number of bounces, tier, originating facility, and
         transferInfo dictionary).
         """
-        transferInfoDict = {'patientId': patientAgent.id}
+        transferInfoDict = {'patientId': patientAgent.id,
+                            'overallHealth': patientAgent.getStatus().overall}
         try:
             transferInfoDict = self.diagnosticPolicy.sendPatientTransferInfo(self,
                                                                              patientAgent,
@@ -516,7 +527,8 @@ class Facility(pyrheabase.Facility):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
-        The return value of this message becomes the new payload.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
 
         If ward is not None, this facility is in the process of accepting the bed request
         and the associated patient will be arriving later in the day.  Thus we cache
@@ -530,7 +542,7 @@ class Facility(pyrheabase.Facility):
         else:
             pass
         # updated number of bounces and sender
-        return (nBounces + 1, tier, self.abbrev, transferInfoDict)
+        return (nBounces + 1, tier, self.abbrev, transferInfoDict), ward
 
     def handleBedRequestFate(self, ward, payload, timeNow):  # @UnusedVariable
         """

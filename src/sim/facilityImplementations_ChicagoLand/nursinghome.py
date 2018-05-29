@@ -29,7 +29,8 @@ import schemautils
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
-from facilitybase import PatientStatusSetter, buildTimeTupleList
+from facilitybase import PatientStatusSetter, buildTimeTupleList, FacilityManager
+from facilitybase import findQueueForTier
 from hospital import estimateWork as hospitalEstimateWork
 from hospital import ClassASetter, OverallHealthSetter
 from hospital import buildChangeTree
@@ -45,16 +46,15 @@ _validator = None
 
 
 class NursingWard(Ward):
-    pass
-#     def handlePatientArrival(self, patientAgent, timeNow):
-#         super(NursingWard, self).handlePatientArrival(patientAgent, timeNow)
-#         # Sometimes the transfer tables send a patient in good health- they must
-#         # be here for rehab.
-#         if (patientAgent.getStatus().diagClassA == DiagClassA.WELL
-#                 and not patientAgent.getTreatment('rehab')):
-#             print '######## %s fixed %s %s at %s' % (self._name, patientAgent.name,
-#                                                buildTimeTupleList(patientAgent, timeNow), timeNow)
-#             patientAgent.setTreatment(rehab=True)
+    def handlePatientArrival(self, patientAgent, timeNow):
+        super(NursingWard, self).handlePatientArrival(patientAgent, timeNow)
+        # Some FRAIL patients are created 'in flight' and have no homeAddr.  If one
+        # lands here, make this fac its home.
+        if (patientAgent.getStatus().overall == PatientOverallHealth.FRAIL and
+                patientAgent.getStatus().homeAddr is None):
+            patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.NURSING,
+                                                             self.fac.reqQueues).getGblAddr())
+
 
 class NursingHome(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
@@ -85,6 +85,15 @@ class NursingHome(Facility):
 
         self.initialUnhealthyFrac = _c['initialUnhealthyFrac']['value'] # frac of non-residents
         self.initialNonResidentFrailFrac = _c['initialNonResidentFrailFrac']['value']
+
+        initialFrac = (self.initialResidentFrac
+                       + (1.0-self.initialResidentFrac)*self.initialNonResidentFrailFrac)
+        self.frailBeds = int(math.ceil(max(nBeds * self.initialResidentFrac,
+                                           initialFrac * descr['meanPop']['value'])))
+        self.frailBedsOccupied = None  # because we cannot count until after initialization
+        self.nonFrailBedsOccupied = None
+        self.nBeds = nBeds
+
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -136,6 +145,96 @@ class NursingHome(Facility):
         self.rehabTreeCache = {}
         self.frailTreeCache = {}
 
+    def initializeFrailCount(self):
+        """Implements the lazy initialization of frail and non-frail patient counts"""
+        frailCount = 0
+        nonFrailCount = 0
+        for ward in self.getWards():
+            for pA in ward.getPatientList():
+                if pA.getStatus().overall == PatientOverallHealth.FRAIL:
+                    frailCount += 1
+                else:
+                    nonFrailCount += 1
+        self.frailBedsOccupied = frailCount
+        self.nonFrailBedsOccupied = nonFrailCount
+        if self.abbrev == 'MANO': print 'MANO init %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                   self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+
+    def handleBedRequestResponse(self, ward, payload, timeNow):  # @UnusedVariable
+        """
+        This routine is called in the time slice of the Facility Manager when the manager
+        responds to a request for a bed.  If the request was denied, 'ward' will be None.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
+
+        If ward is not None, this facility is in the process of accepting the bed request
+        and the associated patient will be arriving later in the day.  Thus we cache
+        the transfer info which may be associated with the patient.
+        """
+        outgoingPayload, ward = super(NursingHome, self).handleBedRequestResponse(ward,
+                                                                                  payload,
+                                                                                  timeNow)
+        if ward:
+            # We may yet decline if it would violate our overall health ratio
+            transferInfoDict = payload[3]
+            pId = transferInfoDict['patientId']
+            pOH = transferInfoDict['overallHealth']
+            if self.frailBedsOccupied is None:
+                self.initializeFrailCount()
+            if pOH == PatientOverallHealth.FRAIL:
+                if self.frailBedsOccupied >= self.frailBeds:
+                    ward = None  # decline the request
+                    if self.abbrev == 'MANO': print 'MANO deny FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+                else:
+                    self.frailBedsOccupied += 1  # commit the frail
+                    if self.abbrev == 'MANO': print 'MANO accept FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+            else:
+                if self.nonFrailBedsOccupied >= self.nBeds - self.frailBeds:
+                    ward = None  # decline the request
+                    if self.abbrev == 'MANO': print 'MANO deny non-FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+                else:
+                    self.nonFrailBedsOccupied += 1
+                    if self.abbrev == 'MANO': print 'MANO accept non-FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+            if ward is None:
+                del self.arrivingPatientTransferInfoDict[pId]  # entry added by superclass
+        return outgoingPayload, ward
+
+    def getMsgPayload(self, msgType, patientAgent):
+        payload = super(NursingHome, self).getMsgPayload(msgType, patientAgent)
+        if issubclass(msgType, pyrheabase.DepartureMsg):
+            payload = (patientAgent.getStatus().overall, payload)  # stash overall health
+        return payload
+
+    def handleIncomingMsg(self, msgType, payload, timeNow):
+        if issubclass(msgType, pyrheabase.DepartureMsg):
+            pOH, payload = payload  # strip out overall health info
+            if self.frailBedsOccupied is None:
+                self.initializeFrailCount()  # this will include the current departure
+            else:
+                if pOH == PatientOverallHealth.FRAIL:
+                    self.frailBedsOccupied -= 1
+                    if self.abbrev == 'MANO': print 'MANO depart FRAIL %s %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds, timeNow)
+                    if self.frailBedsOccupied < 0:
+                        badVal = self.frailBedsOccupied
+                        self.initializeFrailCount()
+                        logger.error('%s mis-counted frail patients; expected %s but found %s',
+                                     self.name, badVal, self.frailBedsOccupied)
+                else:
+                    self.nonFrailBedsOccupied -= 1
+                    if self.abbrev == 'MANO': print 'MANO depart non-FRAIL %s %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
+                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds, timeNow)
+                    if self.nonFrailBedsOccupied < 0:
+                        badVal = self.nonFrailBedsOccupied
+                        self.initializeFrailCount()
+                        logger.error('%s mis-counted non-frail patients; expected %s but found %s',
+                                     self.name, badVal, self.nonFrailBedsOccupied)
+        return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
+
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         patientDiagnosis = patientAgent.getDiagnosis()
@@ -152,7 +251,6 @@ class NursingHome(Facility):
             else:
                 innerTree = ClassASetter(DiagClassA.WELL)  # We declare them done with any rehab
                 changeTree = buildChangeTree(self.lclRates, forceRelocateDiag=DiagClassA.NEEDSREHAB)
-    
                 tree = BayesTree(changeTree, innerTree,
                                  self.frailCachedCDF.intervalProb, tag='LOS')
                 self.frailTreeCache[key] = tree
@@ -173,9 +271,10 @@ class NursingHome(Facility):
             else:  # not frail and not rehab
                 if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
                     raise RuntimeError('%s has a REHAB diagnosis but no treatment?')
-            logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+            logger.warning('fac %s patient: %s careTier %s overall %s with status %s startTime: %s: '
                            'this patient should be gone by now'
                            % (self.name, patientAgent.name, CareTier.names[careTier],
+                              PatientOverallHealth.names[patientStatus.overall],
                               DiagClassA.names[patientStatus.diagClassA], startTime))
             return BayesTree(PatientStatusSetter())
 
@@ -206,7 +305,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         if a.getStatus().overall == PatientOverallHealth.FRAIL:
-            a.setStatus(homeAddr=ward.getGblAddr())  # They live here
+            a.setStatus(homeAddr=findQueueForTier(CareTier.NURSING, fac.reqQueues).getGblAddr())  # They live here
         else:
             a.setTreatment(rehab=True)  # They must be here for rehab
         ward.lock(a)
