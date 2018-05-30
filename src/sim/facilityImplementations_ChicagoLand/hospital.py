@@ -183,7 +183,7 @@ class Hospital(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
-        bedsPerICUWard = _constants['bedsPerWard']['value']
+        bedsPerICUWard = _constants['bedsPerICUWard']['value']
 
         _c = _constants
         totDsch = float(descr['totalDischarges']['value'])
