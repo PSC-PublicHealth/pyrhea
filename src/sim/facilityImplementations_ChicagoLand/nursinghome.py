@@ -88,12 +88,10 @@ class NursingHome(Facility):
 
         initialFrac = (self.initialResidentFrac
                        + (1.0-self.initialResidentFrac)*self.initialNonResidentFrailFrac)
-        self.frailBeds = int(math.ceil(max(nBeds * self.initialResidentFrac,
-                                           initialFrac * descr['meanPop']['value'])))
-        self.frailBedsOccupied = None  # because we cannot count until after initialization
-        self.nonFrailBedsOccupied = None
-        self.nBeds = nBeds
-
+        frailBeds = int(math.ceil(initialFrac * nBeds))
+        self.bedAllocDict = {'frail_beds': frailBeds, 'non_frail_beds': (nBeds - frailBeds),
+                             'frail': 0, 'non_frail': 0,
+                             'frail_held': 0, 'non_frail_held': 0}
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -145,20 +143,14 @@ class NursingHome(Facility):
         self.rehabTreeCache = {}
         self.frailTreeCache = {}
 
-    def initializeFrailCount(self):
-        """Implements the lazy initialization of frail and non-frail patient counts"""
-        frailCount = 0
-        nonFrailCount = 0
-        for ward in self.getWards():
-            for pA in ward.getPatientList():
-                if pA.getStatus().overall == PatientOverallHealth.FRAIL:
-                    frailCount += 1
-                else:
-                    nonFrailCount += 1
-        self.frailBedsOccupied = frailCount
-        self.nonFrailBedsOccupied = nonFrailCount
-        if self.abbrev == 'MANO': print 'MANO init %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                   self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+    def checkBedAllocDict(self, healthKey, heldKey, bedsKey):
+        """Check that the bed allocation table has been initialized and is sensible."""
+        bAD = self.bedAllocDict
+        assert bAD[heldKey] >= 0, '%s %s held bed count is less than 0' % (self.name, healthKey)
+        assert bAD[healthKey] >= 0, '%s %s occupancy is less than 0' % (self.name, healthKey)
+        assert bAD[bedsKey] >= 0, '%s %s bed count is less than 0' % (self.name, healthKey)
+        assert bAD[heldKey] + bAD[healthKey] <= bAD[bedsKey], ('%s %s too many beds committed'
+                                                               % (self.name, healthKey))
 
     def handleBedRequestResponse(self, ward, payload, timeNow):  # @UnusedVariable
         """
@@ -179,26 +171,29 @@ class NursingHome(Facility):
             transferInfoDict = payload[3]
             pId = transferInfoDict['patientId']
             pOH = transferInfoDict['overallHealth']
-            if self.frailBedsOccupied is None:
-                self.initializeFrailCount()
-            if pOH == PatientOverallHealth.FRAIL:
-                if self.frailBedsOccupied >= self.frailBeds:
-                    ward = None  # decline the request
-                    if self.abbrev == 'MANO': print 'MANO deny FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+            if self.patientRecordExists(pId):
+                pRec = self.getPatientRecord(pId)
+                if 'bedHeld' in pRec.noteD and pRec.noteD['bedHeld']:
+                    bedHeld = True
                 else:
-                    self.frailBedsOccupied += 1  # commit the frail
-                    if self.abbrev == 'MANO': print 'MANO accept FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+                    bedHeld = False
             else:
-                if self.nonFrailBedsOccupied >= self.nBeds - self.frailBeds:
-                    ward = None  # decline the request
-                    if self.abbrev == 'MANO': print 'MANO deny non-FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+                bedHeld = False
+            if pOH == PatientOverallHealth.FRAIL:
+                healthKey, heldKey, bedsKey = 'frail', 'frail_held', 'frail_beds'
+            else:
+                healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
+            self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            if bedHeld:
+                # print 'reentered held bed! %s' % healthKey
+                pass
+            else:
+                if (self.bedAllocDict[healthKey] < (self.bedAllocDict[bedsKey]
+                                                    - self.bedAllocDict[heldKey])):
+                    self.bedAllocDict[heldKey] += 1  # commit the bed
                 else:
-                    self.nonFrailBedsOccupied += 1
-                    if self.abbrev == 'MANO': print 'MANO accept non-FRAIL %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds)
+                    ward = None  # decline the request
+                    # print '%s: request declined %s %s' % (self.name, healthKey, self.bedAllocDict)
             if ward is None:
                 del self.arrivingPatientTransferInfoDict[pId]  # entry added by superclass
         return outgoingPayload, ward
@@ -206,33 +201,51 @@ class NursingHome(Facility):
     def getMsgPayload(self, msgType, patientAgent):
         payload = super(NursingHome, self).getMsgPayload(msgType, patientAgent)
         if issubclass(msgType, pyrheabase.DepartureMsg):
-            payload = (patientAgent.getStatus().overall, payload)  # stash overall health
+            # stash the overall health and patient Id
+            payload = (patientAgent.getStatus().overall, patientAgent.id, payload)
+        elif issubclass(msgType, pyrheabase.ArrivalMsg):
+            # stash overall health
+            payload = (patientAgent.getStatus().overall, patientAgent.id, payload)
         return payload
 
     def handleIncomingMsg(self, msgType, payload, timeNow):
         if issubclass(msgType, pyrheabase.DepartureMsg):
-            pOH, payload = payload  # strip out overall health info
-            if self.frailBedsOccupied is None:
-                self.initializeFrailCount()  # this will include the current departure
+            pOH, pId, payload = payload  # strip out overall health and patient Id.
+            if pOH == PatientOverallHealth.FRAIL:
+                healthKey, heldKey, bedsKey = 'frail', 'frail_held', 'frail_beds'
             else:
-                if pOH == PatientOverallHealth.FRAIL:
-                    self.frailBedsOccupied -= 1
-                    if self.abbrev == 'MANO': print 'MANO depart FRAIL %s %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds, timeNow)
-                    if self.frailBedsOccupied < 0:
-                        badVal = self.frailBedsOccupied
-                        self.initializeFrailCount()
-                        logger.error('%s mis-counted frail patients; expected %s but found %s',
-                                     self.name, badVal, self.frailBedsOccupied)
-                else:
-                    self.nonFrailBedsOccupied -= 1
-                    if self.abbrev == 'MANO': print 'MANO depart non-FRAIL %s %s %s %s %s' % (self.frailBedsOccupied, self.frailBeds,
-                                                                                     self.nonFrailBedsOccupied, self.nBeds - self.frailBeds, timeNow)
-                    if self.nonFrailBedsOccupied < 0:
-                        badVal = self.nonFrailBedsOccupied
-                        self.initializeFrailCount()
-                        logger.error('%s mis-counted non-frail patients; expected %s but found %s',
-                                     self.name, badVal, self.nonFrailBedsOccupied)
+                healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
+            self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            self.bedAllocDict[healthKey] -= 1  # bedAllocDict rebuild would have done this
+            self.bedAllocDict[heldKey] += 1
+            with self.getPatientRecord(pId, timeNow) as pRec:
+                pRec.noteD['bedHeld'] = True
+        elif issubclass(msgType, pyrheabase.ArrivalMsg):
+            pOH, pId, payload = payload # strip out overall health and patient id
+            if pOH == PatientOverallHealth.FRAIL:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('frail', 'frail_held', 'frail_beds',
+                                                  'non_frail', 'non_frail_beds')
+            else:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
+                                                  'frail', 'frail_beds')
+            bAD = self.bedAllocDict
+            bAD[healthKey] += 1
+            if bAD[heldKey] > 0:
+                bAD[heldKey] -= 1
+            else:
+                if timeNow > 0:
+                    logger.error('%s unexpected arrival of %s %s', self.name, healthKey, pId)
+                    self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            if bAD[healthKey] > bAD[bedsKey]:
+                delta = bAD[healthKey] - bAD[bedsKey]
+                assert bAD[otherHealthKey] <= bAD[otherBedsKey] + delta, ('%s overflow arrival'
+                                                                          % self.name)
+                bAD[bedsKey] += delta
+                bAD[otherBedsKey] -= delta
+            with self.getPatientRecord(pId, timeNow) as pRec:
+                pRec.noteD['bedHeld'] = False
         return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
@@ -300,6 +313,7 @@ def _populate(fac, descr, patch):
         meanPop = descr['nBeds']['value']
     # The following is approximate, but adequate...
     agentList = []
+    logger.debug('%s before _populate %s: %s', fac.name, int(round(meanPop)), fac.bedAllocDict)
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.NURSING)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
@@ -313,6 +327,7 @@ def _populate(fac, descr, patch):
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
         agentList.append(a)
+    logger.debug('%s after _populate %s: %s', fac.name, int(round(meanPop)), fac.bedAllocDict)
     return agentList
 
 

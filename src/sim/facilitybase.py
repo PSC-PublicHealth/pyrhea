@@ -218,7 +218,7 @@ def findQueueForTier(careTier, queueList):
 class PatientRecord(object):
     _boolProps = ['isFrail',
                   'carriesPth',  # Carries the pathogen being simulated
-                  'carriesOther' # Carries some other contagious pathogen
+                  'carriesOther', # Carries some other contagious pathogen
                   ]
 
     def __init__(self, patientId, arrivalDate, #owningFacility,
@@ -315,6 +315,11 @@ class PatientStats(object):
         else:
             raise RuntimeError('No patient to remove')
 
+    def __str__(self):
+        bedStr = ', '.join(['%s: %d' % (CareTier.names[tier], ct)
+                            for tier, ct in self.curOccDict.items()])
+        return '<occupied beds %s>' % bedStr
+
 
 class MissingPatientRecordError(RuntimeError):
     pass
@@ -382,7 +387,7 @@ class Facility(pyrheabase.Facility):
 
     def getNoteHolder(self):
         return self.noteHolder
-    
+
     def getPatientRecord(self, patientId, timeNow=None):
         if patientId in self.patientDataDict:
             pR = pickle.loads(self.patientDataDict[patientId])
@@ -396,6 +401,11 @@ class Facility(pyrheabase.Facility):
             self.patientDataDict[patientId] = pickle.dumps(pR, 2)  # keep a copy
             pR._owningFac = self
             return pR
+
+    def getPatientRecords(self):
+        """In case someone wants to exhaustively search patient records"""
+        for pStr in self.patientDataDict.values():
+            yield pickle.loads(pStr)
 
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
