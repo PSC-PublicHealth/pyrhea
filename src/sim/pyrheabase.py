@@ -226,10 +226,10 @@ class BedRequest(patches.Agent):
                     else:    
                         self.dest = self.facilityOptions.pop()
             elif self.fsmstate == BedRequest.STATE_MOVING:
-                    addr, final = self.patch.getPathTo(self.dest)
-                    if final:
-                        self.fsmstate = BedRequest.STATE_ASKWARD
-                    timeNow = addr.lock(self)
+                addr, final = self.patch.getPathTo(self.dest)
+                if final:
+                    self.fsmstate = BedRequest.STATE_ASKWARD
+                timeNow = addr.lock(self)
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
                 raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
@@ -320,6 +320,7 @@ class PatientAgent(peopleplaces.Person):
         if tier == self.tier and TierUpdateModFlag.FORCE_MOVE not in modifiers:
             return self.locAddr  # things stay the same
         elif tier is None:
+            self.tier = None
             return None  # signal death
         else:
             facAddrList = self.getCandidateFacilityList(timeNow, tier)
@@ -367,6 +368,7 @@ class PatientAgent(peopleplaces.Person):
                 return self.locAddr  # Stay put; we'll try next timeslice
                 # state is unchanged
             else:
+                self.tier = tier
                 return self.newLocAddr
 
     def handleArrival(self, timeNow):
@@ -374,7 +376,8 @@ class PatientAgent(peopleplaces.Person):
         An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
         locked the interactant self.loc.
         """
-        self.tier = self.loc.tier
+        assert self.tier == self.loc.tier, ('%s arrived at tier %s when expecting %s'
+                                            % (self.name, self.loc.tier, self.tier))
         self.ward.handlePatientArrival(self, timeNow)
 
     def handleDeparture(self, timeNow):
