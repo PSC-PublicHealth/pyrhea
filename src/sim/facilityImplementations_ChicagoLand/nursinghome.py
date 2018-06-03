@@ -26,6 +26,7 @@ import logging
 import pyrheabase
 import pyrheautils
 import schemautils
+from quilt.peopleplaces import FutureMsg
 from stats import CachedCDFGenerator, lognormplusexp, BayesTree
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
@@ -54,6 +55,21 @@ class NursingWard(Ward):
                 patientAgent.getStatus().homeAddr is None):
             patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.NURSING,
                                                              self.fac.reqQueues).getGblAddr())
+
+
+class CancelHoldMsg(FutureMsg):
+    idCounter = 0
+
+    @classmethod
+    def nextId(cls):
+        rslt = cls.idCounter
+        cls.idCounter += 1
+        return rslt
+
+    def __init__(self, baseName, patch, payload, destAddr, arrivalTime, debug=False):
+        super(CancelHoldMsg, self).__init__(baseName + '_cancel_hold_%d' % self.nextId(),
+                                            patch, payload, destAddr, arrivalTime,
+                                            debug=debug)
 
 
 class NursingHome(Facility):
@@ -202,7 +218,8 @@ class NursingHome(Facility):
         payload = super(NursingHome, self).getMsgPayload(msgType, patientAgent)
         if issubclass(msgType, pyrheabase.DepartureMsg):
             # stash the overall health and patient Id
-            payload = (patientAgent.getStatus().overall, patientAgent.id, payload)
+            payload = (patientAgent.getStatus().overall, patientAgent.id,
+                       patientAgent.tier, payload)  # tier is that of destination at this point
         elif issubclass(msgType, pyrheabase.ArrivalMsg):
             # stash overall health
             payload = (patientAgent.getStatus().overall, patientAgent.id, payload)
@@ -210,16 +227,23 @@ class NursingHome(Facility):
 
     def handleIncomingMsg(self, msgType, payload, timeNow):
         if issubclass(msgType, pyrheabase.DepartureMsg):
-            pOH, pId, payload = payload  # strip out overall health and patient Id.
+            pOH, pId, destTier, payload = payload  # strip out overall health and patient Id.
             if pOH == PatientOverallHealth.FRAIL:
                 healthKey, heldKey, bedsKey = 'frail', 'frail_held', 'frail_beds'
             else:
                 healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
             self.checkBedAllocDict(healthKey, heldKey, bedsKey)
-            self.bedAllocDict[healthKey] -= 1  # bedAllocDict rebuild would have done this
-            self.bedAllocDict[heldKey] += 1
-            with self.getPatientRecord(pId, timeNow) as pRec:
-                pRec.noteD['bedHeld'] = True
+            self.bedAllocDict[healthKey] -= 1
+            if destTier not in [CareTier.HOME, CareTier.NURSING] and destTier is not None:
+                self.bedAllocDict[heldKey] += 1
+                with self.getPatientRecord(pId, timeNow) as pRec:
+                    pRec.noteD['bedHeld'] = True
+                cancelHoldMsg = CancelHoldMsg(self.name, self.manager.patch,
+                                              (pOH, pId, timeNow),
+                                              self.reqQueues[0].getGblAddr(),
+                                              timeNow + 14, debug=True)
+                self.manager.patch.launch(cancelHoldMsg, timeNow)
+            return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
         elif issubclass(msgType, pyrheabase.ArrivalMsg):
             pOH, pId, payload = payload # strip out overall health and patient id
             if pOH == PatientOverallHealth.FRAIL:
@@ -246,7 +270,24 @@ class NursingHome(Facility):
                 bAD[otherBedsKey] -= delta
             with self.getPatientRecord(pId, timeNow) as pRec:
                 pRec.noteD['bedHeld'] = False
-        return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
+            return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
+        elif issubclass(msgType, CancelHoldMsg):
+            pOH, pId, launchTime = payload
+            if pOH == PatientOverallHealth.FRAIL:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('frail', 'frail_held', 'frail_beds',
+                                                  'non_frail', 'non_frail_beds')
+            else:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
+                                                  'frail', 'frail_beds')
+            with self.getPatientRecord(pId, timeNow) as pRec:
+                if pRec.departureDate == launchTime and pRec.noteD['bedHeld']:
+                    pRec.noteD['bedHeld'] = False
+                    bAD = self.bedAllocDict
+                    bAD[heldKey] -= 1
+                    assert bAD[heldKey] >= 0, '%s cannot find bed hold to cancel'
+            return timeNow
 
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
