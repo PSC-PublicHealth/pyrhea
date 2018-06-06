@@ -444,14 +444,14 @@ def main():
                     (inTargetDF, '_inTarget'), (outTargetDF, '_outTarget')]:
         fullDF = pd.merge(fullDF, df.add_suffix(sfx), how='left',
                           left_on=['day', 'run'], right_on=['day' + sfx, 'run' + sfx])
-    fullDF.to_msgpack('my_fulldf.mpz')
+    #fullDF.to_msgpack('my_fulldf.mpz')
 
     allFlds = []
     for fld in fieldsOfInterest:
         allFlds.extend([fld + sfx for sfx in ['_regn', '_in13mi', '_out13mi', '_inCook', '_outCook',
                                               '_inTarget', '_outTarget']])
     fullStatDF = addStatColumns(fullDF.groupby(['day']), allFlds)
-    fullStatDF.to_msgpack('my_fullstatsdf.mpz')
+    #fullStatDF.to_msgpack('my_fullstatsdf.mpz')
 
     headingRow = ['Day']
     entries = ['day']
