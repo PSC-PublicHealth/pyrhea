@@ -60,9 +60,9 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
     bigDF = pd.DataFrame(columns=['day', 'abbrev', 'tier'])
     try:
         specialDict = mergeNotesFiles([note],False)
-        print "here {0}".format(note)
+        print "finished opening {0}".format(note)
         for key, noteKey in translationDict.items():
-            print "key = {0}".format(key)
+            print "  key = {0}".format(key)
             entryDF = None
             for abbrev in abbrevList:
                 facDF = None
@@ -104,39 +104,6 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
     return bigDF
 
 
-
-# def combineTimeSeries(tsArray,runDays, tsIncrement=1):
-#     def ci(x):
-#         ci_tuple = st.t.interval(0.95,len(x)-1, loc = np.mean(x), scale=st.sem(x))
-#         return pd.Series(ci_tuple)
-# #
-#     #DataFrame({'5per':ci_tuple[0],'95per':ci_tuple[1]})
-# 
-#     returnDict = {'mean':np.zeros(runDays),'median':np.zeros(runDays),
-#                   'stdv':np.zeros(runDays),'5%CI':np.zeros(runDays),'95%CI':np.zeros(runDays)}
-# 
-# 
-#     df = pd.DataFrame(tsArray).transpose()
-# 
-#     #df2 = df.mean(axis=1)
-# 
-#     #print tsArray
-#     returnDict['mean'] = df.mean(axis=1)
-#     returnDict['median'] = df.median(axis=1)
-#     returnDict['stdv'] = df.std(axis=1)
-# 
-#     n = len(df.columns)
-#     rf = pd.DataFrame({'sem':(df.std(axis=1)),'mean':df.mean(axis=1)})
-#     i95 = st.t._ppf(1.95/2.0, n-1)
-#     rf['c95_lower'] = rf['mean'] - (rf['sem'] * i95)
-#     rf['c95_upper'] = rf['mean'] + (rf['sem'] * i95)
-# 
-#     returnDict['5%CI'] = rf['c95_lower']
-#     returnDict['95%CI'] = rf['c95_upper']
-# 
-#     return returnDict
-
-
 def pool_helper(args):
     return extractCountsFromNotes(*args)
 
@@ -155,7 +122,7 @@ def computeConfidenceIntervals(df, fieldsOfInterest):
 
 def addStatColumns(baseGp, fieldsOfInterest):
     """
-    This creates a new DataFrame containing _median, _mean, _stdv, _5%CT, and _95%CT for
+    This creates a new DataFrame containing _median, _mean, _stdv, _Q1, _Q3, _5%CT, and _95%CT for
     each of the columns in fieldsOfInterest
     """
     statDF = baseGp.mean()
@@ -167,6 +134,14 @@ def addStatColumns(baseGp, fieldsOfInterest):
     statDF = statDF.assign(**kwargs)
     suffix = '_stdv'
     df = baseGp.std().add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    statDF = statDF.assign(**kwargs)
+    suffix = '_Q1'
+    df = baseGp.quantile(0.25).add_suffix(suffix).reset_index()
+    kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
+    statDF = statDF.assign(**kwargs)
+    suffix = '_Q3'
+    df = baseGp.quantile(0.75).add_suffix(suffix).reset_index()
     kwargs = {st : df[st] for st in ['%s%s'% (fld, suffix) for fld in fieldsOfInterest]}
     statDF = statDF.assign(**kwargs)
     df = baseGp.apply(computeConfidenceIntervals, fieldsOfInterest).reset_index()
@@ -181,6 +156,39 @@ def generateXDROAdmissions(df, xdroAbbrevs):
     flagV = [(abbrev in xdroAbbrevs) for abbrev in df['abbrev']]
     rsltV = np.where(flagV, admV, 0.0)
     return rsltV
+
+
+def addBedStats(df):
+    cols = PthStatus.names.values()
+    return df.assign(colonizedDays=df['COLONIZED'], bedDays=df[cols].sum(axis=1))
+
+
+def sumOverDays(fullDF, valuesToGather, baseDays, fieldsOfInterest):
+    """
+    Sum relevant values over the duration of the intervention.
+    Different attributes have different day offsets, so we need to do this manually.
+    baseDays would normally be burninDays + scenarioWaitDays
+    """
+    idxL = ['abbrev', 'tier', 'run']
+    idxL = [key for key in idxL if key in fullDF.columns]
+    dayOffset = valuesToGather['pthStatus'][1]
+    df = (fullDF[fullDF['day'] >= baseDays + dayOffset]
+          .groupby(idxL).sum().add_suffix('_sum').reset_index())
+    cols = [nm + '_sum' for nm in PthStatus.names.values()]
+    sumDF = df[idxL].copy()
+    sumDF = sumDF.assign(colonizedDays=df['COLONIZED_sum'],
+                         bedDays=df[cols].sum(axis=1))
+
+    for key in fieldsOfInterest:
+        if key in valuesToGather:
+            if dayOffset != valuesToGather[key][1]:
+                # We need to regenerate the intermediate DataFrame
+                dayOffset = valuesToGather[key][1]
+                df = (fullDF[fullDF['day'] >= baseDays + dayOffset]
+                      .groupby(idxL)
+                      .sum().add_suffix('_sum').reset_index())
+            sumDF = sumDF.assign(**{key: df[key + '_sum']})
+    return sumDF
 
 
 def main():
@@ -322,39 +330,12 @@ def main():
     print "Processing Outputs"
     sys.stdout.flush()
 
-    dayOffset = valuesToGather['pthStatus'][1]
-    tsSumByTier = (tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]
-                   .groupby(['abbrev', 'tier', 'run'])
-                   .sum().add_suffix('_sum').reset_index())
-    cols = [nm + '_sum' for nm in PthStatus.names.values()]
-    tierDF = tsSumByTier[['abbrev', 'tier', 'run']].copy()
-    tierDF = tierDF.assign(colonizedDays=tsSumByTier['COLONIZED_sum'],
-                           bedDays=tsSumByTier[cols].sum(axis=1))
-    tierDF = tierDF.assign(prevalence=tierDF['colonizedDays'].divide(tierDF['bedDays']))
-
     fieldsOfInterest = ['colonizedDays', 'bedDays', 'prevalence']
     for key in valuesToGather.keys():
-        if key == 'pthStatus':
-            continue  # Did this one as a special case
-        if dayOffset != valuesToGather[key][1]:
-            # We need to regenerate the intermediate DataFrame
-            dayOffset = valuesToGather[key][1]
-            tsSumByTier = (tsDF[tsDF['day'] >= burninDays + scenarioWaitDays + dayOffset]
-                          .groupby(['abbrev', 'tier', 'run'])
-                          .sum().add_suffix('_sum').reset_index())
-        tierDF = tierDF.assign(**{key: tsSumByTier[key + '_sum']})
-        fieldsOfInterest.append(key)
+        if key != 'pthStatus':
+            fieldsOfInterest.append(key)
     if xdroAbbrevs:
         fieldsOfInterest.append('xdroAdmissions')
-        tierDF = tierDF.assign(xdroAdmissions=generateXDROAdmissions(tierDF, xdroAbbrevs))
-
-    tierAbbrevStatDF = addStatColumns(tierDF.groupby(['abbrev', 'tier']), fieldsOfInterest)
-    abbrevStatDF = addStatColumns(tierDF.groupby(['abbrev']), fieldsOfInterest)
-    tierStatDF = addStatColumns(tierDF.groupby(['tier']), fieldsOfInterest)
-
-    print tierAbbrevStatDF.columns
-    #print abbrevStatDF.columns
-    #print tierStatDF.columns
 
     print "Writing Files"
     sys.stdout.flush()
@@ -370,8 +351,13 @@ def main():
     if xdroAbbrevs:
         headingRow.append("XDRO Admissions")
         entries.append('xdroAdmissions_mean')
-    tierAbbrevStatDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
-                            columns=entries, header=headingRow)
+    sumDF = sumOverDays(tsDF, valuesToGather, burninDays + scenarioWaitDays, fieldsOfInterest)
+    sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
+    if xdroAbbrevs:
+        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
+    statDF = addStatColumns(sumDF.groupby(['abbrev', 'tier']), fieldsOfInterest)
+    statDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
+                  columns=entries, header=headingRow)
 
     # Means by abbrev
     headingRow = ['Facility Abbrev','Colonized Patient Days','Patient Bed Days','Prevalence']
@@ -383,16 +369,23 @@ def main():
     if xdroAbbrevs > 0:
         headingRow.append("XDRO Admissions")
         entries.append('xdroAdmissions_mean')
-    abbrevStatDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
-                        columns=entries, header=headingRow)
+    sumDF = sumOverDays(tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index(), valuesToGather,
+                        burninDays + scenarioWaitDays, fieldsOfInterest)
+    sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
+    if xdroAbbrevs:
+        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
+    statDF = addStatColumns(sumDF.groupby(['abbrev']), fieldsOfInterest)
+    statDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
+                  columns=entries, header=headingRow)
 
     # Prevalence intervals by abbrev
     headingRow = ['Facility Abbrev','Prevalence Mean','Prevalence Median',
                   'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI']
     entries = ['abbrev', 'prevalence_mean', 'prevalence_median', 'prevalence_stdv',
                'prevalence_5%CI', 'prevalence_95%CI']
-    abbrevStatDF.to_csv("{0}_stats_intervals_by_abbrev.csv".format(outFileName), index=False,
-                        columns=entries, header=headingRow)
+    # the statDF needed here is conveniently the same as above
+    statDF.to_csv("{0}_stats_intervals_by_abbrev.csv".format(outFileName), index=False,
+                  columns=entries, header=headingRow)
 
     # Prevalence by tier - naming suggests it was originally by facility category?
     headingRow = ['Facility Type','Prevalence Mean']
@@ -401,9 +394,83 @@ def main():
         if key != 'pthStatus':
             headingRow.append(tpl[2])
             entries.append(key + '_mean')
-    tierStatDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
-                      columns=entries, header=headingRow)
+    sumDF = sumOverDays(tsDF.groupby(['tier', 'day', 'run']).sum().reset_index(), valuesToGather,
+                        burninDays + scenarioWaitDays, fieldsOfInterest)
+    sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
+    if xdroAbbrevs:
+        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
+    statDF = addStatColumns(sumDF.groupby(['tier']), fieldsOfInterest)
+    statDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
+                  columns=entries, header=headingRow)
 
+    # Prevalence and incidence per day 13 miles
+    headRow = ['Day','Prev within 13','Prev outside 13','Prev within Cook','Prev outside Cook',
+               'Prev target','Prev nonTarget','Prev regionWide',
+               'Inc within 13','Inc outside 13','Inc within Cook','Inc outside Cook','Inc target',
+               'Inc nonTarget','Inc regionWide']
+    sumDF = tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index()
+    sumDF = addBedStats(sumDF)
+
+    targetAbbrevS = set(xdroAbbrevs)
+    targetAbbrevS = targetAbbrevS.union(sumDF[sumDF['creBundlesHandedOut'] != 0]['abbrev'])
+
+    in13miDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithin13Miles)]
+                .groupby(['day', 'run']).sum().reset_index())
+    out13miDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithin13Miles))]
+                 .groupby(['day', 'run']).sum().reset_index())
+    inCookDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithinCookCounty)]
+                .groupby(['day', 'run']).sum().reset_index())
+    outCookDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithinCookCounty))]
+                 .groupby(['day', 'run']).sum().reset_index())
+    inTargetDF = (sumDF[sumDF['abbrev'].isin(targetAbbrevS)]
+                  .groupby(['day', 'run']).sum().reset_index())
+    outTargetDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(targetAbbrevS))]
+                   .groupby(['day', 'run']).sum().reset_index())
+    sumSumDF = sumDF.groupby(['day', 'run']).sum().reset_index()
+
+    in13miDF = in13miDF.assign(prevalence=in13miDF['colonizedDays'].divide(in13miDF['bedDays']))
+    out13miDF = out13miDF.assign(prevalence=out13miDF['colonizedDays'].divide(out13miDF['bedDays']))
+    inCookDF = inCookDF.assign(prevalence=inCookDF['colonizedDays'].divide(inCookDF['bedDays']))
+    outCookDF = outCookDF.assign(prevalence=outCookDF['colonizedDays'].divide(outCookDF['bedDays']))
+    inTargetDF = inTargetDF.assign(prevalence=(inTargetDF['colonizedDays']
+                                               .divide(inTargetDF['bedDays'])))
+    outTargetDF = outTargetDF.assign(prevalence=(outTargetDF['colonizedDays']
+                                                 .divide(outTargetDF['bedDays'])))
+    sumSumDF = sumSumDF.assign(prevalence=sumSumDF['colonizedDays'].divide(sumSumDF['bedDays']))
+
+    fullDF = pd.merge(sumSumDF, in13miDF, how='left', on=['day', 'run'],
+                      suffixes=['_regn', '_in13mi'])
+    for df, sfx in [(out13miDF, '_out13mi'), (inCookDF, '_inCook'), (outCookDF, '_outCook'),
+                    (inTargetDF, '_inTarget'), (outTargetDF, '_outTarget')]:
+        fullDF = pd.merge(fullDF, df.add_suffix(sfx), how='left',
+                          left_on=['day', 'run'], right_on=['day' + sfx, 'run' + sfx])
+    fullDF.to_msgpack('my_fulldf.mpz')
+
+    allFlds = []
+    for fld in fieldsOfInterest:
+        allFlds.extend([fld + sfx for sfx in ['_regn', '_in13mi', '_out13mi', '_inCook', '_outCook',
+                                              '_inTarget', '_outTarget']])
+    fullStatDF = addStatColumns(fullDF.groupby(['day']), allFlds)
+    fullStatDF.to_msgpack('my_fullstatsdf.mpz')
+
+    headingRow = ['Day']
+    entries = ['day']
+    for hd, ent in zip(['Prev within 13','Prev outside 13','Prev within Cook','Prev outside Cook',
+                        'Prev target','Prev nonTarget','Prev regionWide',
+                        'Inc within 13','Inc outside 13','Inc within Cook','Inc outside Cook',
+                        'Inc target', 'Inc nonTarget','Inc regionWide'],
+                        ['prevalence_in13mi', 'prevalence_out13mi', 'prevalence_inCook',
+                         'prevalence_outCook', 'prevalence_inTarget', 'prevalence_outTarget',
+                         'prevalence_regn',
+                         'newColonized_in13mi', 'newColonized_out13mi', 'newColonized_inCook',
+                         'newColonized_outCook', 'newColonized_inTarget', 'newColonized_outTarget',
+                         'newColonized_regn']):
+        for hSfx, eSfx in zip([' mean', ' 5% CI', ' 95% CI'], ['_mean', '_5%CI', '_95%CI']):
+            headingRow.append(hd + hSfx)
+            entries.append(ent + eSfx)
+
+    fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
+                      index=False, columns=entries, header=headingRow)
 #     numNotesFiles = len(totalStats)
 #     ### By Tier
 #     ### Each of these should be the same in terms of the abbrevs and tiers, so we can use the first to index the rest
@@ -659,87 +726,6 @@ def main():
 #                 
 #                 csvWriter.writerow(entryRow)
 #         
-#         with open("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),"wb") as f:
-#             csvWriter = csv.writer(f)
-#             headRow = ['Day','Prev within 13','Prev outside 13','Prev within Cook','Prev outside Cook',
-#                        'Prev target','Prev nonTarget','Prev regionWide',
-#                        'Inc within 13','Inc outside 13','Inc within Cook','Inc outside Cook','Inc target','Inc nonTarget','Inc regionWide']
-#             csvWriter.writerow(headRow)
-#             
-#             for i in range(0,runDays):
-#                 colWithin = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
-#                 bedWithin = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
-#                 ncolsWithin = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithin13Miles])
-#                 
-#                 colWithout = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
-#                 bedWithout = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
-#                 ncolsWithout = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithin13Miles])
-#                 
-#                 colWithinC = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
-#                 bedWithinC = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
-#                 ncolsWithinC = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x in facilitiesWithinCookCounty])
-# 
-#                 colWithoutC = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
-#                 bedWithoutC = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
-#                 ncolsWithoutC = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if x not in facilitiesWithinCookCounty])
-# 
-#                 colTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
-#                 bedTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
-#                 ncolsTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] != 0 or statsByAbbrev[x]['xdroAdmissions']['mean'] != 0])
-#                 
-#                 colNonTarget = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
-#                 bedNonTarget = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
-#                 ncolsNonTarget = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys() if statsByAbbrev[x]['creBundlesHandedOut']['mean'] == 0 and statsByAbbrev[x]['xdroAdmissions']['mean'] == 0])
-#                 
-#                 colTotal = sum([statsByAbbrev[x]['colonizedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
-#                 bedTotal = sum([statsByAbbrev[x]['bedDaysTS']['mean'][i] for x in statsByAbbrev.keys()])
-#                 ncolsTotal = sum([statsByAbbrev[x]['newColonizedTS']['mean'][i] for x in statsByAbbrev.keys()])
-#                 
-#                 prevWithin = 0.0
-#                 if bedWithin > 0.0:
-#                     prevWithin = colWithin/bedWithin
-#                 
-#                 prevWithout = 0.0
-#                 if bedWithin > 0.0:
-#                     prevWithout = colWithout/bedWithout
-#                 
-#                 prevWithinC = 0.0
-#                 if bedWithinC > 0.0:
-#                     prevWithinC = colWithinC/bedWithinC
-# 
-#                 prevWithoutC = 0.0
-#                 if bedWithoutC > 0.0:
-#                     prevWithoutC = colWithoutC/bedWithoutC
-# 
-#                 prevTarget = 0.0
-#                 if bedTarget > 0.0:
-#                     prevTarget = colTarget/bedTarget
-#                     
-#                 prevNonTarget = 0.0
-#                 if bedNonTarget > 0.0:
-#                     prevNonTarget = colNonTarget/bedNonTarget
-#                     
-#                 prevTotal = 0.0
-#                 if bedTotal > 0.0:
-#                     prevTotal = colTotal/bedTotal
-#                     
-#                 entryRow = ['{0}'.format(i),
-#                             prevWithin,
-#                             prevWithout,
-#                             prevWithinC,
-#                             prevWithoutC,
-#                             prevTarget,
-#                             prevNonTarget,
-#                             prevTotal,
-#                             ncolsWithin,
-#                             ncolsWithout,
-#                             ncolsWithinC,
-#                             ncolsWithoutC,
-#                             ncolsTarget,
-#                             ncolsNonTarget,
-#                             ncolsTotal
-#                             ]
-#                 csvWriter.writerow(entryRow)
 #                 
 #                    
 #         with open("{0}_colonized_patients_per_day_by_abbrev.csv".format(outFileName),"wb") as f:
