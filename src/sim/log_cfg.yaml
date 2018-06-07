@@ -53,7 +53,8 @@ loggers:
   categorydrawwithreplacement:
     level: INFO
   community:
-    level: DEBUG
+    #level: DEBUG
+    level: INFO
   netinterface:
     level: WARNING
   pyrheautils:
@@ -62,7 +63,14 @@ loggers:
     level: WARNING
   policybase:
     level: DEBUG
+#    level: INFO
 #    handlers: [rabbitmq]
+  lockserver:
+    level: INFO
+  taumod:
+    level: DEBUG
+  tauadjuster:
+    level: DEBUG
 root:
   level: WARNING
   handlers: [console]

@@ -49,12 +49,9 @@ _validator = None
 class NursingWard(Ward):
     def handlePatientArrival(self, patientAgent, timeNow):
         super(NursingWard, self).handlePatientArrival(patientAgent, timeNow)
-        # Some FRAIL patients are created 'in flight' and have no homeAddr.  If one
-        # lands here, make this fac its home.
-        if (patientAgent.getStatus().overall == PatientOverallHealth.FRAIL and
-                patientAgent.getStatus().homeAddr is None):
-            patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.NURSING,
-                                                             self.fac.reqQueues).getGblAddr())
+        # Set this to be the patient's "home" so held rooms can be found later
+        patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.NURSING,
+                                                         self.fac.reqQueues).getGblAddr())
 
 
 class CancelHoldMsg(FutureMsg):
@@ -359,9 +356,8 @@ def _populate(fac, descr, patch):
         ward = fac.manager.allocateAvailableBed(CareTier.NURSING)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
-        if a.getStatus().overall == PatientOverallHealth.FRAIL:
-            a.setStatus(homeAddr=findQueueForTier(CareTier.NURSING, fac.reqQueues).getGblAddr())  # They live here
-        else:
+        a.setStatus(homeAddr=findQueueForTier(CareTier.NURSING, fac.reqQueues).getGblAddr())  # They live here
+        if a.getStatus().overall != PatientOverallHealth.FRAIL:
             a.setTreatment(rehab=True)  # They must be here for rehab
         ward.lock(a)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,

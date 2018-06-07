@@ -484,10 +484,9 @@ class CommunityWard(Ward):
 
     def handlePatientArrival(self, patientAgent, timeNow):
         super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
-        # Some patients are created 'in flight' and have no homeAddr.  If one
-        # lands here, make this fac its home.
-        if (patientAgent.getStatus().overall != PatientOverallHealth.FRAIL and
-                patientAgent.getStatus().homeAddr is None):
+        # If a patient lands here, make this fac its home unless it's FRAIL 
+        # (and thus should not be landing here at all...)
+        if (patientAgent.getStatus().overall != PatientOverallHealth.FRAIL):
             patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.HOME,
                                                              self.fac.reqQueues).getGblAddr())
 
@@ -611,6 +610,8 @@ class Community(Facility):
             assert losModel['pdf'] == 'expon(lambda=$0)', \
                 "Unexpected losModel form %s - only expon is supported" % losModel['pdf']
             rate = losModel['parms'][0]
+            #rate *= (779./675.)  # This is the one that scales the get-sick rate up to the go-home rate
+            #rate *= (675./779.)
             self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
     def calcTierRateConstants(self, prevFacAbbrev):
