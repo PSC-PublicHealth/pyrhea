@@ -395,7 +395,7 @@ def main():
             headingRow.append(tpl[2])
             entries.append(key + '_mean')
     if xdroAbbrevs:
-        tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
+        tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(tsDF, xdroAbbrevs))
     sumDF = sumOverDays(tsDF.groupby(['tier', 'day', 'run']).sum().reset_index(), valuesToGather,
                         burninDays + scenarioWaitDays, fieldsOfInterest)
     sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
