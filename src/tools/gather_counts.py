@@ -394,11 +394,11 @@ def main():
         if key != 'pthStatus':
             headingRow.append(tpl[2])
             entries.append(key + '_mean')
+    if xdroAbbrevs:
+        tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
     sumDF = sumOverDays(tsDF.groupby(['tier', 'day', 'run']).sum().reset_index(), valuesToGather,
                         burninDays + scenarioWaitDays, fieldsOfInterest)
     sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-    if xdroAbbrevs:
-        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
     statDF = addStatColumns(sumDF.groupby(['tier']), fieldsOfInterest)
     statDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
                   columns=entries, header=headingRow)
