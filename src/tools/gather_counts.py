@@ -333,6 +333,9 @@ def main():
     tsDF = pd.concat(tsDFL).reset_index()
     #print tsDF
 
+    if xdroAbbrevs:
+        tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(tsDF, xdroAbbrevs))
+
     #print "totalStats = {0}".format(totalStats)
     if opts.producetable:
         tsDF.to_msgpack(dfOutFileName)
@@ -363,8 +366,6 @@ def main():
         entries.append('xdroAdmissions_mean')
     sumDF = sumOverDays(tsDF, valuesToGather, burninDays + scenarioWaitDays, fieldsOfInterest)
     sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-    if xdroAbbrevs:
-        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
     statDF = addStatColumns(sumDF.groupby(['abbrev', 'tier']), fieldsOfInterest)
     statDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
                   columns=entries, header=headingRow)
@@ -382,8 +383,6 @@ def main():
     sumDF = sumOverDays(tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index(), valuesToGather,
                         burninDays + scenarioWaitDays, fieldsOfInterest)
     sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-    if xdroAbbrevs:
-        sumDF = sumDF.assign(xdroAdmissions=generateXDROAdmissions(sumDF, xdroAbbrevs))
     statDF = addStatColumns(sumDF.groupby(['abbrev']), fieldsOfInterest)
     statDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
                   columns=entries, header=headingRow)
@@ -404,8 +403,6 @@ def main():
         if key != 'pthStatus':
             headingRow.append(tpl[2])
             entries.append(key + '_mean')
-    if xdroAbbrevs:
-        tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(tsDF, xdroAbbrevs))
     sumDF = sumOverDays(tsDF.groupby(['tier', 'day', 'run']).sum().reset_index(), valuesToGather,
                         burninDays + scenarioWaitDays, fieldsOfInterest)
     sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
