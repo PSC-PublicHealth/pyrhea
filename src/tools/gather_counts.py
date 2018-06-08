@@ -188,6 +188,16 @@ def sumOverDays(fullDF, valuesToGather, baseDays, fieldsOfInterest):
                       .groupby(idxL)
                       .sum().add_suffix('_sum').reset_index())
             sumDF = sumDF.assign(**{key: df[key + '_sum']})
+    
+    if 'xdroAdmissions' in fieldsOfInterest:
+        assert 'xdroAdmissions' in fullDF.columns, 'xdroAdmissions was not added to the df?'
+        if dayOffset != valuesToGather['arrivals'][1]:
+            dayOffset = valuesToGather['arrivals'][1]
+            df = (fullDF[fullDF['day'] >= baseDays + dayOffset]
+                  .groupby(idxL)
+                  .sum().add_suffix('_sum').reset_index())
+        sumDF = sumDF.assign(**{'xdroAdmissions': df[key + '_sum']})
+            
     return sumDF
 
 
@@ -274,7 +284,7 @@ def main():
                                   ('passiveCPDays', ('localtierpassiveCP', 1,
                                                      'CRE CP Days due to passive surveillance')),
                                   ('swabCPDays', ('localtierswabCP', 1,
-                                                  'CRE CP Days due to acitve surveillance')),
+                                                  'CRE CP Days due to active surveillance')),
                                   ('xdroCPDays', ('localtierxdroCP', 1,
                                                   'CRE CP Days due to xdro registry')),
                                   ('otherCPDays', ('localtierotherCP', 1,
