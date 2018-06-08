@@ -15,14 +15,14 @@
 #                                                                                 #
 ###################################################################################
 
-import csv
 import sys
 import os
 import glob
-from multiprocessing import Process,Manager,cpu_count,Pool
+from multiprocessing import Pool
 from optparse import OptionParser
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 import types
+import time
 
 import numpy as np
 import pandas as pd
@@ -32,15 +32,10 @@ import yaml
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
 import pyrheautils
-import schemautils
-import pathogenbase as pth
 from facilitybase import CareTier, PthStatus
-from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
-from notes_plotter import importNotes
-from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
 from time_series_plotter import mergeNotesFiles, getTimeSeriesList
 from pyrhea import getLoggerConfig
-import time
+import tools_util as tu
 #import affinity
 
 #print "Cpu_Count = {0}".format(cpu_count())
@@ -218,7 +213,6 @@ def main():
                             " if not, XDRO won't be costed"))
     parser.add_option('-m','--nprocs',type='int',default=1,
                       help='number of cpus to run the costing model over')
-    parser.add_option('-t','--producetimeseries',action='store_true',default=False)
     parser.add_option('--producetable', action='store_true', default=False,
                       help='write the entire dataset as a Pandas DataFrame in .mpz format')
 
@@ -227,7 +221,7 @@ def main():
     if len(args) != 1:
         parser.error('A run file is required.  Try "-h"')
 
-    inputDict = checkInputFileSchema(args[0], os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+    inputDict = tu.readModelInputs(args[0])
     if opts.out:
         outFileName = opts.out
     else:
@@ -238,17 +232,7 @@ def main():
         raise RuntimeError('Run description file does not list any tracked facilities')
 
     pyrheautils.prepPathTranslations(inputDict)
-    if 0:
-        modelDir = inputDict['modelDir']
-        pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(modelDir)
-        implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
-        pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
-        if 'pathTranslations' in inputDict:
-            for elt in inputDict['pathTranslations']:
-                pyrheautils.PATH_STRING_MAP[elt['key']] = elt['value']
-
-    facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
-    facDict = readFacFiles(facDirList)
+    facDict = tu.getFacDict(inputDict)
 
     ### get the abbreviations within a 13 mile radius
     facIn13Path = pyrheautils.pathTranslate("$(CONSTANTS)/facilities_in_13miles.yaml")
