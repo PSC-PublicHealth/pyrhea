@@ -41,7 +41,7 @@ import tools_util as tu
 #print "Cpu_Count = {0}".format(cpu_count())
 #sys.stdout.flush()
 #if cpu_count() < 60:
- #   affinity.set_process_affinity_mask(0,2**cpu_count()-1)
+#   affinity.set_process_affinity_mask(0,2**cpu_count()-1)
 
 #os.system("taskset -p 0xff %d"%os.getpid())
 
@@ -90,7 +90,7 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
                 if entryDF is None:
                     entryDF = facDF
                 else:
-                    entryDF = pd.concat((entryDF, facDF))
+                    entryDF = pd.concat((entryDF, facDF), sort=True)
             entryDF.reset_index(drop=True)
             bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
@@ -183,7 +183,7 @@ def sumOverDays(fullDF, valuesToGather, baseDays, fieldsOfInterest):
                       .groupby(idxL)
                       .sum().add_suffix('_sum').reset_index())
             sumDF = sumDF.assign(**{key: df[key + '_sum']})
-    
+
     if 'xdroAdmissions' in fieldsOfInterest:
         assert 'xdroAdmissions' in fullDF.columns, 'xdroAdmissions was not added to the df?'
         if dayOffset != valuesToGather['arrivals'][1]:
@@ -192,9 +192,36 @@ def sumOverDays(fullDF, valuesToGather, baseDays, fieldsOfInterest):
                   .groupby(idxL)
                   .sum().add_suffix('_sum').reset_index())
         sumDF = sumDF.assign(**{'xdroAdmissions': df[key + '_sum']})
-            
+
     return sumDF
 
+
+def sumSelectedGroups(inDF, facilitiesWithin13Miles, facilitiesWithinCookCounty, targetFacilitySet):
+    #print 'inDF is a %s' % type(inDF)
+    fullSr = inDF.sum(numeric_only=True).drop(['index', 'day', 'run'])
+    #print 'fullSr is a %s' % type(fullSr)
+    fullSr['prevalence'] = fullSr['colonizedDays'] / fullSr['bedDays']
+    fullSr = fullSr.add_suffix('_regn')
+    in13mi = inDF['abbrev'].isin(facilitiesWithin13Miles)
+    out13mi = np.logical_not(in13mi)
+    inCook = inDF['abbrev'].isin(facilitiesWithinCookCounty)
+    outCook = np.logical_not(inCook)
+    inTarget = inDF['abbrev'].isin(targetFacilitySet)
+    outTarget = np.logical_not(inTarget)
+    for sel, sfx in [(in13mi, '_in13mi'), (out13mi, '_out13mi'), (inCook, '_inCook'),
+                     (outCook, '_outCook'), (inTarget, '_inTarget'), (outTarget, '_outTarget')]:
+        thisSr = inDF[sel].sum(numeric_only=True).drop(['index', 'day', 'run'])
+        if 'colonizedDays' not in thisSr:
+            print 'sfx = %s' % sfx
+            print 'thisSr follows'
+            print thisSr
+            print 'inDF follows'
+            print inDF
+        thisSr['prevalence'] = thisSr['colonizedDays'] / thisSr['bedDays']
+        fullSr = pd.concat([fullSr, thisSr.add_suffix(sfx)], axis=0)
+    #print 'now fullSr is a %s' % type(fullSr)
+    #print fullSr
+    return fullSr
 
 def main():
     parser = OptionParser(usage="""
@@ -299,23 +326,27 @@ def main():
 
     print "XDRO Facilities = {0}".format(xdroAbbrevs)
 
-    if nprocs > 1:
-        p = Pool(nprocs)
-        totalStats = p.map(pool_helper, argsList)
-        p.close()
-    else:
-        print 'Warning: using serial processing because nprocs == 1'
-        totalStats = []
-        for args in argsList:
-            totalStats.append(pool_helper(args))
-    print 'Finished scanning notes'
+    if False:
+        if nprocs > 1:
+            pool = Pool(nprocs)
+            totalStats = pool.map(pool_helper, argsList)
+            pool.close()
+        else:
+            print 'Warning: using serial processing because nprocs == 1'
+            totalStats = []
+            for args in argsList:
+                totalStats.append(pool_helper(args))
+        print 'Finished scanning notes'
 
-    tsDFL = []
-    for idx, df in enumerate(totalStats):
-        df['run'] = idx
-        tsDFL.append(df)
-    tsDF = pd.concat(tsDFL).reset_index()
-    #print tsDF
+        tsDFL = []
+        for idx, df in enumerate(totalStats):
+            df['run'] = idx
+            tsDFL.append(df)
+        tsDF = pd.concat(tsDFL).reset_index()
+        tsDFL = []
+        #print tsDF
+    else:
+        tsDF = pd.read_msgpack('/tmp/my_tsdf.mpz')
 
     if xdroAbbrevs:
         tsDF = tsDF.assign(xdroAdmissions=generateXDROAdmissions(tsDF, xdroAbbrevs))
@@ -325,7 +356,6 @@ def main():
         tsDF.to_msgpack(dfOutFileName)
 
     print "Processing Outputs"
-    sys.stdout.flush()
 
     fieldsOfInterest = ['colonizedDays', 'bedDays', 'prevalence']
     for key in valuesToGather.keys():
@@ -335,7 +365,6 @@ def main():
         fieldsOfInterest.append('xdroAdmissions')
 
     print "Writing Files"
-    sys.stdout.flush()
 
     # Means by tier
     headingRow = ['Facility Abbrev', 'Tier Of Care', 'Colonized Patient Days', 'Patient Bed Days',
@@ -361,7 +390,7 @@ def main():
         if key != 'pthStatus':
             headingRow.append(tpl[2])
             entries.append(key + '_mean')
-    if xdroAbbrevs > 0:
+    if xdroAbbrevs:
         headingRow.append("XDRO Admissions")
         entries.append('xdroAdmissions_mean')
     sumDF = sumOverDays(tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index(), valuesToGather,
@@ -395,54 +424,55 @@ def main():
                   columns=entries, header=headingRow)
 
     # Prevalence and incidence per day 13 miles
-    headRow = ['Day','Prev within 13','Prev outside 13','Prev within Cook','Prev outside Cook',
-               'Prev target','Prev nonTarget','Prev regionWide',
-               'Inc within 13','Inc outside 13','Inc within Cook','Inc outside Cook','Inc target',
-               'Inc nonTarget','Inc regionWide']
-    sumDF = tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index()
-    sumDF = addBedStats(sumDF)
+    if False:
+        sumDF = tsDF.groupby(['abbrev', 'day', 'run']).sum().reset_index()
+        sumDF = addBedStats(sumDF)
 
-    targetAbbrevS = set(xdroAbbrevs)
-    targetAbbrevS = targetAbbrevS.union(sumDF[sumDF['creBundlesHandedOut'] != 0]['abbrev'])
+        targetAbbrevS = set(xdroAbbrevs)
+        targetAbbrevS = targetAbbrevS.union(sumDF[sumDF['creBundlesHandedOut'] != 0]['abbrev'])
 
-    in13miDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithin13Miles)]
-                .groupby(['day', 'run']).sum().reset_index())
-    out13miDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithin13Miles))]
-                 .groupby(['day', 'run']).sum().reset_index())
-    inCookDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithinCookCounty)]
-                .groupby(['day', 'run']).sum().reset_index())
-    outCookDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithinCookCounty))]
-                 .groupby(['day', 'run']).sum().reset_index())
-    inTargetDF = (sumDF[sumDF['abbrev'].isin(targetAbbrevS)]
-                  .groupby(['day', 'run']).sum().reset_index())
-    outTargetDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(targetAbbrevS))]
-                   .groupby(['day', 'run']).sum().reset_index())
-    sumSumDF = sumDF.groupby(['day', 'run']).sum().reset_index()
+        in13miDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithin13Miles)]
+                    .groupby(['day', 'run']).sum().reset_index())
+        out13miDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithin13Miles))]
+                     .groupby(['day', 'run']).sum().reset_index())
+        inCookDF = (sumDF[sumDF['abbrev'].isin(facilitiesWithinCookCounty)]
+                    .groupby(['day', 'run']).sum().reset_index())
+        outCookDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(facilitiesWithinCookCounty))]
+                     .groupby(['day', 'run']).sum().reset_index())
+        inTargetDF = (sumDF[sumDF['abbrev'].isin(targetAbbrevS)]
+                      .groupby(['day', 'run']).sum().reset_index())
+        outTargetDF = (sumDF[np.logical_not(sumDF['abbrev'].isin(targetAbbrevS))]
+                       .groupby(['day', 'run']).sum().reset_index())
+        sumSumDF = sumDF.groupby(['day', 'run']).sum().reset_index()
 
-    in13miDF = in13miDF.assign(prevalence=in13miDF['colonizedDays'].divide(in13miDF['bedDays']))
-    out13miDF = out13miDF.assign(prevalence=out13miDF['colonizedDays'].divide(out13miDF['bedDays']))
-    inCookDF = inCookDF.assign(prevalence=inCookDF['colonizedDays'].divide(inCookDF['bedDays']))
-    outCookDF = outCookDF.assign(prevalence=outCookDF['colonizedDays'].divide(outCookDF['bedDays']))
-    inTargetDF = inTargetDF.assign(prevalence=(inTargetDF['colonizedDays']
-                                               .divide(inTargetDF['bedDays'])))
-    outTargetDF = outTargetDF.assign(prevalence=(outTargetDF['colonizedDays']
-                                                 .divide(outTargetDF['bedDays'])))
-    sumSumDF = sumSumDF.assign(prevalence=sumSumDF['colonizedDays'].divide(sumSumDF['bedDays']))
+        for df in [in13miDF, out13miDF, inCookDF, outCookDF, inTargetDF, outTargetDF, sumSumDF]:
+            df['prevalence'] = df['colonizedDays'] / df['bedDays']
 
-    fullDF = pd.merge(sumSumDF, in13miDF, how='left', on=['day', 'run'],
-                      suffixes=['_regn', '_in13mi'])
-    for df, sfx in [(out13miDF, '_out13mi'), (inCookDF, '_inCook'), (outCookDF, '_outCook'),
-                    (inTargetDF, '_inTarget'), (outTargetDF, '_outTarget')]:
-        fullDF = pd.merge(fullDF, df.add_suffix(sfx), how='left',
-                          left_on=['day', 'run'], right_on=['day' + sfx, 'run' + sfx])
-    #fullDF.to_msgpack('my_fulldf.mpz')
+        fullDF = pd.merge(sumSumDF, in13miDF, how='left', on=['day', 'run'],
+                          suffixes=['_regn', '_in13mi'])
+        for df, sfx in [(out13miDF, '_out13mi'), (inCookDF, '_inCook'), (outCookDF, '_outCook'),
+                        (inTargetDF, '_inTarget'), (outTargetDF, '_outTarget')]:
+            fullDF = pd.merge(fullDF, df.add_suffix(sfx), how='left',
+                              left_on=['day', 'run'], right_on=['day' + sfx, 'run' + sfx])
+    else:
+        targetAbbrevS = set(xdroAbbrevs)
+        df = tsDF[['abbrev', 'creBundlesHandedOut']].groupby('abbrev').sum().reset_index()
+        targetAbbrevS = targetAbbrevS.union(df[df['creBundlesHandedOut'] != 0]['abbrev'])
+        fullDF = addBedStats(tsDF).groupby(['day', 'run']).apply(sumSelectedGroups,
+                                                                 facilitiesWithin13Miles,
+                                                                 facilitiesWithinCookCounty,
+                                                                 targetAbbrevS)
+        print 'fullDF is a %s' % type(fullDF)
+        print fullDF
+        fullDF = fullDF.reset_index()
+    fullDF.to_msgpack('test_fulldf.mpz')
 
     allFlds = []
     for fld in fieldsOfInterest:
         allFlds.extend([fld + sfx for sfx in ['_regn', '_in13mi', '_out13mi', '_inCook', '_outCook',
                                               '_inTarget', '_outTarget']])
     fullStatDF = addStatColumns(fullDF.groupby(['day']), allFlds)
-    #fullStatDF.to_msgpack('my_fullstatsdf.mpz')
+    fullStatDF.to_msgpack('test_fullstatsdf.mpz')
 
     headingRow = ['Day']
     entries = ['day']
