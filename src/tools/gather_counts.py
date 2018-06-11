@@ -166,19 +166,19 @@ def sumDaysWithOffsets(fullDF, valuesToGather, baseDays, fieldsOfInterest):
         assert 'xdroAdmissions' in fullDF.columns, 'xdroAdmissions was not added to the df?'
         dayOffset = valuesToGather['arrivals'][1]
         sr = fullDF[fullDF['day'] >= baseDays + dayOffset]['xdroAdmissions'].sum()
-        rslt['xdroAdmissions'] = sr['xdroAdmissions']
+        rslt['xdroAdmissions'] = sr
     return rslt
 
 
-def sumSelectedGroups(inDF, facilitiesWithin13Miles, facilitiesWithinCookCounty, targetFacilitySet):
+def sumSelectedGroups(inDF):
     fullSr = inDF.sum(numeric_only=True).drop(['index', 'day', 'run'])
     fullSr['prevalence'] = fullSr['colonizedDays'] / fullSr['bedDays']
     fullSr = fullSr.add_suffix('_regn')
-    in13mi = inDF['abbrev'].isin(facilitiesWithin13Miles)
+    in13mi = inDF['in13mi']
     out13mi = np.logical_not(in13mi)
-    inCook = inDF['abbrev'].isin(facilitiesWithinCookCounty)
+    inCook = inDF['inCook']
     outCook = np.logical_not(inCook)
-    inTarget = inDF['abbrev'].isin(targetFacilitySet)
+    inTarget = inDF['inTarget']
     outTarget = np.logical_not(inTarget)
     for sel, sfx in [(in13mi, '_in13mi'), (out13mi, '_out13mi'), (inCook, '_inCook'),
                      (outCook, '_outCook'), (inTarget, '_inTarget'), (outTarget, '_outTarget')]:
@@ -292,7 +292,7 @@ def main():
     print "XDRO Facilities = {0}".format(xdroAbbrevs)
 
     # Set this to false to read a .mpz file for debugging purposes
-    if True:
+    if False:
         if nprocs > 1:
             pool = Pool(nprocs)
             totalStats = pool.map(pool_helper, argsList)
@@ -397,10 +397,10 @@ def main():
     targetAbbrevS = set(xdroAbbrevs)
     df = tsDF[['abbrev', 'creBundlesHandedOut']].groupby('abbrev').sum().reset_index()
     targetAbbrevS = targetAbbrevS.union(df[df['creBundlesHandedOut'] != 0]['abbrev'])
-    fullDF = addBedStats(tsDF).groupby(['day', 'run']).apply(sumSelectedGroups,
-                                                             facilitiesWithin13Miles,
-                                                             facilitiesWithinCookCounty,
-                                                             targetAbbrevS)
+    tsDF['in13mi'] = tsDF['abbrev'].isin(facilitiesWithin13Miles)
+    tsDF['inCook'] = tsDF['abbrev'].isin(facilitiesWithinCookCounty)
+    tsDF['inTarget'] = tsDF['abbrev'].isin(targetAbbrevS)
+    fullDF = addBedStats(tsDF).groupby(['day', 'run']).apply(sumSelectedGroups)
     fullDF = fullDF.reset_index()
     #fullDF.to_msgpack('test_fulldf.mpz')
 
