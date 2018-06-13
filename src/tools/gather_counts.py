@@ -211,6 +211,9 @@ def main():
                       help='write the entire dataset as a Pandas DataFrame in .mpz format')
     parser.add_option('--nocsv', action='store_true', default=False,
                       help='do not write the output csv files.  Implies --producetable.')
+    parser.add_option('--nostats', action='store_true', default=False,
+                      help=('suppress calculation of stats (mean, median, etc.) leaving only'
+                            'raw csv output'))
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -349,46 +352,53 @@ def main():
         print "Writing Files"
 
         # Means by tier
-        headingRow = ['Facility Abbrev', 'Tier Of Care', 'Colonized Patient Days',
-                      'Patient Bed Days', 'Prevalence']
-        entries = ['abbrev', 'tier', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
-        for key, tpl in valuesToGather.items():
-            if key != 'pthStatus':
-                headingRow.append(tpl[2])
-                entries.append(key + '_mean')
-        if xdroAbbrevs:
-            headingRow.append("XDRO Admissions")
-            entries.append('xdroAdmissions_mean')
         sumDF = tsDF.groupby(['abbrev', 'tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                               burninDays + scenarioWaitDays,
                                                               fieldsOfInterest)
         sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-        statDF = sumDF.groupby(['abbrev', 'tier']).apply(convertToStats,
-                                                         fieldsOfInterest).reset_index()
-        statDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
-                      columns=entries, header=headingRow)
+        if not opts.nostats:
+            headingRow = ['Facility Abbrev', 'Tier Of Care', 'Colonized Patient Days',
+                          'Patient Bed Days', 'Prevalence']
+            entries = ['abbrev', 'tier', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
+            for key, tpl in valuesToGather.items():
+                if key != 'pthStatus':
+                    headingRow.append(tpl[2])
+                    entries.append(key + '_mean')
+            if xdroAbbrevs:
+                headingRow.append("XDRO Admissions")
+                entries.append('xdroAdmissions_mean')
+            statDF = sumDF.groupby(['abbrev', 'tier']).apply(convertToStats,
+                                                             fieldsOfInterest).reset_index()
+            statDF.to_csv("{0}_stats_by_tier.csv".format(outFileName), index=False,
+                          columns=entries, header=headingRow)
 
         # Means by abbrev
-        headingRow = ['Facility Abbrev','Colonized Patient Days','Patient Bed Days','Prevalence']
-        entries = ['abbrev', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
-        for key, tpl in valuesToGather.items():
-            if key != 'pthStatus':
-                headingRow.append(tpl[2])
-                entries.append(key + '_mean')
-        if xdroAbbrevs:
-            headingRow.append("XDRO Admissions")
-            entries.append('xdroAdmissions_mean')
         sumDF = tsDF.groupby(['abbrev', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                       burninDays + scenarioWaitDays,
                                                       fieldsOfInterest)
         sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-        statDF = sumDF.groupby(['abbrev']).apply(convertToStats, fieldsOfInterest).reset_index()
-        statDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
-                      columns=entries, header=headingRow)
+        if not opts.nostats:
+            headingRow = ['Facility Abbrev','Colonized Patient Days','Patient Bed Days',
+                          'Prevalence']
+            entries = ['abbrev', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
+            for key, tpl in valuesToGather.items():
+                if key != 'pthStatus':
+                    headingRow.append(tpl[2])
+                    entries.append(key + '_mean')
+            if xdroAbbrevs:
+                headingRow.append("XDRO Admissions")
+                entries.append('xdroAdmissions_mean')
+            statDF = sumDF.groupby(['abbrev']).apply(convertToStats, fieldsOfInterest).reset_index()
+            statDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
+                          columns=entries, header=headingRow)
 
         # raw records by abbrev
         headingRow = ['Facility Abbrev','run', 'Colonized Patient Days','Patient Bed Days']
         entries = ['abbrev', 'run', 'colonizedDays', 'bedDays']
+        for key, tpl in valuesToGather.items():
+            if key != 'pthStatus':
+                headingRow.append(tpl[2])
+                entries.append(key)
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
@@ -396,28 +406,30 @@ def main():
                      columns=entries, header=headingRow)
 
         # Prevalence intervals by abbrev
-        headingRow = ['Facility Abbrev','Prevalence Mean','Prevalence Median',
-                      'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI']
-        entries = ['abbrev', 'prevalence_mean', 'prevalence_median', 'prevalence_stdv',
-                   'prevalence_5%CI', 'prevalence_95%CI']
-        # the statDF needed here is conveniently the same as above
-        statDF.to_csv("{0}_stats_intervals_by_abbrev.csv".format(outFileName), index=False,
-                      columns=entries, header=headingRow)
+        if not opts.nostats:
+            headingRow = ['Facility Abbrev','Prevalence Mean','Prevalence Median',
+                          'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI']
+            entries = ['abbrev', 'prevalence_mean', 'prevalence_median', 'prevalence_stdv',
+                       'prevalence_5%CI', 'prevalence_95%CI']
+            # the statDF needed here is conveniently the same as above
+            statDF.to_csv("{0}_stats_intervals_by_abbrev.csv".format(outFileName), index=False,
+                          columns=entries, header=headingRow)
 
         # Prevalence by tier - naming suggests it was originally by facility category?
-        headingRow = ['Facility Type','Prevalence Mean']
-        entries = ['tier', 'prevalence_mean']
-        for key, tpl in valuesToGather.items():
-            if key != 'pthStatus':
-                headingRow.append(tpl[2])
-                entries.append(key + '_mean')
         sumDF = tsDF.groupby(['tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                     burninDays + scenarioWaitDays,
                                                     fieldsOfInterest)
         sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
-        statDF = sumDF.groupby(['tier']).apply(convertToStats, fieldsOfInterest).reset_index()
-        statDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
-                      columns=entries, header=headingRow)
+        if not opts.nostats:
+            headingRow = ['Facility Type','Prevalence Mean']
+            entries = ['tier', 'prevalence_mean']
+            for key, tpl in valuesToGather.items():
+                if key != 'pthStatus':
+                    headingRow.append(tpl[2])
+                    entries.append(key + '_mean')
+            statDF = sumDF.groupby(['tier']).apply(convertToStats, fieldsOfInterest).reset_index()
+            statDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
+                          columns=entries, header=headingRow)
 
         # raw records by tier
         headingRow = ['Tier of Care','run', 'Colonized Patient Days','Patient Bed Days']
@@ -443,9 +455,6 @@ def main():
         for fld in fieldsOfInterest:
             allFlds.extend([fld + sfx for sfx in ['_regn', '_in13mi', '_out13mi', '_inCook',
                                                   '_outCook', '_inTarget', '_outTarget']])
-        fullStatDF = fullDF.groupby(['day']).apply(convertToStats, allFlds).reset_index()
-        #print fullStatDF
-        fullStatDF.to_msgpack('test_fullstatsdf.mpz')
 
         statHeadingRow = ['Day']
         statEntries = ['day']
@@ -468,8 +477,12 @@ def main():
                 statHeadingRow.append(hd + hSfx)
                 statEntries.append(ent + eSfx)
 
-        fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
-                          index=False, columns=statEntries, header=statHeadingRow)
+        if not opts.nostats:
+            fullStatDF = fullDF.groupby(['day']).apply(convertToStats, allFlds).reset_index()
+            #print fullStatDF
+            #fullStatDF.to_msgpack('test_fullstatsdf.mpz')
+            fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
+                              index=False, columns=statEntries, header=statHeadingRow)
         print 'writing the big CSV file'
         fullDF.to_csv("{0}_raw_prevalence_and_incidence_pre_day_13mile.csv".format(outFileName),
                       index=False, columns=rawEntries, header=rawHeadingRow)
