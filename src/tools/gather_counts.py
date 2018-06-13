@@ -352,6 +352,7 @@ def main():
         print "Writing Files"
 
         # Means by tier
+        print 'Summarizing by abbrev and tier'
         sumDF = tsDF.groupby(['abbrev', 'tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                               burninDays + scenarioWaitDays,
                                                               fieldsOfInterest)
@@ -373,6 +374,7 @@ def main():
                           columns=entries, header=headingRow)
 
         # Means by abbrev
+        print 'Summarizing by abbrev'
         sumDF = tsDF.groupby(['abbrev', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                       burninDays + scenarioWaitDays,
                                                       fieldsOfInterest)
@@ -402,6 +404,7 @@ def main():
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
+        sumDF.reset_index()
         sumDF.to_csv("{0}_raw_by_abbrev.csv".format(outFileName), index=False,
                      columns=entries, header=headingRow)
 
@@ -416,6 +419,7 @@ def main():
                           columns=entries, header=headingRow)
 
         # Prevalence by tier - naming suggests it was originally by facility category?
+        print 'Summarizing by tier'
         sumDF = tsDF.groupby(['tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
                                                     burninDays + scenarioWaitDays,
                                                     fieldsOfInterest)
@@ -437,10 +441,12 @@ def main():
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
+        sumDF.reset_index()
         sumDF.to_csv("{0}_raw_by_tier.csv".format(outFileName), index=False,
                      columns=entries, header=headingRow)
 
         # Prevalence and incidence per day 13 miles, etc.
+        print 'Summarizing by group over days'
         targetAbbrevS = set(xdroAbbrevs)
         df = tsDF[['abbrev', 'creBundlesHandedOut']].groupby('abbrev').sum().reset_index()
         targetAbbrevS = targetAbbrevS.union(df[df['creBundlesHandedOut'] != 0]['abbrev'])
@@ -483,10 +489,8 @@ def main():
             #fullStatDF.to_msgpack('test_fullstatsdf.mpz')
             fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
                               index=False, columns=statEntries, header=statHeadingRow)
-        print 'writing the big CSV file'
         fullDF.to_csv("{0}_raw_prevalence_and_incidence_pre_day_13mile.csv".format(outFileName),
                       index=False, columns=rawEntries, header=rawHeadingRow)
-        print 'done writing the big CSV file'
 
 #     numNotesFiles = len(totalStats)
 #     ### By Tier
