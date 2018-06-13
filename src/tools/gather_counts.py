@@ -91,7 +91,7 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
                     entryDF = facDF
                 else:
                     entryDF = pd.concat((entryDF, facDF), sort=True)
-            entryDF.reset_index(drop=True)
+            entryDF = entryDF.reset_index(drop=True)
             bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
         print "for file {0} there is an exception {1}".format(note,e)
@@ -404,7 +404,8 @@ def main():
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
-        sumDF.reset_index()
+        sumDF = sumDF.reset_index()
+        print sumDF
         sumDF.to_csv("{0}_raw_by_abbrev.csv".format(outFileName), index=False,
                      columns=entries, header=headingRow)
 
@@ -441,7 +442,7 @@ def main():
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
-        sumDF.reset_index()
+        sumDF = sumDF.reset_index()
         sumDF.to_csv("{0}_raw_by_tier.csv".format(outFileName), index=False,
                      columns=entries, header=headingRow)
 
