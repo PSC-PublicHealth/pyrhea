@@ -351,13 +351,13 @@ def main():
     else:
         print "Writing Files"
 
-        # Means by tier
-        print 'Summarizing by abbrev and tier'
-        sumDF = tsDF.groupby(['abbrev', 'tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
-                                                              burninDays + scenarioWaitDays,
-                                                              fieldsOfInterest)
-        sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
+        # Means by tier.  No 'raw' output for this one, so skip it if opts.nostats
         if not opts.nostats:
+            print 'Summarizing by abbrev and tier'
+            sumDF = tsDF.groupby(['abbrev', 'tier', 'run']).apply(sumDaysWithOffsets, valuesToGather,
+                                                                  burninDays + scenarioWaitDays,
+                                                                  fieldsOfInterest)
+            sumDF = sumDF.assign(prevalence=sumDF['colonizedDays'].divide(sumDF['bedDays']))
             headingRow = ['Facility Abbrev', 'Tier Of Care', 'Colonized Patient Days',
                           'Patient Bed Days', 'Prevalence']
             entries = ['abbrev', 'tier', 'colonizedDays_mean', 'bedDays_mean', 'prevalence_mean']
