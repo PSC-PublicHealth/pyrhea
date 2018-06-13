@@ -405,7 +405,6 @@ def main():
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
         sumDF = sumDF.reset_index()
-        print sumDF
         sumDF.to_csv("{0}_raw_by_abbrev.csv".format(outFileName), index=False,
                      columns=entries, header=headingRow)
 
