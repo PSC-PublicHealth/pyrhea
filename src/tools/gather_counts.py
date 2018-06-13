@@ -196,7 +196,7 @@ def main():
     """)
 
     parser.add_option('-n', '--notes', action='append', type='string',
-                     help="Notes filename - may be repeated")
+                     help="Notes filename - may be repeated; may be either .mpz or .pkl")
     parser.add_option('-o', '--out', action='store', type='string',
                      help="Output file prefix (defaults to %s)" % DEFAULT_OUT_FILE)
     parser.add_option('-g','--glob', action='store_true',
@@ -284,10 +284,6 @@ def main():
     print "nprocs = {0}".format(nprocs)
     print "notes = {0}".format(notes)
 
-    argsList = [(notes[i], abbrevList,
-                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
-                for i in range(0, len(notes))]
-
     xdroAbbrevs = []
     if opts.xdroyamlfile:
         with open("{0}".format(opts.xdroyamlfile),"rb") as f:
@@ -296,7 +292,14 @@ def main():
 
     print "XDRO Facilities = {0}".format(xdroAbbrevs)
 
-    # Set this to false to read a .mpz file for debugging purposes
+    pklNotes = [nf for nf in notes if nf.endswith('.pkl')]
+    mpzNotes = [nf for nf in notes if (nf.endswith('.mpz') or nf.endswith('.mpz'))]
+    assert len(pklNotes) + len(mpzNotes) == len(notes), 'some input notes are in unknown format'
+
+    # pkl files get handled in parallel
+    argsList = [(pklNotes[i], abbrevList,
+                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
+                for i in range(0, len(pklNotes))]
     if nprocs > 1:
         pool = Pool(nprocs)
         totalStats = pool.map(pool_helper, argsList)
@@ -306,7 +309,14 @@ def main():
         totalStats = []
         for args in argsList:
             totalStats.append(pool_helper(args))
-    print 'Finished scanning notes'
+    print 'Finished scanning pickled notes'
+    
+    # read any mpz files in line
+    if mpzNotes:
+        print 'reading pre-parsed notes'
+        for mFname in mpzNotes:
+            totalStats.append(pd.read_msgpack(mFname))
+    print 'Finished scanning all notes'
 
     tsDFL = []
     for idx, df in enumerate(totalStats):
@@ -376,6 +386,15 @@ def main():
         statDF.to_csv("{0}_stats_by_abbrev.csv".format(outFileName), index=False,
                       columns=entries, header=headingRow)
 
+        # raw records by abbrev
+        headingRow = ['Facility Abbrev','run', 'Colonized Patient Days','Patient Bed Days']
+        entries = ['abbrev', 'run', 'colonizedDays', 'bedDays']
+        if xdroAbbrevs:
+            headingRow.append('XDRO Admissions')
+            entries.append('xdroAdmissions')
+        sumDF.to_csv("{0}_raw_by_abbrev.csv".format(outFileName), index=False,
+                     columns=entries, header=headingRow)
+
         # Prevalence intervals by abbrev
         headingRow = ['Facility Abbrev','Prevalence Mean','Prevalence Median',
                       'Prevalence St. Dev.','Prevalence 5% CI','Prevalence 95% CI']
@@ -400,6 +419,15 @@ def main():
         statDF.to_csv("{0}_prev_by_cat.csv".format(outFileName), index=False,
                       columns=entries, header=headingRow)
 
+        # raw records by tier
+        headingRow = ['Tier of Care','run', 'Colonized Patient Days','Patient Bed Days']
+        entries = ['tier', 'run', 'colonizedDays', 'bedDays']
+        if xdroAbbrevs:
+            headingRow.append('XDRO Admissions')
+            entries.append('xdroAdmissions')
+        sumDF.to_csv("{0}_raw_by_tier.csv".format(outFileName), index=False,
+                     columns=entries, header=headingRow)
+
         # Prevalence and incidence per day 13 miles, etc.
         targetAbbrevS = set(xdroAbbrevs)
         df = tsDF[['abbrev', 'creBundlesHandedOut']].groupby('abbrev').sum().reset_index()
@@ -419,8 +447,10 @@ def main():
         #print fullStatDF
         fullStatDF.to_msgpack('test_fullstatsdf.mpz')
 
-        headingRow = ['Day']
-        entries = ['day']
+        statHeadingRow = ['Day']
+        statEntries = ['day']
+        rawHeadingRow = ['Day', 'run']
+        rawEntries = ['day', 'run']
         for hd, ent in zip(['Prev within 13','Prev outside 13','Prev within Cook',
                             'Prev outside Cook', 'Prev target','Prev nonTarget',
                             'Prev regionWide',
@@ -432,12 +462,18 @@ def main():
                              'newColonized_in13mi', 'newColonized_out13mi', 'newColonized_inCook',
                              'newColonized_outCook', 'newColonized_inTarget',
                              'newColonized_outTarget', 'newColonized_regn']):
+            rawHeadingRow.append(hd)
+            rawEntries.append(ent)
             for hSfx, eSfx in zip([' mean', ' 5% CI', ' 95% CI'], ['_mean', '_5%CI', '_95%CI']):
-                headingRow.append(hd + hSfx)
-                entries.append(ent + eSfx)
+                statHeadingRow.append(hd + hSfx)
+                statEntries.append(ent + eSfx)
 
         fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
-                          index=False, columns=entries, header=headingRow)
+                          index=False, columns=statEntries, header=statHeadingRow)
+        print 'writing the big CSV file'
+        fullDF.to_csv("{0}_raw_prevalence_and_incidence_pre_day_13mile.csv".format(outFileName),
+                      index=False, columns=rawEntries, header=rawHeadingRow)
+        print 'done writing the big CSV file'
 
 #     numNotesFiles = len(totalStats)
 #     ### By Tier
