@@ -40,6 +40,7 @@ from registry import Registry
 from policybase import ScenarioPolicy
 from tauadjuster import TauAdjuster
 import checkpoint
+import bcz_monitor
 
 BASE_DIR = os.path.dirname(__file__)
 SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
@@ -186,7 +187,7 @@ def generateLocalTierDictBuilder(counterKey):
             for ward in fac.getWards():
                 key = "{0}".format(ward.tier)
                 facPPC[key] += ward.miscCounters[counterKey]
-                ward.miscCounters[counterKey] = 0.0
+                #ward.miscCounters[counterKey] = 0.0
             for key, v in facPPC.items():
                 facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v
         return facTrtDict
@@ -203,9 +204,36 @@ def generateFacTypeDictBuilder(counterKey):
                 facTypeDict[tpName] = 0
             for ward in fac.getWards():
                 facTypeDict[tpName] += ward.miscCounters[counterKey]
-                ward.miscCounters[counterKey] = 0.0
+                #ward.miscCounters[counterKey] = 0.0
         return facTypeDict
     return buildDict
+
+def trackArrivalCounts(ward, t):
+    return (ward.miscCounters['arrivals'], ward.miscCounters['departures'])
+bcz_monitor.addTrackable('arrivals', trackArrivalCounts, [('localtierarrivals', 'uint32'), ('localtierdepartures', 'uint32')])
+
+def trackCRECounters(ward, t):
+    creCounters = ['patientDaysOnCP', 'creBundlesHandedOut', 'creSwabsPerformed', 'creArrivals',
+                   'passiveDaysOnCP', 'swabDaysOnCP', 'otherDaysOnCP', 'xdroDaysOnCP', 'newPatientsOnCP']
+    return [ward.miscCounters[c] for c in creCounters]
+bcz_monitor.addTrackable('creCounters', trackCRECounters,
+                         [('localtierCP', 'uint32'),
+                          ('localtierCREBundle', 'uint32'),
+                          ('localtierCRESwabs', 'uint32'),
+                          ('localtiercrearrivals', 'uint32'),
+                          ('localtierpassiveCP', 'uint32'),
+                          ('localtierswabCP', 'uint32'),
+                          ('localtierotherCP', 'uint32'),
+                          ('localtierxdroCP', 'uint32'),
+                          ('localtierpatientsOnCP', 'uint32'),
+                          ])
+
+def trackNewColonizations(ward, t):
+    return [ward.miscCounters['newColonizationsSinceLastChecked']]
+bcz_monitor.addTrackable('newColonizations', trackNewColonizations, [('localtiernewcolonized', 'uint32')])
+
+
+
 
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
@@ -463,6 +491,7 @@ def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
 #             p.loop.printCensus()
         noteHolder.addNote({key: [recFun(patch, timeNow)]
                             for key, recFun in recGenDict.items()})
+        bcz_monitor.resetMiscCounters(patch, timeNow)
         if timeNow > runDurationDays:
             patch.group.stop()
     return perDayCB
@@ -871,17 +900,21 @@ def main():
         monitorList = []
         tauAdjusterList = []
         if clData['bczmonitor'] is not None:
-            import bcz_monitor
             for patch in patchList:
-                m = bcz_monitor.Monitor(patch, totalRunDays)
+                m = bcz_monitor.Monitor(clData['bczmonitor'], patch)
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
+                for tv in inputDict['trackedValues']:
+                    m.registerTrackable(tv)
+                m.solidifyFields()
 
                 if clData['taumod']:
                     ta = TauAdjuster(m)
                     tauAdjusterList.append(ta)
                     m.setStopTimeFn(1, ta.createCallbackFn())
 
+            # resetMiscCounters needs to know that there is a second process watching the miscCounters
+            bcz_monitor._resetCountNeeded += 1
 
         if clData['dumpFacilitiesMap'] is not None:
             dumpFacilitiesMap(clData['dumpFacilitiesMap'], patchList)
@@ -951,7 +984,7 @@ def main():
 
             if clData['bczmonitor'] is not None:
                 for m in monitorList:
-                    m.writeData(clData['bczmonitor'])
+                    m.writeData()
 
         logging.shutdown()
 

@@ -54,6 +54,11 @@ burnInDays: 2
 
 scenarioWaitDays: 2
 
+'trackedValues':
+  - 'arrivals'
+  - 'creCounters'
+  - 'newColonizations'
+
 'trackedFacilities':
   - 'GLEN_22660_V'
   - 'ADVO_836_H'
