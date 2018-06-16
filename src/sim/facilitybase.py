@@ -20,8 +20,10 @@ import logging
 import math
 from collections import defaultdict
 import cPickle as pickle
+import numpy as np
 
 from phacsl.utils.notes.statval import HistoVal
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 import pyrheabase
 from typebase import CareTier, PatientOverallHealth, DiagClassA
 from typebase import TreatmentProtocol, TREATMENT_DEFAULT  # @UnusedImport
@@ -33,6 +35,8 @@ from registry import Registry  # @UnusedImport
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
 logger = logging.getLogger(__name__)
+
+HackBedMultiplier = 1
 
 class PatientStatusSetter(object):
     def __init__(self):
@@ -78,7 +82,48 @@ class PthStatusSetter(PatientStatusSetter):
         return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
 
 
-HackBedMultiplier = 1
+class PatientCumStatsCore(object):
+    """
+    This class provides mapping between PatientAgent info and totals in a PatientCumStats instance.
+    No sense working it out more than once.
+    """
+    __metaclass__ = SingletonMetaClass
+
+    def __init__(self):
+        self.nEntries = len(PatientOverallHealth.names) + len(DiagClassA.names)
+        self.idxTbl = {}
+        counter = 0
+        low = counter
+        for idx in PatientOverallHealth.names.keys():
+            self.idxTbl[(PatientOverallHealth, idx)] = counter
+            counter += 1
+        self.idxTbl[PatientOverallHealth] = (low, counter)  # convenient access to the range
+        low = counter
+        for idx in DiagClassA.names.keys():
+            self.idxTbl[(DiagClassA, idx)] = counter
+            counter += 1
+        self.idxTbl[DiagClassA] = (low, counter)  # convenient access to the range
+
+
+class PatientCumStats(object):
+    def __init__(self):
+        self.core = PatientCumStatsCore()
+        self.valV = np.zeros([self.core.nEntries], dtype=np.int16)
+
+    def incrPatient(self, patientAgent):
+        status = patientAgent.getStatus()
+        self.valV[self.core.idxTbl[(PatientOverallHealth, status.overall)]] += 1
+        self.valV[self.core.idxTbl[(DiagClassA, status.diagClassA)]] += 1
+
+    def decrPatient(self, patientAgent):
+        status = patientAgent.getStatus()
+        self.valV[self.core.idxTbl[(PatientOverallHealth, status.overall)]] -= 1
+        self.valV[self.core.idxTbl[(DiagClassA, status.diagClassA)]] -= 1
+
+    def totalPop(self):
+        low, high = self.core.idxTbl[PatientOverallHealth]
+        return np.sum(self.valV[low:high])
+
 
 class Ward(pyrheabase.Ward):
     def __init__(self, name, patch, tier, nBeds):
@@ -86,6 +131,7 @@ class Ward(pyrheabase.Ward):
         self.checkInterval = 1  # check health daily
         self.iA = None  # infectious agent
         self.miscCounters = defaultdict(lambda: 0)
+        self.cumStats = PatientCumStats()
 
         try:
             self.wardNum = int(name.split('_')[-1])
@@ -94,6 +140,10 @@ class Ward(pyrheabase.Ward):
 
     def getPatientList(self):
         return self.getLiveLockedAgents()
+
+    def getPatientCumStats(self):
+        """Return a statistical summary of all patients in the ward"""
+        return {}
 
     def setInfectiousAgent(self, iA):
         self.iA = iA
@@ -110,6 +160,7 @@ class Ward(pyrheabase.Ward):
     def handlePatientArrival(self, patientAgent, timeNow):
         """An opportunity for derived classes to customize the arrival processing of patients"""
         patientAgent.setStatus(justArrived=True)
+        self.cumStats.incrPatient(patientAgent)
         self.miscCounters['arrivals'] += 1
         if patientAgent.getStatus().pthStatus == PthStatus.COLONIZED:
             self.miscCounters['creArrivals'] += 1
@@ -130,6 +181,7 @@ class Ward(pyrheabase.Ward):
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientDeparture(self, patientAgent, timeNow)
         self.miscCounters['departures'] += 1
+        self.cumStats.decrPatient(patientAgent)
 
 
 class ForcedStateWard(Ward):
@@ -450,7 +502,6 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload  # @UnusedVariable
-            self.patientStats.addPatient(tier)
             patientRec = self.getPatientRecord(patientId,
                                                (timeNow if timeNow is not None else 0))
             patientRec.isFrail = isFrail
@@ -459,8 +510,6 @@ class Facility(pyrheabase.Facility):
                     logger.debug('Patient %s has returned to %s', patientId, self.name)
                     patientRec.arrivalDate = timeNow
                     patientRec.prevVisits += 1
-                    if patientRec.departureDate is None:  # ie patient readmit without first leaving
-                        self.patientStats.remPatient(tier)
                 if timeNow != 0:  # Exclude initial populations
                     nh = self.getNoteHolder()
                     if nh:
@@ -479,7 +528,6 @@ class Facility(pyrheabase.Facility):
             patientRec = self.getPatientRecord(patientId)
             patientRec.departureDate = timeNow
             self.mergePatientRecord(patientId, patientRec, timeNow)
-            self.patientStats.remPatient(tier)
             #if patientRec.arrivalDate != 0:  # exclude initial populations
             if True:  # include initial populations
                 lengthOfStay = timeNow - patientRec.arrivalDate
