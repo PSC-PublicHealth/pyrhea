@@ -151,7 +151,7 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
-cacheVer = 6
+cacheVer = 7
 LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
@@ -257,30 +257,33 @@ def mapLMDBSegments(abbrev, iDict):
     nextId += idsPerFac
     iDict[segmentInfoId] = [cv, nextId, segmentDict]
     return ret
-    
+
 
 class CopyOnWriteLMDBFreezer(Freezer):
     _AgentListId = 0
     _SavedInfoListId = 1
     _SavedWardDataId = 2
-    
+
     def __init__(self, ward, orig, changed, infoList, pType):
         """
-        This is a freezer for community agents that is stored in an LMDB InterDict rather than in memory.
-        It is stored in two parts so that the community agents can be cached and then changed community
-        members are written to a second LMDB file.
+        This is a freezer for community agents that is stored in an LMDB InterDict rather than
+        in memory. It is stored in two parts so that the community agents can be cached and then
+        changed community members are written to a second LMDB file.
         
-        A given ward can have multiple freezers to store multiple types of community agents but it's useful
-        to have all freezers in one pair of interdicts.  To this end there is an infoPointer which is a list
-        of values that help the multiple freezers interact.
+        A given ward can have multiple freezers to store multiple types of community agents but
+        it's useful to have all freezers in one pair of interdicts.  To this end there is an
+        infoPointer which is a list of values that help the multiple freezers interact.
 
         ward: this is the ward that is associated with the freezer
-        orig: this is the InterDict where the cached community agents are stored.  By default this is not modified.
+        orig: this is the InterDict where the cached community agents are stored.  By default this
+              is not modified.
         changed: any newly stored agents are saved here
-        infoList: this is a list shared between all freezers using the same pair of interdicts with the following values:
-            origRO: if True (normal usage) write new agents to changed.  For building the cache set to False
-                    and all new members will be written to orig
-            maxOrig: when looking up an agent, any ID less than this will be found in orig, otherwise found in changed
+        infoList: this is a list shared between all freezers using the same pair of interdicts with
+                  the following values:
+            origRO: if True (normal usage) write new agents to changed.  For building the cache set
+                    to False and all new members will be written to orig
+            maxOrig: when looking up an agent, any ID less than this will be found in orig, otherwise
+                     found in changed
             nextID: next ID value to write
         pType: this is the key used for the dict of freezers in the ward
         """
@@ -330,7 +333,7 @@ class CopyOnWriteLMDBFreezer(Freezer):
         self.frozenAgentList.add(nextId)
         self.infoList[2] += 1
 
-        
+
     def removeAndThaw(self, frozenAgent, timeNow):
         self.frozenAgentList.remove(frozenAgent)
         origRO, maxOrig, nextId = self.infoList
@@ -404,6 +407,8 @@ class CopyOnWriteLMDBFreezer(Freezer):
         else:
             return self.changed[self._SavedWardDataId+self.iDictOffset]
 
+
+
 def makeLMDBDirs():
     origDir = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
     if not os.path.exists(origDir):
@@ -424,11 +429,11 @@ def changedFname(abbrev):
 def patientDataFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
     return pyrheautils.pathTranslate('$(AGENTDIR)/patientData_%s'%abbrev)
-    
+
 def cachePatientDataFname(abbrev):
     abbrev = mapLMDBAbbrev(abbrev)
     return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/patientData_%s'%abbrev)
-    
+
 
 InterdictMapping = {}
 
@@ -461,9 +466,10 @@ class CommunityWard(Ward):
                                             convert_int=True, val_serialization='pickle')
             self.iDictOffset = mapLMDBSegments(abbrev, self.orig)
 
-        self.infoList = [True,1,1]  # we'll overwrite this shortly.  This deals with a chicken/egg problem
+        self.infoList = [True,1,1]  # we'll overwrite this shortly- deals with a chicken/egg problm
         self.freezers = DefaultDict(lambda dd,key: newFreezer(dd, self,
-                                                              self.orig, self.changed, self.infoList, key))
+                                                              self.orig, self.changed,
+                                                              self.infoList, key))
         self.newArrivals = []
 
     def classify(self, agent, timeNow):
@@ -482,11 +488,19 @@ class CommunityWard(Ward):
         self.newArrivals.append(lockingAgent)
         return super(CommunityWard, self).lock(lockingAgent)
 
+    def getPatientList(self):
+        """Because most of the patients are freeze-dried, we cannot supply a patient list"""
+        unfrozenL = super(CommunityWard, self).getPatientList()
+        if len(unfrozenL) == self.cumStats.totalPop():
+            return unfrozenL
+        else:
+            raise FreezerError('Requested list cannot be generated without thawing everyone')
+
     def handlePatientArrival(self, patientAgent, timeNow):
         super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
-        # If a patient lands here, make this fac its home unless it's FRAIL 
+        # If a patient lands here, make this fac its home unless it's FRAIL
         # (and thus should not be landing here at all...)
-        if (patientAgent.getStatus().overall != PatientOverallHealth.FRAIL):
+        if patientAgent.getStatus().overall != PatientOverallHealth.FRAIL:
             patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.HOME,
                                                              self.fac.reqQueues).getGblAddr())
 
@@ -572,7 +586,8 @@ class Community(Facility):
         meanPop = descr['meanPop']['value']
         nBeds = int(round(3.0*meanPop))
         self.setCDFs(_constants['losModelMap'])
-        self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name, descr['abbrev']),
+        self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name,
+                                                              descr['abbrev']),
                                patch, nBeds))
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
@@ -582,17 +597,22 @@ class Community(Facility):
         if pdName in InterdictMapping:
             self.cachePatientDataDict = InterdictMapping[pdName]
         else:
-            self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False, integer_keys=False,
-                                                            key_serialization='msgpack', val_serialization='pickle')
+            self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False,
+                                                            integer_keys=False,
+                                                            key_serialization='msgpack',
+                                                            val_serialization='pickle')
             global cacheVer
             if "cacheVer" not in self.cachePatientDataDict:
                 self.cachePatientDataDict["cacheVer"] = cacheVer
             elif cacheVer != self.cachePatientDataDict["cacheVer"]:
                 self.cachePatientDataDict.close()
-                self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True, integer_keys=False,
-                                                                key_serialization='msgpack', val_serialization='pickle')
+                self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=True,
+                                                                integer_keys=False,
+                                                                key_serialization='msgpack',
+                                                                val_serialization='pickle')
                 self.cachePatientDataDict["cacheVer"] = cacheVer
             InterdictMapping[pdName] = self.cachePatientDataDict
+        self.patientCacheIsBeingRegenerated = False
 
 
     def flushCaches(self):
@@ -702,8 +722,6 @@ class Community(Facility):
         else:
             raise RuntimeError('Unknown DiagClassA %s' % str(patientDiagnosis.diagClassA))
 
-
-
     def getPatientRecord(self, patientId, timeNow=None):
         k = (self.abbrev, patientId)
         # get your pickled patient record
@@ -724,7 +742,6 @@ class Community(Facility):
         pR._owningFac = self
         return pR
 
-
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
         patientRec.merge(newPatientRec)
@@ -744,6 +761,29 @@ class Community(Facility):
         else:
             return PatientOverallHealth.HEALTHY
 
+#     def createPatient(self, idx, timeNow):
+#         """
+#         idx is an integer index, used for name generation.
+# 
+#         returns a newly created patient with appropriate characteristics, already launched
+#         """
+#         ward = self.manager.allocateAvailableBed(CareTier.HOME)
+#         assert ward is not None, 'Ran out of beds populating %s!' % self.abbrev
+#         agent = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, idx), self.manager.patch, ward)
+#         ward.lock(agent)
+#         agent.setStatus(homeAddr=findQueueForTier(CareTier.HOME, self.reqQueues).getGblAddr())
+#         ward.handlePatientArrival(agent, timeNow)
+#         self.handleIncomingMsg(pyrheabase.ArrivalMsg,
+#                               self.getMsgPayload(pyrheabase.ArrivalMsg, agent),
+#                               timeNow)
+#         ward.iA.initializePatientState(agent)
+#         for tP in self.treatmentPolicies:
+#             tP.initializePatientTreatment(ward, agent)
+#         ward._lockQueue.append(agent)
+#         ward.awaken(agent)
+#         ward.lockingAgentSet.add(agent)
+#         return agent
+
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
@@ -751,18 +791,21 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop']['value'])
     logger.info('Generating the population for %s (%s freeze-dried people)'
                 % (descr['abbrev'], meanPop))
+    agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOME)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
         a.reHome(fac.manager.patch)
         a.setStatus(homeAddr=findQueueForTier(CareTier.HOME, fac.reqQueues).getGblAddr())
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
-        ward.flushNewArrivals()  # since we are about to manually freeze-dry.
-        ward.freezers[ward.classify(a, None)].freezeAndStore(a)
-    return []
+        agentList.append(a)
+#         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
+#         ward.freezers[ward.classify(a, None)].freezeAndStore(a)
+    return agentList
 
 TotalCommunity=0
 
@@ -797,9 +840,9 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         wardInfo = tFreezer.getWardData()
 
         if wardInfo[0] != cacheVer:
-            raise invalidCacheVer()
+            raise InvalidCacheVer()
 
-        ver, fDesc,freezerList,patientStats = wardInfo
+        ver, fDesc,freezerList = wardInfo
         if fDesc != facilityDescr:
             raise Exception()
 
@@ -813,7 +856,6 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if agentCount < 1:
             raise Exception()
 
-        fac.patientStats = patientStats
         TotalCommunity += agentCount
         PatientAgent.allocateIds(fac, agentCount)
         logger.info('read population for %s from cache (%s freeze-dried people, %s)'
@@ -821,7 +863,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
         return [fac], fac.getWards(), []
 
-    except InvalidCacheVer as e:
+    except InvalidCacheVer:
         raise RuntimeError("community cache versions are out of sync within the same file!")
         #ward.orig.close()
         #oName = origFname(facilityDescr['abbrev'])
@@ -840,6 +882,8 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     # it's not absolutely necessary but it's a big todo
     #  *** TODO wipe our section of the interdict using a new method keyRange()
 
+    fac.patientCacheIsBeingRegenerated = True
+
     # Let's write all of our data at once to the interdict, so for now use a normal dict:
     orig = ward.orig
     ward.orig = {}
@@ -848,7 +892,6 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     fac.cachePatientDataDict = {}  # make sure no one is found while writing these
     # the patient data dict is currently an empty dict where things will be initially written.
     # just leave this and we'll move things around after everyone is generated.
-
 
     ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
 
@@ -860,18 +903,17 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
 
-    patientStats = fac.patientStats
-
-    # since it's possible that there's no freezers because there are no agents, let's make another temp freezer
+    # since it's possible that there's no freezers because there are no agents, let's make
+    # another temp freezer
     tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
-    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList, patientStats))
+    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList))
     tFreezer.saveInfoList()
 
     orig.mset(ward.orig.items())
     orig.flush()
 
     for k in ward.orig.keys():
-        del(ward.orig[k])
+        del ward.orig[k]
 
     ward.orig = orig
     for f in ward.freezers.values():
@@ -880,7 +922,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
     realCachePatientDataDict.mset(fac.patientDataDict.items())
     fac.cachePatientDataDict = realCachePatientDataDict
     for k in fac.patientDataDict.keys():
-        del(fac.patientDataDict[k])
+        del fac.patientDataDict[k]
     fac.patientDataDict = {}
 
     return [fac], fac.getWards(), pop
