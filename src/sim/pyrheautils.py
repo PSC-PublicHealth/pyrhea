@@ -209,3 +209,24 @@ def loadModulesFromDir(implementationDir,
         else:
             logger.info('Skipping non-python file %s' % fname)
     sys.path.pop()  # drop implementaionDir
+
+_resetCountNeeded = 1
+_resetRequestCount = 0
+_resetRequestTime = None
+
+def resetMiscCounters(patch, timeNow):
+    """
+    stupid hack to reset the miscCounters only after both per day callbacks have been run that need to look at them
+    """
+    global _resetCountNeeded, _resetRequestCount, _resetRequestTime
+    if _resetRequestTime != timeNow:
+        _resetRequestCount = 0
+    _resetRequestCount += 1
+    if _resetRequestCount != _resetCountNeeded:
+        return
+
+    # looks like we should reset everything
+    for fac in patch.allFacilities:
+        for ward in fac.getWards():
+            ward.miscCounters = defaultdict(lambda: 0)
+    

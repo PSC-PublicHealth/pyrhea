@@ -84,9 +84,8 @@ class TauAdjuster(object):
         return ret
 
     def processPrevData(self):
-        pthData = self.monitor.getPthData()
-        pthDataName = "cre_prev_%s.mpk"%self.monitor.uniqueID
-        pthData.to_msgpack(pthDataName, compress="zlib")
+        self.monitor.flush()
+        pthDataName = self.monitor.getFilename()
 
         tauDataName = "tau_data_%s.pkl"%self.monitor.uniqueID
         tauDict = getTauDict(self.patch)

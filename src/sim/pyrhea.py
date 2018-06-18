@@ -491,7 +491,7 @@ def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
 #             p.loop.printCensus()
         noteHolder.addNote({key: [recFun(patch, timeNow)]
                             for key, recFun in recGenDict.items()})
-        bcz_monitor.resetMiscCounters(patch, timeNow)
+        pyrheautils.resetMiscCounters(patch, timeNow)
         if timeNow > runDurationDays:
             patch.group.stop()
     return perDayCB
@@ -914,7 +914,7 @@ def main():
                     m.setStopTimeFn(1, ta.createCallbackFn())
 
             # resetMiscCounters needs to know that there is a second process watching the miscCounters
-            bcz_monitor._resetCountNeeded += 1
+            pyrheautils._resetCountNeeded += 1
 
         if clData['dumpFacilitiesMap'] is not None:
             dumpFacilitiesMap(clData['dumpFacilitiesMap'], patchList)

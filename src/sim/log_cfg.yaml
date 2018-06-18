@@ -35,12 +35,12 @@ loggers:
     level: WARNING
     handlers: []
   pyrheabase.PatientAgent:
-    level: DEBUG
-    #level: WARNING
+    #level: DEBUG
+    level: WARNING
     handlers: []
   facilitybase.PatientAgent:
-    level: DEBUG
-    #level: WARNING
+    #level: DEBUG
+    level: WARNING
     handlers: []
   transferdestination:
     level: INFO
@@ -53,15 +53,19 @@ loggers:
   categorydrawwithreplacement:
     level: INFO
   community:
-    level: DEBUG
+    #level: DEBUG
+    level: INFO
   netinterface:
     level: WARNING
   pyrheautils:
     level: WARNING
   genericCommunity:
-    level: WARNING
+    level: INFO
   policybase:
-    level: DEBUG
+    #level: DEBUG
+    level: WARNING
+  bcz_monitor:
+    level: WARNING
 #    handlers: [rabbitmq]
 root:
   level: WARNING

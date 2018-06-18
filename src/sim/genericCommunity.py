@@ -847,7 +847,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
     freezerList = []
     for pType,freezer in ward.freezers.items():
-        logger.debug('Ward %s has %d %s', ward._name, len(freezer.frozenAgentList), pType)
+        logger.info('Ward %s has %d %s', ward._name, len(freezer.frozenAgentList), pType)
         freezerList.append((pType,freezer.frozenAgentLoggerName))
         freezer.saveFreezerData()
 

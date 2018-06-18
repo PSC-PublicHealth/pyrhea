@@ -23,8 +23,9 @@ import bcolz as bz
 import time
 import os
 import logging
+import pyrheautils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # this is a dictionary linking anything 
@@ -34,8 +35,7 @@ PreregisteredKeys = set()
 def addTrackable(key, fn, dtypes):
     global TrackableValues
     if key in TrackableValues:
-        pass
-#        logger.warning("TrackableValue keyword collision: %s"%key)
+        logger.warning("TrackableValue keyword collision: %s"%key)
     TrackableValues[key] = (fn, dtypes)
 
 def preregisterKey(key):
@@ -43,20 +43,27 @@ def preregisterKey(key):
     PreregisteredKeys.add(key)
 
 class Monitor(object):
-    def __init__(self, filename, patch, stopFn=None, nextStop=None):
+    def __init__(self, filenameBase, patch, stopFn=None, nextStop=None):
         self.patch = patch
         self.nextStop = nextStop
         self.stopFn = stopFn
-        self.filename = filename
+        self.filenameBase = filenameBase
+        self.filename = self.filenameBase + '_' + str(patch.patchId)
+        self.baseColumns = ['fac', 'tier', 'ward', 'day']
         self.dtype = [('fac', 'S20'), ('tier', 'S10'), ('ward', 'uint32'), ('day', 'uint32')]
         for i in xrange(len(PthStatus.names)):
             self.dtype.append((PthStatus.names[i], 'uint32'))
+            self.baseColumns.append(PthStatus.names[i])
         self.dtype.append(('TOTAL', 'uint32'))
+        self.baseColumns.append('TOTAL')
         self.pthDataDF = None    # pthData as a pandas dataframe
         self.uniqueID = str(os.getpid()) + "_" + str(patch.patchId) + "_" + str(time.time())
         self.registeredFns = []
         self.registeredKeys = set()
 
+    def getFilename(self):
+        return self.filename
+        
     def registerFields(self, dtypes, fn):
         self.registeredFns.append(fn)
         self.dtype.extend(dtypes)
@@ -104,7 +111,7 @@ class Monitor(object):
                 self.pthData.append(row)
 
         self.pthDataDF = None
-        resetMiscCounters(self.patch, timeNow)
+        pyrheautils.resetMiscCounters(self.patch, timeNow)
 
     def getPthData(self):
         if self.pthDataDF is None:
@@ -121,7 +128,7 @@ class Monitor(object):
 
     def daily(self, timeNow):
         self.collectData(timeNow)
-        LOGGER.debug("daily: next stop: %s, timeNow: %s", self.nextStop, timeNow)
+        logger.debug("daily: next stop: %s, timeNow: %s", self.nextStop, timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
                 self.nextStop = self.stopFn(timeNow, self)
@@ -132,6 +139,9 @@ class Monitor(object):
         return fn
 
     def writeData(self):
+        self.flush()
+
+    def flush(self):
         self.pthData.flush()
         
     def XXXwriteData(self, fileName):
@@ -207,7 +217,7 @@ class oldMonitor(object):
 
     def daily(self, timeNow):
         self.collectPthData(timeNow)
-        LOGGER.debug("daily: next stop: %s, timeNow: %s", self.nextStop, timeNow)
+        logger.debug("daily: next stop: %s, timeNow: %s", self.nextStop, timeNow)
         if self.nextStop is not None:
             if timeNow >= self.nextStop:
                 self.nextStop = self.stopFn(timeNow, self)
@@ -224,23 +234,3 @@ class oldMonitor(object):
 
 
 
-_resetCountNeeded = 1
-_resetRequestCount = 0
-_resetRequestTime = None
-
-def resetMiscCounters(patch, timeNow):
-    """
-    stupid hack to reset the miscCounters only after both per day callbacks have been run that need to look at them
-    """
-    global _resetCountNeeded, _resetRequestCount, _resetRequestTime
-    if _resetRequestTime != timeNow:
-        _resetRequestCount = 0
-    _resetRequestCount += 1
-    if _resetRequestCount != _resetCountNeeded:
-        return
-
-    # looks like we should reset everything
-    for fac in patch.allFacilities:
-        for ward in fac.getWards():
-            ward.miscCounters = defaultdict(lambda: 0)
-    

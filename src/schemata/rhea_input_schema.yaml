@@ -79,6 +79,7 @@
           'type': 'string'
       'trackedValues':
         'description': 'list of data types that will be saved in the bcz monitor'
+        'type': 'array'
         'items':
           'type': 'string'
       'randomSeed':

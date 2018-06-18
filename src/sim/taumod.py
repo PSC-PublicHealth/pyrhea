@@ -23,6 +23,7 @@ from collections import defaultdict
 import six.moves.cPickle as pickle
 import logging
 import optparse
+import bcolz as bz
 import pandas as pd
 import yaml
 
@@ -172,18 +173,24 @@ class TauMod(object):
         tauDicts = []
         expectedDicts = []
         days = [self.nextDay - d for d in self.dayList]
+        minDay = min(days)
+        if minDay < 0: minDay = 0
+        
         for line in lines[2:]:
             uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ") # @UnusedVariable
 
-            pS = pd.read_msgpack(prevStatsFileName)
+            data = bz.ctable(rootdir=prevStatsFileName, mode='r')
+            pS = data.fetchwhere("day >= %d"%minDay, out_flavor='bcolz', outcols=['fac', 'tier', 'ward', 'day', 'COLONIZED', 'TOTAL'])
+            pS = pS.todataframe()
+            
             prevStats.append(pS[pS.day.isin(days)])
-            with SharedLock(tauFileName):
-                with open(tauFileName, "rb") as f:
-                    tauDicts.append(pickle.load(f))
+            #with SharedLock(tauFileName):
+            with open(tauFileName, "rb") as f:
+                tauDicts.append(pickle.load(f))
 
-            with SharedLock(expectedFileName):
-                with open(expectedFileName, "rb") as f:
-                    expectedDicts.append(pickle.load(f))
+            #with SharedLock(expectedFileName):
+            with open(expectedFileName, "rb") as f:
+                expectedDicts.append(pickle.load(f))
 
         return prevStats, tauDicts, expectedDicts
 
@@ -204,10 +211,11 @@ class TauMod(object):
         tierSums = tierGroups.sum()
         for tier in tierGroups.groups.keys():
             colRatio = float(tierSums['COLONIZED'][(tier)]) / tierSums['TOTAL'][(tier)]
-            print("%s Prevalence: %s, (colonized %s, total %s)") % (tier,
+
+            print("%s Prevalence: %s, (colonized %s, total %s)" % (tier,
                                                                     colRatio,
                                                                     tierSums['COLONIZED'][(tier)],
-                                                                    tierSums['TOTAL'][(tier)])
+                                                                    tierSums['TOTAL'][(tier)]))
 
         return s
 
