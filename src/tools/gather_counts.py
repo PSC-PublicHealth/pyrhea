@@ -438,6 +438,10 @@ def main():
         # raw records by tier
         headingRow = ['Tier of Care','run', 'Colonized Patient Days','Patient Bed Days']
         entries = ['tier', 'run', 'colonizedDays', 'bedDays']
+        for key, tpl in valuesToGather.items():
+            if key != 'pthStatus':
+                headingRow.append(tpl[2])
+                entries.append(key)
         if xdroAbbrevs:
             headingRow.append('XDRO Admissions')
             entries.append('xdroAdmissions')
