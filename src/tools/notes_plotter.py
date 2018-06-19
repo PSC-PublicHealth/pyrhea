@@ -569,67 +569,104 @@ def overallHealthTimeFig(specialDict):
         figsOH.canvas.set_window_title("Time History of Patient Population Overall Health")
     except KeyError as e:
         if e.message == 'occupancyByOH':
-            print('occupancyByOH data not available; skipping time history of overall health')
+            print('occupancyByOH data not available; skipping time history of'
+                  ' overall health')
 
 
-def thawsTimeFig(specialDict):
+def MiscTimeFig(specialDict):
+    patchList = specialDict.keys()[:]
+    patchList.sort()
     try:
-        patchList = specialDict.keys()[:]
-        patchList.sort()
         catList = []
         for patchName, data in specialDict.items():
-            pthDataList = data['localtiernthawed']
-            assert isinstance(pthDataList, types.ListType), ('Special data %s is not a list'
-                                                             % patchName)
-            for d in pthDataList:
-                for k in d.keys():
-                    if k != 'day':
-                        cat = k.split('_')[0]
-                        if cat not in catList:
-                            catList.append(cat)
-        catList.sort()
-        figsThaw, axesThaw = plt.subplots(nrows=len(catList), ncols=len(patchList))
-        axesThaw.reshape((len(catList), len(patchList)))
-        if len(catList) == 1:
-            axesThaw = axesThaw[np.newaxis, :]
-        if len(patchList) == 1:
-            axesThaw = axesThaw[:, np.newaxis]
-        for colOff, patchName in enumerate(patchList):
-            try:
-                pthDataList = specialDict[patchName]['localtiernthawed']
-                assert isinstance(pthDataList, types.ListType), \
-                    'Special data %s is not a list' % patchName
-                fields = {}
-                for d in pthDataList:
-                    for k, v in d.items():
-                        if k not in fields:
-                            fields[k] = []
-                        fields[k].append(v)
-                assert 'day' in fields, 'Date field is missing for special data %s' % patchName
-                dayList = fields['day']
-                dayVec = np.array(dayList)
-                del fields['day']
+            for topic in ['localtiernthawed', 'bedHoldStats']:
+                topicDataList = data[topic]
+                assert isinstance(topicDataList, types.ListType), ('Special data %s is not a list'
+                                                                 % patchName)
+                for d in topicDataList:
+                    for k in d.keys():
+                        if k != 'day':
+                            cat = k.split('_')[0]
+                            if cat not in catList:
+                                catList.append(cat)
+            catList.sort()
+            figsMisc, axesMisc = plt.subplots(nrows=len(catList), ncols=len(patchList))
+            axesMisc.reshape((len(catList), len(patchList)))
+            if len(catList) == 1:
+                axesMisc = axesMisc[np.newaxis, :]
+            if len(patchList) == 1:
+                axesMisc = axesMisc[:, np.newaxis]
+            for colOff, patchName in enumerate(patchList):
+                allFields = {}
+                for topic in ['localtiernthawed', 'bedHoldStats']:
+                    try:
+                        topicDataList = specialDict[patchName][topic]
+                        assert isinstance(topicDataList, types.ListType), \
+                            'Special data %s %s is not a list' % (topic, patchName)
+                        fields = {}
+                        for d in topicDataList:
+                            for key, val in d.items():
+                                if key in catList:
+                                    fieldNm = topic
+                                    catNm = key
+                                elif key == 'day':
+                                    fieldNm = key
+                                    catNm = None
+                                else:
+                                    words = key.split('_', 1)
+                                    if words[0] in catList:
+                                        fieldNm = words[1]
+                                        catNm = words[0]
+                                    else:
+                                        raise RuntimeError('Unparsable key %s' % key)
+                                if catNm not in fields:
+                                    fields[catNm] = {}
+                                if fieldNm not in fields[catNm]:
+                                    fields[catNm][fieldNm] = []
+                                fields[catNm][fieldNm].append(val)
+                            assert 'day' in fields[None], ('Date field is missing for special data %s %s'
+                                                           % (patchName))
+                        dayVec = np.asarray(fields[None]['day'])
+                        del fields[None]['day']
+                        del fields[None]
+                        for catNm in fields.keys():
+                            for key, lst in fields[catNm].items():
+                                fields[catNm][key] = np.asarray(lst)
+                            fields[catNm]['day'] = dayVec
+                        allFields.update(fields)
+                    except Exception, e:
+                        print e
+                        raise
 
-                for rowOff, cat in enumerate(catList):
-                    if cat in fields:
-                        l = fields[cat]
-                        assert len(l) == len(dayList), (('field %s is the wrong length in special'
-                                                         ' data %s (%d vs. %d)')
-                                                         % (cat, patchName, len(l), len(dayList)))
-                        curve = np.array(l)
-                        lbl = 'nThaws'
-                        if np.count_nonzero(curve):
-                            axesThaw[rowOff, colOff].plot(dayVec, curve, label=lbl)
-                    axesThaw[rowOff, colOff].set_xlabel('Days')
-                    axesThaw[rowOff, colOff].set_ylabel('Number of thaws')
-                    axesThaw[rowOff, colOff].set_title(cat)
-            except Exception, e:
-                print e
-        figsThaw.tight_layout()
-        figsThaw.canvas.set_window_title("Time History of Thaws")
+                for rowOff, catNm in enumerate(catList):
+                    if catNm in allFields:
+                        fldD = allFields[catNm]
+                        dayVec = fldD['day']
+                        if catNm == 'NursingHome':
+                            axesMisc[rowOff, colOff].plot(dayVec, fldD['frail'] + fldD['frail_held'], '-',
+                                                          label='commited frail')
+                            axesMisc[rowOff, colOff].plot(dayVec, fldD['frail_beds'], '-',
+                                                          label='frail beds')
+                            axesMisc[rowOff, colOff].plot(dayVec, fldD['non_frail'] + fldD['non_frail_held'], '-',
+                                                          label='commited non_frail')
+                            axesMisc[rowOff, colOff].plot(dayVec, fldD['non_frail_beds'], '-',
+                                                          label='non-frail beds')
+#                         for key, vec in fldD.items():
+#                             if key != 'day':
+#                                 assert dayVec.shape[0] == vec.shape[0], ('day vec mismatch for %s'
+#                                                                          % key)
+#                                 if np.count_nonzero(vec):
+#                                     axesMisc[rowOff, colOff].plot(dayVec, vec, '-', label=key)
+                    axesMisc[rowOff, colOff].set_xlabel('Days')
+                    axesMisc[rowOff, colOff].set_title(catNm)
+                    axesMisc[rowOff, colOff].legend()
+                figsMisc.tight_layout()
+                figsMisc.canvas.set_window_title("Misc Time Histories")
     except KeyError as e:
         if e.message == 'localtiernthawed':
             print('localtiernthawed data not available; skipping time history of thaws')
+        else:
+            raise
 
 
 def countBirthsDeaths(catNames, allOfCategoryDict):
@@ -876,7 +913,7 @@ def main():
     occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
     overallHealthTimeFig(specialDict)
-    thawsTimeFig(specialDict)
+    MiscTimeFig(specialDict)
 
     plt.show()
 

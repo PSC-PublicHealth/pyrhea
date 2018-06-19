@@ -24,7 +24,6 @@ from collections import defaultdict
 
 from phacsl.utils.collections.phacollections import DefaultDict
 import phacsl.utils.collections.interdict as interdict
-
 import cPickle as pickle
 import gzip
 from scipy.stats import expon, binom
@@ -35,7 +34,7 @@ from typebase import DiagClassA, CareTier, PatientOverallHealth
 from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
 from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
-from facilitybase import MissingPatientRecordError, decodeHistoryEntry
+from facilitybase import MissingPatientRecordError, decodeHistoryEntry, findQueueForTier
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
@@ -483,6 +482,14 @@ class CommunityWard(Ward):
         self.newArrivals.append(lockingAgent)
         return super(CommunityWard, self).lock(lockingAgent)
 
+    def handlePatientArrival(self, patientAgent, timeNow):
+        super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
+        # If a patient lands here, make this fac its home unless it's FRAIL 
+        # (and thus should not be landing here at all...)
+        if (patientAgent.getStatus().overall != PatientOverallHealth.FRAIL):
+            patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.HOME,
+                                                             self.fac.reqQueues).getGblAddr())
+
 
 class CommunityManager(FacilityManager):
 
@@ -603,6 +610,8 @@ class Community(Facility):
             assert losModel['pdf'] == 'expon(lambda=$0)', \
                 "Unexpected losModel form %s - only expon is supported" % losModel['pdf']
             rate = losModel['parms'][0]
+            #rate *= (779./675.)  # This is the one that scales the get-sick rate up to the go-home rate
+            #rate *= (675./779.)
             self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
     def calcTierRateConstants(self, prevFacAbbrev):
@@ -747,7 +756,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
         a.reHome(fac.manager.patch)
-        a.setStatus(homeAddr=ward.getGblAddr())
+        a.setStatus(homeAddr=findQueueForTier(CareTier.HOME, fac.reqQueues).getGblAddr())
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)

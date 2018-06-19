@@ -52,6 +52,10 @@ def main():
     parser.add_option('-f', '--facility', action='append', type='string',
                       help=('Facility abbrev to plot - may be repeated.  The default is to'
                             'use the trackedFacilities list from the input file'))
+    
+    parser.add_option('--transpose', action='store_true',
+                      help=('Graph the transpose of the transfer matrix, thus showing inputs rather'
+                            ' than outputs'))
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -115,9 +119,14 @@ def main():
         indirectL.append(allD[mtxName]['indirect_simulated'])
         labelL.append(mtxName)
 
+    if opts.transpose:
+        directL = [mtx.transpose() for mtx in directL]
+        indirectL = [mtx.transpose() for mtx in indirectL]
+
     for abbrev in plotThese:
         drawBarSets(abbrev, directL, indirectL, labelL, idxFacTbl, facDict,
-                    hideDirectTransfersToSelf=True)
+                    hideDirectTransfersToSelf=True,
+                    titleSuffix=('inputs' if opts.transpose else 'outputs'))
     plt.show()
 
 if __name__ == "__main__":

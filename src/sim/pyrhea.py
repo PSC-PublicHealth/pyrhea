@@ -74,6 +74,18 @@ def buildFacOccupancyDict(patch, timeNow):
     #print('buildFacOccupancyDict: %s') % facTypeDict
     return facTypeDict
 
+def buildFacHeldBedDict(patch, timeNow):
+    facTypeDict = defaultdict(int)
+    facTypeDict['day'] = timeNow
+    assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    for fac in patch.allFacilities:
+        tpName = type(fac).__name__
+        if hasattr(fac, 'bedAllocDict'):
+            for key, ct in fac.bedAllocDict.items():
+                facTypeDict[tpName + '_' + key] += ct
+
+    return facTypeDict
+
 def buildFacOverallHealthDict(patch, timeNow):
     facOHDict = {'day': timeNow}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
@@ -225,7 +237,8 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtierotherCP': generateLocalTierDictBuilder('otherDaysOnCP'),
                           'localtierxdroCP': generateLocalTierDictBuilder('xdroDaysOnCP'),
                           'localtierpatientsOnCP': generateLocalTierDictBuilder('newPatientsOnCP'),
-                          'localtiernthawed': generateFacTypeDictBuilder('nThawed')
+                          'localtiernthawed': generateFacTypeDictBuilder('nThawed'),
+                          'bedHoldStats': buildFacHeldBedDict
 
                           }
 

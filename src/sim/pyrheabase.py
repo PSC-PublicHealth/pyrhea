@@ -71,8 +71,9 @@ class FacilityManager(peopleplaces.Manager):
                 ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
                 if n > 0:
                     self.fac.wardAddrDict[addr] = (w, n-1)
-#                     print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
+                    # print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
                     return w
+            #print 'alloc: %s has no ward for tier %s' % (self.name, tier)
             return None
         else:
             return None
@@ -81,13 +82,22 @@ class FacilityManager(peopleplaces.Manager):
         payload = req.payload
         tier = req.tier
         ward = self.allocateAvailableBed(tier)
-        req.payload = self.fac.handleBedRequestResponse(ward, payload, timeNow)
-        if ward is None:
+        if ward is None and logDebug:
+            if tier in self.fac.wardTierDict:
+                self.logger.debug('%s: no beds available for %s' % (self.name, req.name))
+            else:
+                self.logger.debug('%s: no such ward for %s' % (self.name, req.name))
+        req.payload, newWard = self.fac.handleBedRequestResponse(ward, payload, timeNow)
+        if newWard is None and ward is not None:
+            addr = ward.getGblAddr().getLclAddr()
+            ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
+            self.fac.wardAddrDict[addr] = (ward, n+1)  # return the unused ward to the pool
+            # print 'dealloc: ward %s now has %d free beds of %d' % (ward._name, n+1, ward._nLocks)
             if logDebug:
-                if tier in self.fac.wardTierDict:
-                    self.logger.debug('%s: no beds available for %s' % (self.name, req.name))
-                else:
-                    self.logger.debug('%s: no such ward for %s' % (self.name, req.name))
+                self.logger.debug('%s: a bed was available for %s but was denied',
+                                  self.name, req.name)
+        ward = newWard
+        if ward is None:
             req.fsmstate = BedRequest.STATE_DENIEDWARD
         else:
             req.fsmstate = BedRequest.STATE_GOTWARD
@@ -164,9 +174,10 @@ class Facility(peopleplaces.ManagementBase):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
-        The return value of this message becomes the new payload.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
         """
-        return None
+        return None, ward
 
     def handleBedRequestFate(self, ward, payload, timeNow):
         """
@@ -216,15 +227,16 @@ class BedRequest(patches.Agent):
                             cur += weight
                             if cur >= r:
                                 self.dest = addr
-                                self.facilityOptions = self.facilityOptions[:i] + self.facilityOptions[i+1:]
+                                self.facilityOptions = (self.facilityOptions[:i]
+                                                        + self.facilityOptions[i+1:])
                                 break
-                    else:    
+                    else:
                         self.dest = self.facilityOptions.pop()
             elif self.fsmstate == BedRequest.STATE_MOVING:
-                    addr, final = self.patch.getPathTo(self.dest)
-                    if final:
-                        self.fsmstate = BedRequest.STATE_ASKWARD
-                    timeNow = addr.lock(self)
+                addr, final = self.patch.getPathTo(self.dest)
+                if final:
+                    self.fsmstate = BedRequest.STATE_ASKWARD
+                timeNow = addr.lock(self)
             elif self.fsmstate == BedRequest.STATE_ASKWARD:
                 raise RuntimeError('%s: I SHOULD BE ASLEEP at time %s' % (self.name, timeNow))
             elif self.fsmstate == BedRequest.STATE_GOTWARD:
@@ -315,6 +327,7 @@ class PatientAgent(peopleplaces.Person):
         if tier == self.tier and TierUpdateModFlag.FORCE_MOVE not in modifiers:
             return self.locAddr  # things stay the same
         elif tier is None:
+            self.tier = None
             return None  # signal death
         else:
             facAddrList = self.getCandidateFacilityList(timeNow, tier)
@@ -324,9 +337,10 @@ class PatientAgent(peopleplaces.Person):
                     print 'patient history %s' % str(self.agentHistory)
                 else:
                     print 'patient has no history!'
-                print "%s tier change %s to %s has no available facilities" % (self.name, self.tier, tier)
-#             assert facAddrList, ("%s tier change %s to %s has no available facilities"
-#                                  % (self.name, self.tier, tier))
+                print "%s tier change %s to %s has no available facilities" % (self.name, self.tier,
+                                                                               tier)
+            assert facAddrList, ("%s tier change %s to %s has no available facilities"
+                                 % (self.name, self.tier, tier))
             homeAddr = self._status.homeAddr
 
             # do we want to test for homeAddr in weighted lists?  how would we weight it?
@@ -361,6 +375,7 @@ class PatientAgent(peopleplaces.Person):
                 return self.locAddr  # Stay put; we'll try next timeslice
                 # state is unchanged
             else:
+                self.tier = tier
                 return self.newLocAddr
 
     def handleArrival(self, timeNow):
@@ -368,7 +383,8 @@ class PatientAgent(peopleplaces.Person):
         An opportunity to do bookkeeping on arrival at self.loc.  The Person agent has already
         locked the interactant self.loc.
         """
-        self.tier = self.loc.tier
+        assert self.tier == self.loc.tier, ('%s arrived at tier %s when expecting %s'
+                                            % (self.name, self.loc.tier, self.tier))
         self.ward.handlePatientArrival(self, timeNow)
 
     def handleDeparture(self, timeNow):

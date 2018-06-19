@@ -204,11 +204,21 @@ tierToQueueMap = {CareTier.HOME: HOMEQueue,
                   CareTier.SKILNRS: SKILNRSQueue}
 
 
+def findQueueForTier(careTier, queueList):
+    """
+    Given a list of queues of various types (for example Facility.reqQueues), find
+    and return the first which matches the given CareTier.
+    """
+    for queue in queueList:
+        if isinstance(queue, tierToQueueMap[careTier]):
+            return queue
+    return None
+
 
 class PatientRecord(object):
     _boolProps = ['isFrail',
                   'carriesPth',  # Carries the pathogen being simulated
-                  'carriesOther' # Carries some other contagious pathogen
+                  'carriesOther', # Carries some other contagious pathogen
                   ]
 
     def __init__(self, patientId, arrivalDate, #owningFacility,
@@ -273,7 +283,7 @@ class PatientRecord(object):
                                                    self.arrivalDate,
                                                    self.departureDate,
                                                    'Frail' if self.isFrail else 'not frail',
-                                                   ('Contagious' if self.isContagious 
+                                                   ('Contagious' if self.isContagious
                                                     else 'NonContagious'))
 
 class PatientStats(object):
@@ -304,6 +314,11 @@ class PatientStats(object):
             self.curOccDict[tier] -= 1
         else:
             raise RuntimeError('No patient to remove')
+
+    def __str__(self):
+        bedStr = ', '.join(['%s: %d' % (CareTier.names[tier], ct)
+                            for tier, ct in self.curOccDict.items()])
+        return '<occupied beds %s>' % bedStr
 
 
 class MissingPatientRecordError(RuntimeError):
@@ -372,7 +387,7 @@ class Facility(pyrheabase.Facility):
 
     def getNoteHolder(self):
         return self.noteHolder
-    
+
     def getPatientRecord(self, patientId, timeNow=None):
         if patientId in self.patientDataDict:
             pR = pickle.loads(self.patientDataDict[patientId])
@@ -386,6 +401,11 @@ class Facility(pyrheabase.Facility):
             self.patientDataDict[patientId] = pickle.dumps(pR, 2)  # keep a copy
             pR._owningFac = self
             return pR
+
+    def getPatientRecords(self):
+        """In case someone wants to exhaustively search patient records"""
+        for pStr in self.patientDataDict.values():
+            yield pickle.loads(pStr)
 
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
@@ -474,7 +494,7 @@ class Facility(pyrheabase.Facility):
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
-            a.setStatus(homeAddr=ward.getGblAddr())
+            a.setStatus(homeAddr=findQueueForTier(ward.tier, self.reqQueues).getGblAddr())
             a.setStatus(overall=payload)
             ward.lock(a)
             self.handleIncomingMsg(pyrheabase.ArrivalMsg,
@@ -497,7 +517,8 @@ class Facility(pyrheabase.Facility):
         The format used here is (number of bounces, tier, originating facility, and
         transferInfo dictionary).
         """
-        transferInfoDict = {'patientId': patientAgent.id}
+        transferInfoDict = {'patientId': patientAgent.id,
+                            'overallHealth': patientAgent.getStatus().overall}
         try:
             transferInfoDict = self.diagnosticPolicy.sendPatientTransferInfo(self,
                                                                              patientAgent,
@@ -516,7 +537,8 @@ class Facility(pyrheabase.Facility):
         """
         This routine is called in the time slice of the Facility Manager when the manager
         responds to a request for a bed.  If the request was denied, 'ward' will be None.
-        The return value of this message becomes the new payload.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
 
         If ward is not None, this facility is in the process of accepting the bed request
         and the associated patient will be arriving later in the day.  Thus we cache
@@ -530,7 +552,7 @@ class Facility(pyrheabase.Facility):
         else:
             pass
         # updated number of bounces and sender
-        return (nBounces + 1, tier, self.abbrev, transferInfoDict)
+        return (nBounces + 1, tier, self.abbrev, transferInfoDict), ward
 
     def handleBedRequestFate(self, ward, payload, timeNow):  # @UnusedVariable
         """

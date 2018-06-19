@@ -17,6 +17,7 @@
 
 import os.path
 import math
+import numpy as np
 from scipy.stats import lognorm
 import logging
 from random import random
@@ -49,6 +50,44 @@ tierKeyMap = {CareTier.HOME: 'home',
               CareTier.SKILNRS: 'skilnrs'}
 
 knownTierKeys = tierKeyMap.values() + ['death']
+
+def _pickWardSizes(nBeds, bedsPerWard):
+    """
+    Given a number of beds and a nominal number of beds per ward, generate an
+    iterable giving a series of ward sizes which 'comes close to' the requested
+    total bed count and ward size.
+
+    Both input parameters are assumed to be integers.
+    """
+    nWards = int((nBeds//bedsPerWard) + 1)
+    if nWards > 1:
+        delta = (bedsPerWard * nWards) - nBeds
+        if delta > 0.5 * bedsPerWard:
+            # Better to reduce the ward count by 1 and spread out the extra
+            # beds evenly
+            nWards -= 1
+        else:
+            # Better to have a few under-full wards
+            pass
+        samps = np.full(nWards, bedsPerWard)
+        conv = nBeds - np.sum(samps)
+        while True:
+            if conv > 0:
+                samps += np.random.poisson(float(conv)/ float(nWards), nWards)
+            elif conv < 0:
+                samps -= np.random.poisson(float(-conv)/ float(nWards), nWards)
+            else:
+                break
+            conv = nBeds - np.sum(samps)
+        return samps
+    else:
+        return np.asarray([nBeds])
+
+def pickWardSizes(nBeds, bedsPerWard):
+    rslt = _pickWardSizes(nBeds, bedsPerWard)
+    print "%s %s -> %s" % (nBeds, bedsPerWard, rslt)
+    return rslt
+
 
 def buildChangeTree(lclRates, forceRelocateDiag=None):
     """
@@ -183,7 +222,7 @@ class Hospital(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         bedsPerWard = _constants['bedsPerWard']['value']
-        bedsPerICUWard = _constants['bedsPerWard']['value']
+        bedsPerICUWard = _constants['bedsPerICUWard']['value']
 
         _c = _constants
         totDsch = float(descr['totalDischarges']['value'])
@@ -231,22 +270,14 @@ class Hospital(Facility):
                               else 1.0)
         if 'nBeds' in descr:
             allBeds = int(bedCountMultiplier * descr['nBeds']['value'])
-            if 'nBedsICU' in descr:
-                icuBeds = int(bedCountMultiplier * descr['nBedsICU']['value'])
-            else:
-                icuBeds = descr['fracAdultPatientDaysICU']['value'] * allBeds
-            icuWards = int(icuBeds/bedsPerICUWard) + 1
-            nonICUBeds = max(allBeds - icuBeds, 0)
-            nonICUWards = int(float(nonICUBeds)/bedsPerWard) + 1
         else:
             meanPop = descr['meanPop']['value']
-            meanICUPop = meanPop * descr['fracAdultPatientDaysICU']['value']
-            meanNonICUPop = meanPop - meanICUPop
-            icuWards = int(math.ceil(bedCountMultiplier * meanICUPop / bedsPerICUWard))
-            nonICUWards = int(math.ceil(bedCountMultiplier * meanNonICUPop / bedsPerWard))
-
-        icuBeds = icuWards * bedsPerICUWard
-        nonICUBeds = nonICUWards * bedsPerWard
+            nBeds = int(bedCountMultiplier * 1.1 * meanPop)
+        if 'nBedsICU' in descr:
+            icuBeds = int(round(bedCountMultiplier * descr['nBedsICU']['value']))
+        else:
+            icuBeds = int(round(descr['fracAdultPatientDaysICU']['value'] * allBeds))
+        nonICUBeds = max(allBeds - icuBeds, 0)
 
         assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
             'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
@@ -272,14 +303,14 @@ class Hospital(Facility):
                                                            scale=math.exp(scaledICUParms[0])))
         self.icuTreeCache = {}
 
-        for i in xrange(icuWards):
+        for i, bedCt in enumerate(pickWardSizes(icuBeds, bedsPerICUWard)):
             self.addWard(ICUWard(('%s_%s_%s_%s_%d' %
                                   (category, patch.name, descr['abbrev'], 'ICU', i)),
-                                 patch, bedsPerICUWard))
-        for i in xrange(nonICUWards):
+                                 patch, bedCt))
+        for i, bedCt in enumerate(pickWardSizes(nonICUBeds, bedsPerWard)):
             self.addWard(Ward(('%s_%s_%s_%s_%d' %
                                (category, patch.name, descr['abbrev'], 'HOSP', i)),
-                              patch, CareTier.HOSP, bedsPerWard))
+                              patch, CareTier.HOSP, bedCt))
 
     def flushCaches(self):
         """
@@ -342,9 +373,10 @@ class Hospital(Facility):
                     return tree
             else:
                 # This patient doesn't belong in this ward
-                logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                logger.warning('fac %s patient: %s careTier %s overall %s with status %s startTime: %s: '
                                'this patient should be gone by now'
                                % (self.name, patientAgent.name, CareTier.names[careTier],
+                                  PatientOverallHealth.names[patientStatus.overall],
                                   DiagClassA.names[patientStatus.diagClassA], startTime))
                 return BayesTree(PatientStatusSetter())
 

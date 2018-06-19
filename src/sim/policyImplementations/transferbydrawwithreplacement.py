@@ -103,7 +103,7 @@ class DWRCore(object):
         if self.tierAddrMap is None:
             self._buildTierAddrMap()
         return self.tierAddrMap[tier]
-    
+
     def _buildWeightedLists(self):
         nmDict = CareTier.names
         tierFacSets = {tier: set(self.getTierAddrMap(tier).keys()) for tier in nmDict.keys()}
