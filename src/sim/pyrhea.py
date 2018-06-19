@@ -82,8 +82,10 @@ def buildFacOverallHealthDict(patch, timeNow):
     for fac in patch.allFacilities:
         ctD = defaultdict(lambda: 0)
         for ward in fac.getWards():
-            for pA in ward.getPatientList():
-                ctD[pA.getStatus().overall] += 1
+            for pOH in PatientOverallHealth.names:
+                ct = ward.cumStats.popByOH(pOH)
+                if ct != 0:  # COMMUNITY pops can actually be negative due to initialization issues
+                    ctD[pOH] += ct
         tpName = type(fac).__name__
         if tpName not in seenFacTypes:
             for ohIdx in PatientOverallHealth.names:
@@ -275,17 +277,17 @@ def dumpFacilitiesMap(filename, patchList):
                     continue
                 tier = CareTier.names[ward.tier]
                 key = (abbr,tier)
-                
+
                 category[key] = fac.category
                 bedcounts[key] += ward._nLocks  # must I really go this low level to get this info?
                 wards[key] += 1
-                startPop[key] += len(ward.getPatientList())
+                startPop[key] += ward.cumStats.popTotal()
 
                 try: tau[key] = ward.iA.tau
                 except: tau[key] = ""
                 try: fracColonized[key] = ward.iA.initialFracColonized
                 except: fracColonized[key] = ""
-                
+
 
     with open(filename, "w") as f:
         f.write("fac,tier,category,wards,beds,startPop,tau,fracColonized\n")
@@ -294,7 +296,7 @@ def dumpFacilitiesMap(filename, patchList):
             f.write("%s,%s,%s,%s,%s,%s,%s,%s\n"%(abbr,tier,category[k],wards[k],
                                                  bedcounts[k],startPop[k],
                                                  tau[k],fracColonized[k]))
-            
+
 
 
 
@@ -640,7 +642,7 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
         allAgents.append(registry.manager)
 
     for facDescription in myFacList:
-        
+
         patch, allIter, allAgents, allFacilities = tupleList[offset]
         facImplCategory = findFacImplCategory(facImplDict, facImplRules,
                                               facDescription['category'])
@@ -654,7 +656,7 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                                                                 facImpl.category,
                                                                 facDescription['abbrev']),
                                      categoryNameMapper=facImplMapFun)
-            
+
             for w in wards:
                 w.setInfectiousAgent(PthClass(w, implCategory=facImplCategory))
                 w.initializePatientPthState()
@@ -669,6 +671,8 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
             allIter.extend(wards)
             allAgents.extend([fac.manager for fac in facilities])
             allAgents.extend(patients)
+            for fac in facilities:
+                fac.finalizeBuild(facDescription)
             allFacilities.extend(facilities)
         else:
             raise RuntimeError('Facility %(abbrev)s category %(category)s has no implementation' %

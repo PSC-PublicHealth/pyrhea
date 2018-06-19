@@ -27,6 +27,7 @@ from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
 from pathogenbase import Pathogen, PthStatus, defaultPthStatus
 from facilitybase import PatientStatusSetter, PthStatusSetter
+from genericCommunity import FreezerError
 
 pathogenName = 'CRE'
 _constants_values = '$(CONSTANTS)/cre_constants.yaml'
@@ -256,8 +257,11 @@ class CRE(Pathogen):
         """
         if self.patientPthTime != timeNow:
             d = self._emptyPatientPth()
-            for p in self.ward.getPatientList():
-                d[p._status.pthStatus] += 1
+            try:
+                for pt in self.ward.getPatientList():
+                    d[pt._status.pthStatus] += 1
+            except FreezerError:
+                pass  # We're going to have to ignore freeze-dried patients
             self.patientPth = d
             self.patientPthTime = timeNow
         return self.patientPth
@@ -275,8 +279,11 @@ class CRE(Pathogen):
         """Maintain and return a cached table of patient counts by status and treatment"""
         if self.propogationInfoTime != timeNow:
             pI = defaultdict(lambda: 0)
-            for pt in self.ward.getPatientList():
-                pI[self.getPatientStateKey(pt._status, pt._treatment)] += 1
+            try:
+                for pt in self.ward.getPatientList():
+                    pI[self.getPatientStateKey(pt.getStatus(), pt.getTreatmentProtocol())] += 1
+            except FreezerError:
+                pass  # We're going to have to ignore freeze-dried patients
             pI = {key: val for key, val in pI.items()
                   if not key.startswith('-')} # only sick people spread
             lst = pI.items()[:]

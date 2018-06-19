@@ -191,6 +191,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of LTAC beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_LTAC_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)

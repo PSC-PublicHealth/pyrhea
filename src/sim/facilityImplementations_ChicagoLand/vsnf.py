@@ -260,6 +260,7 @@ def _populate(fac, descr, patch):
             a = PatientAgent('PatientAgent_%s_%s_%d' % (CareTier.names[tier], ward._name, i),
                              patch, ward)
             ward.lock(a)
+            ward.handlePatientArrival(a, None)
             fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                   fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                                   None)

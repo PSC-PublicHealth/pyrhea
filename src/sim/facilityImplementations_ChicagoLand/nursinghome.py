@@ -138,6 +138,141 @@ class NursingHome(Facility):
         self.frailRehabTreeCache = {}
         self.frailTreeCache = {}
 
+    def checkBedAllocDict(self, healthKey, heldKey, bedsKey):
+        """Check that the bed allocation table has been initialized and is sensible."""
+        bAD = self.bedAllocDict
+        assert bAD[heldKey] >= 0, '%s %s held bed count is less than 0' % (self.name, healthKey)
+        assert bAD[healthKey] >= 0, '%s %s occupancy is less than 0' % (self.name, healthKey)
+        assert bAD[bedsKey] >= 0, '%s %s bed count is less than 0' % (self.name, healthKey)
+        assert bAD[heldKey] + bAD[healthKey] <= bAD[bedsKey], ('%s %s too many beds committed'
+                                                               % (self.name, healthKey))
+
+    def handleBedRequestResponse(self, ward, payload, timeNow):  # @UnusedVariable
+        """
+        This routine is called in the time slice of the Facility Manager when the manager
+        responds to a request for a bed.  If the request was denied, 'ward' will be None.
+        The return value is the tuple (newPayload, ward).  Returning None for the ward
+        value of the tuple will cause the request to be denied.
+
+        If ward is not None, this facility is in the process of accepting the bed request
+        and the associated patient will be arriving later in the day.  Thus we cache
+        the transfer info which may be associated with the patient.
+        """
+        outgoingPayload, ward = super(NursingHome, self).handleBedRequestResponse(ward,
+                                                                                  payload,
+                                                                                  timeNow)
+        if ward:
+            # We may yet decline if it would violate our overall health ratio
+            transferInfoDict = payload[3]
+            pId = transferInfoDict['patientId']
+            pOH = transferInfoDict['overallHealth']
+            if self.patientRecordExists(pId):
+                pRec = self.getPatientRecord(pId)
+                if 'bedHeld' in pRec.noteD and pRec.noteD['bedHeld']:
+                    bedHeld = True
+                else:
+                    bedHeld = False
+            else:
+                bedHeld = False
+            if pOH == PatientOverallHealth.FRAIL:
+                healthKey, heldKey, bedsKey = 'frail', 'frail_held', 'frail_beds'
+            else:
+                healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
+            self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            if bedHeld:
+                # print '%s: reentered held bed! %s %s' % (self.name, healthKey, self.bedAllocDict)
+                pass
+            else:
+                if (self.bedAllocDict[healthKey] < (self.bedAllocDict[bedsKey]
+                                                    - self.bedAllocDict[heldKey])):
+                    self.bedAllocDict[heldKey] += 1  # commit the bed
+                else:
+                    ward = None  # decline the request
+                    # print '%s: request declined %s %s' % (self.name, healthKey, self.bedAllocDict)
+            if ward is None:
+                del self.arrivingPatientTransferInfoDict[pId]  # entry added by superclass
+        else:
+            pass
+            # healthKey = ('frail' if payload[3]['overallHealth'] == PatientOverallHealth.FRAIL
+            #              else 'non_frail')
+            # print '%s %s ward is None %s' % (self.name, healthKey, self.bedAllocDict)
+        return outgoingPayload, ward
+
+    def getMsgPayload(self, msgType, patientAgent):
+        payload = super(NursingHome, self).getMsgPayload(msgType, patientAgent)
+        if issubclass(msgType, pyrheabase.DepartureMsg):
+            # stash the overall health and patient Id
+            payload = (patientAgent.getStatus().overall, patientAgent.id,
+                       patientAgent.tier, payload)  # tier is that of destination at this point
+        elif issubclass(msgType, pyrheabase.ArrivalMsg):
+            # stash overall health
+            payload = (patientAgent.getStatus().overall, patientAgent.id, payload)
+        return payload
+
+    def handleIncomingMsg(self, msgType, payload, timeNow):
+        if issubclass(msgType, pyrheabase.DepartureMsg):
+            pOH, pId, destTier, payload = payload  # strip out overall health and patient Id.
+            if pOH == PatientOverallHealth.FRAIL:
+                healthKey, heldKey, bedsKey = 'frail', 'frail_held', 'frail_beds'
+            else:
+                healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
+            self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            self.bedAllocDict[healthKey] -= 1
+            if destTier not in [CareTier.HOME, CareTier.NURSING] and destTier is not None:
+                self.bedAllocDict[heldKey] += 1
+                with self.getPatientRecord(pId, timeNow) as pRec:
+                    pRec.noteD['bedHeld'] = True
+                cancelHoldMsg = CancelHoldMsg(self.name, self.manager.patch,
+                                              (pOH, pId, timeNow),
+                                              self.reqQueues[0].getGblAddr(),
+                                              timeNow + 14, debug=True)
+                self.manager.patch.launch(cancelHoldMsg, timeNow)
+            return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
+        elif issubclass(msgType, pyrheabase.ArrivalMsg):
+            pOH, pId, payload = payload # strip out overall health and patient id
+            if pOH == PatientOverallHealth.FRAIL:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('frail', 'frail_held', 'frail_beds',
+                                                  'non_frail', 'non_frail_beds')
+            else:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
+                                                  'frail', 'frail_beds')
+            bAD = self.bedAllocDict
+            bAD[healthKey] += 1
+            if bAD[heldKey] > 0:
+                bAD[heldKey] -= 1
+            else:
+                if timeNow > 0:
+                    logger.error('%s unexpected arrival of %s %s', self.name, healthKey, pId)
+                    self.checkBedAllocDict(healthKey, heldKey, bedsKey)
+            if bAD[healthKey] > bAD[bedsKey]:
+                delta = bAD[healthKey] - bAD[bedsKey]
+                assert bAD[otherHealthKey] <= bAD[otherBedsKey] + delta, ('%s overflow arrival'
+                                                                          % self.name)
+                bAD[bedsKey] += delta
+                bAD[otherBedsKey] -= delta
+            with self.getPatientRecord(pId, timeNow) as pRec:
+                pRec.noteD['bedHeld'] = False
+            return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
+        elif issubclass(msgType, CancelHoldMsg):
+            pOH, pId, launchTime = payload
+            if pOH == PatientOverallHealth.FRAIL:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('frail', 'frail_held', 'frail_beds',
+                                                  'non_frail', 'non_frail_beds')
+            else:
+                (healthKey, heldKey, bedsKey,
+                 otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
+                                                  'frail', 'frail_beds')
+            with self.getPatientRecord(pId, timeNow) as pRec:
+                if pRec.departureDate == launchTime and pRec.noteD['bedHeld']:
+                    pRec.noteD['bedHeld'] = False
+                    bAD = self.bedAllocDict
+                    bAD[heldKey] -= 1
+                    assert bAD[heldKey] >= 0, '%s cannot find bed hold to cancel'
+            return timeNow
+
     def getStatusChangeTree(self, patientAgent, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         patientDiagnosis = patientAgent.getDiagnosis()
@@ -223,6 +358,7 @@ def _populate(fac, descr, patch):
         else:
             a.setTreatment(rehab=True)  # They must be here for rehab
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)

@@ -50,6 +50,40 @@ tierKeyMap = {CareTier.HOME: 'home',
 
 knownTierKeys = tierKeyMap.values() + ['death']
 
+
+def pickWardSizes(nBeds, bedsPerWard):
+    """
+    Given a number of beds and a nominal number of beds per ward, generate an
+    iterable giving a series of ward sizes which 'comes close to' the requested
+    total bed count and ward size.
+
+    Both input parameters are assumed to be integers.
+    """
+    nWards = int((nBeds//bedsPerWard) + 1)
+    if nWards > 1:
+        delta = (bedsPerWard * nWards) - nBeds
+        if delta > 0.5 * bedsPerWard:
+            # Better to reduce the ward count by 1 and spread out the extra
+            # beds evenly
+            nWards -= 1
+        else:
+            # Better to have a few under-full wards
+            pass
+        samps = np.full(nWards, bedsPerWard)
+        conv = nBeds - np.sum(samps)
+        while True:
+            if conv > 0:
+                samps += np.random.poisson(float(conv)/ float(nWards), nWards)
+            elif conv < 0:
+                samps -= np.random.poisson(float(-conv)/ float(nWards), nWards)
+            else:
+                break
+            conv = nBeds - np.sum(samps)
+        return samps
+    else:
+        return np.asarray([nBeds])
+
+
 def buildChangeTree(lclRates, forceRelocateDiag=None):
     """
     Given a dict with probabilities for the standard fates (CareTiers plus death),
@@ -394,6 +428,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of ICU beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
@@ -403,6 +438,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of HOSP beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
