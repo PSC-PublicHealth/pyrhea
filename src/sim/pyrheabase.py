@@ -71,8 +71,9 @@ class FacilityManager(peopleplaces.Manager):
                 ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
                 if n > 0:
                     self.fac.wardAddrDict[addr] = (w, n-1)
-#                     print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
+                    # print 'alloc: ward %s now has %d free beds of %d' % (w._name, n-1, w._nLocks)
                     return w
+            #print 'alloc: %s has no ward for tier %s' % (self.name, tier)
             return None
         else:
             return None
@@ -87,9 +88,14 @@ class FacilityManager(peopleplaces.Manager):
             else:
                 self.logger.debug('%s: no such ward for %s' % (self.name, req.name))
         req.payload, newWard = self.fac.handleBedRequestResponse(ward, payload, timeNow)
-        if newWard is None and ward is not None and logDebug:
-            self.logger.debug('%s: a bed was available for %s but was denied',
-                              self.name, req.name)
+        if newWard is None and ward is not None:
+            addr = ward.getGblAddr().getLclAddr()
+            ww, n = self.fac.wardAddrDict[addr]  # @UnusedVariable
+            self.fac.wardAddrDict[addr] = (ward, n+1)  # return the unused ward to the pool
+            # print 'dealloc: ward %s now has %d free beds of %d' % (ward._name, n+1, ward._nLocks)
+            if logDebug:
+                self.logger.debug('%s: a bed was available for %s but was denied',
+                                  self.name, req.name)
         ward = newWard
         if ward is None:
             req.fsmstate = BedRequest.STATE_DENIEDWARD
@@ -221,9 +227,10 @@ class BedRequest(patches.Agent):
                             cur += weight
                             if cur >= r:
                                 self.dest = addr
-                                self.facilityOptions = self.facilityOptions[:i] + self.facilityOptions[i+1:]
+                                self.facilityOptions = (self.facilityOptions[:i]
+                                                        + self.facilityOptions[i+1:])
                                 break
-                    else:    
+                    else:
                         self.dest = self.facilityOptions.pop()
             elif self.fsmstate == BedRequest.STATE_MOVING:
                 addr, final = self.patch.getPathTo(self.dest)
