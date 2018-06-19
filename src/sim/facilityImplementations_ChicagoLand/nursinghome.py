@@ -198,7 +198,7 @@ class NursingHome(Facility):
                 healthKey, heldKey, bedsKey = 'non_frail', 'non_frail_held', 'non_frail_beds'
             self.checkBedAllocDict(healthKey, heldKey, bedsKey)
             if bedHeld:
-                # print 'reentered held bed! %s' % healthKey
+                # print '%s: reentered held bed! %s %s' % (self.name, healthKey, self.bedAllocDict)
                 pass
             else:
                 if (self.bedAllocDict[healthKey] < (self.bedAllocDict[bedsKey]
@@ -209,6 +209,11 @@ class NursingHome(Facility):
                     # print '%s: request declined %s %s' % (self.name, healthKey, self.bedAllocDict)
             if ward is None:
                 del self.arrivingPatientTransferInfoDict[pId]  # entry added by superclass
+        else:
+            pass
+            # healthKey = ('frail' if payload[3]['overallHealth'] == PatientOverallHealth.FRAIL
+            #              else 'non_frail')
+            # print '%s %s ward is None %s' % (self.name, healthKey, self.bedAllocDict)
         return outgoingPayload, ward
 
     def getMsgPayload(self, msgType, patientAgent):
@@ -360,6 +365,7 @@ def _populate(fac, descr, patch):
         if a.getStatus().overall != PatientOverallHealth.FRAIL:
             a.setTreatment(rehab=True)  # They must be here for rehab
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
