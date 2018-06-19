@@ -51,6 +51,7 @@ _constants_values = '$(MODELDIR)/constants/community_constants.yaml'
 _constants_schema = 'community_constants_schema.yaml'
 _constants = None
 
+USE_CUSTOM_ENCODING = False  # the custom encoding turns out to be only marginally beneficial
 
 def importCommunity(moduleName):
     attrs = (
@@ -187,7 +188,7 @@ class Freezer(object):
         else:
             raise FreezerError('%s cannot freezedry %s because it has the wrong logger'
                                % (self.ward._name, d['name']))
-        if 0:
+        if USE_CUSTOM_ENCODING:
             typeTpl, linL, valL = lencode(d)  # @UnusedVariable
             #print 'dictionary: %s' % str(d)
             #print 'types: %s' % str(typeTpl)
@@ -201,14 +202,15 @@ class Freezer(object):
         elif typeTpl != self.frozenAgentTypePattern:
             raise FreezerError('%s cannot freezedry %s because it has the wrong type pattern'
                                % (self.ward._name, d['name']))
-        if 0:
+        if USE_CUSTOM_ENCODING:
             self.frozenAgentList.append(tuple(valL))
         else:
             self.frozenAgentList.append(valL)
 
     def removeAndThaw(self, frozenAgent, timeNow):
         self.frozenAgentList.remove(frozenAgent)
-        if 0:
+
+        if USE_CUSTOM_ENCODING:
             valL = list(frozenAgent)
             d, leftovers = ldecode(self.frozenAgentTypePattern, valL)
             assert not leftovers, ('%s had %s left over unfreezing agent'
@@ -435,7 +437,7 @@ def cachePatientDataFname(abbrev):
     return pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)/patientData_%s'%abbrev)
 
 
-InterdictMapping = {}
+INTERDICT_MAPPING = {}
 
 
 def newFreezer(dd, ward, orig, changed, infoList, key):
@@ -450,11 +452,11 @@ class CommunityWard(Ward):
         self.checkInterval = 1  # so they get freeze dried promptly
 
         oName = origFname(abbrev)
-        if oName in InterdictMapping:
-            self.orig = InterdictMapping[oName]
+        if oName in INTERDICT_MAPPING:
+            self.orig = INTERDICT_MAPPING[oName]
         else:
             self.orig = interdict.InterDict(oName, convert_int=True, val_serialization='pickle')
-            InterdictMapping[oName] = self.orig
+            INTERDICT_MAPPING[oName] = self.orig
 
         self.changed = {}
 
@@ -491,7 +493,7 @@ class CommunityWard(Ward):
     def getPatientList(self):
         """Because most of the patients are freeze-dried, we cannot supply a patient list"""
         unfrozenL = super(CommunityWard, self).getPatientList()
-        if len(unfrozenL) == self.cumStats.totalPop():
+        if len(unfrozenL) == self.cumStats.popTotal():
             return unfrozenL
         else:
             raise FreezerError('Requested list cannot be generated without thawing everyone')
@@ -511,7 +513,7 @@ class CommunityManager(FacilityManager):
         return self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
 
     def perTickActions(self, timeNow):
-        dT = timeNow - self.fac.collectiveStatusStartDate
+        dT = (timeNow - self.fac.collectiveStatusStartDate if timeNow is not None else 0)
         countD = defaultdict(lambda: 0)
         for ward in self.fac.getWards():
             if dT != 0:
@@ -547,7 +549,6 @@ class CommunityManager(FacilityManager):
                          self.fac.name, ('%s_%s' % ward.getGblAddr().getLclAddr()), timeNow,
                          {PatientOverallHealth.names[k]: v for k, v in countD.items()})
         self.fac.collectiveStatusStartDate = timeNow
-
 
     def allocateAvailableBed(self, tier):
         """
@@ -594,8 +595,8 @@ class Community(Facility):
 
         pdName = cachePatientDataFname(descr['abbrev'])
         self.patientDataDict = {}
-        if pdName in InterdictMapping:
-            self.cachePatientDataDict = InterdictMapping[pdName]
+        if pdName in INTERDICT_MAPPING:
+            self.cachePatientDataDict = INTERDICT_MAPPING[pdName]
         else:
             self.cachePatientDataDict = interdict.InterDict(pdName, overwrite_existing=False,
                                                             integer_keys=False,
@@ -611,8 +612,59 @@ class Community(Facility):
                                                                 key_serialization='msgpack',
                                                                 val_serialization='pickle')
                 self.cachePatientDataDict["cacheVer"] = cacheVer
-            InterdictMapping[pdName] = self.cachePatientDataDict
+            INTERDICT_MAPPING[pdName] = self.cachePatientDataDict
         self.patientCacheIsBeingRegenerated = False
+
+    def finalizeBuild(self, facDescr):
+        if self.patientCacheIsBeingRegenerated:
+
+            ward = self.getWards()[0]  # There can be only one
+
+            # Let's write all of our data at once to the interdict, so for now use a normal dict:
+            orig = ward.orig
+            ward.orig = {}
+            # do the same with the patientDataDict
+            realCachePatientDataDict = self.cachePatientDataDict
+            self.cachePatientDataDict = {}  # make sure no one is found while writing these
+
+            # the patient data dict is currently an empty dict where things will be initially
+            # written.
+            # just leave this and we'll move things around after everyone is generated.
+
+            ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
+
+            # Use perTickActions to force newly created patients to get freeze-dried
+            self.manager.perTickActions(None)  # timeNow == None means before sim start
+
+            freezerList = []
+            for pType,freezer in ward.freezers.items():
+                logger.debug('Ward %s has %d %s', ward._name, len(freezer.frozenAgentList), pType)
+                freezerList.append((pType,freezer.frozenAgentLoggerName))
+                freezer.saveFreezerData()
+
+            # since it's possible that there's no freezers because there are no agents, let's make
+            # another temp freezer
+            tFreezer = CopyOnWriteLMDBFreezer(ward, orig, ward.changed, ward.infoList, False)
+            tFreezer.saveWardData((cacheVer, facDescr, freezerList))
+            tFreezer.saveInfoList()
+
+            orig.mset(ward.orig.items())
+            orig.flush()
+
+            for k in ward.orig.keys():
+                del ward.orig[k]
+
+            ward.orig = orig
+            for f in ward.freezers.values():
+                f.orig = orig
+
+            realCachePatientDataDict.mset(self.patientDataDict.items())
+            self.cachePatientDataDict = realCachePatientDataDict
+            for k in self.patientDataDict.keys():
+                del self.patientDataDict[k]
+            self.patientDataDict = {}
+
+            self.patientCacheIsBeingRegenerated = False
 
 
     def flushCaches(self):
@@ -664,37 +716,46 @@ class Community(Facility):
             prevFacAbbrev = None
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
-        key = (prevFacAbbrev, startTime - patientStatus.startDateA,
-               timeNow - patientStatus.startDateA)
-        if key in self.treeCache:
-            return self.treeCache[key]
+        if patientAgent.getDiagnosis().diagClassA == DiagClassA.WELL:
+            key = (prevFacAbbrev, startTime - patientStatus.startDateA,
+                   timeNow - patientStatus.startDateA)
+            if key in self.treeCache:
+                return self.treeCache[key]
+            else:
+                changeProb = 1.0  # since the agent was already randomly chosen to be un-frozen
+                try:
+                    (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
+                     needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(prevFacAbbrev)
+                except:
+                    logger.error('exception on historyL %s',
+                                 str(reversed(patientAgent.agentHistory)))
+                    raise
+                tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
+                                                           ClassASetter(DiagClassA.DEATH)),
+                                                          (needsHospRate,
+                                                           ClassASetter(DiagClassA.SICK)),
+                                                          (needsICURate,
+                                                           ClassASetter(DiagClassA.VERYSICK)),
+                                                          (needsRehabRate,
+                                                           ClassASetter(DiagClassA.NEEDSREHAB)),
+                                                          (needsLTACRate,
+                                                           ClassASetter(DiagClassA.NEEDSLTAC)),
+                                                          (needsSkilNrsRate,
+                                                           ClassASetter(DiagClassA.NEEDSSKILNRS)),
+                                                          (needsVentRate,
+                                                           ClassASetter(DiagClassA.NEEDSVENT)),
+                                                          ], tag='FATE'),
+                                 PatientStatusSetter(),
+                                 changeProb, tag='LOS')
+                self.treeCache[key] = tree
+                return tree
         else:
-            changeProb = 1.0  # since the agent was already randomly chosen to be un-frozen
-            try:
-                (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
-                 needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(prevFacAbbrev)
-            except:
-                logger.error('exception on historyL %s', str(reversed(patientAgent.agentHistory)))
-                raise
-            tree = BayesTree(BayesTree.fromLinearCDF([(deathRate,
-                                                       ClassASetter(DiagClassA.DEATH)),
-                                                      (needsHospRate,
-                                                       ClassASetter(DiagClassA.SICK)),
-                                                      (needsICURate,
-                                                       ClassASetter(DiagClassA.VERYSICK)),
-                                                      (needsRehabRate,
-                                                       ClassASetter(DiagClassA.NEEDSREHAB)),
-                                                      (needsLTACRate,
-                                                       ClassASetter(DiagClassA.NEEDSLTAC)),
-                                                      (needsSkilNrsRate,
-                                                       ClassASetter(DiagClassA.NEEDSSKILNRS)),
-                                                      (needsVentRate,
-                                                       ClassASetter(DiagClassA.NEEDSVENT)),
-                                                      ], tag='FATE'),
-                             PatientStatusSetter(),
-                             changeProb, tag='LOS')
-            self.treeCache[key] = tree
-            return tree
+            # This patient doesn't belong in this ward
+            logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                           'this patient should be gone by now',
+                            self.name, patientAgent.name, CareTier.names[careTier],
+                            DiagClassA.names[patientAgent.getStatus().diagClassA], startTime)
+            return BayesTree(PatientStatusSetter())
 
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
                   timeNow=None):  # @UnusedVariable
@@ -761,29 +822,6 @@ class Community(Facility):
         else:
             return PatientOverallHealth.HEALTHY
 
-#     def createPatient(self, idx, timeNow):
-#         """
-#         idx is an integer index, used for name generation.
-# 
-#         returns a newly created patient with appropriate characteristics, already launched
-#         """
-#         ward = self.manager.allocateAvailableBed(CareTier.HOME)
-#         assert ward is not None, 'Ran out of beds populating %s!' % self.abbrev
-#         agent = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, idx), self.manager.patch, ward)
-#         ward.lock(agent)
-#         agent.setStatus(homeAddr=findQueueForTier(CareTier.HOME, self.reqQueues).getGblAddr())
-#         ward.handlePatientArrival(agent, timeNow)
-#         self.handleIncomingMsg(pyrheabase.ArrivalMsg,
-#                               self.getMsgPayload(pyrheabase.ArrivalMsg, agent),
-#                               timeNow)
-#         ward.iA.initializePatientState(agent)
-#         for tP in self.treatmentPolicies:
-#             tP.initializePatientTreatment(ward, agent)
-#         ward._lockQueue.append(agent)
-#         ward.awaken(agent)
-#         ward.lockingAgentSet.add(agent)
-#         return agent
-
 
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
@@ -803,17 +841,15 @@ def _populate(fac, descr, patch):
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
         agentList.append(a)
-#         ward.flushNewArrivals()  # since we are about to manually freeze-dry.
-#         ward.freezers[ward.classify(a, None)].freezeAndStore(a)
     return agentList
 
-TotalCommunity=0
+TOTAL_COMMUNITY = 0
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None,
                  communityClass=None):
     global cacheVer
     makeLMDBDirs()
-    global TotalCommunity
+    global TOTAL_COMMUNITY
 
     if communityClass is None:
         communityClass = Community
@@ -856,10 +892,10 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
         if agentCount < 1:
             raise Exception()
 
-        TotalCommunity += agentCount
+        TOTAL_COMMUNITY += agentCount
         PatientAgent.allocateIds(fac, agentCount)
         logger.info('read population for %s from cache (%s freeze-dried people, %s)'
-                    %(fDesc['abbrev'], agentCount, TotalCommunity))
+                    %(fDesc['abbrev'], agentCount, TOTAL_COMMUNITY))
 
         return [fac], fac.getWards(), []
 
@@ -884,46 +920,7 @@ def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=No
 
     fac.patientCacheIsBeingRegenerated = True
 
-    # Let's write all of our data at once to the interdict, so for now use a normal dict:
-    orig = ward.orig
-    ward.orig = {}
-    # do the same with the patientDataDict
-    realCachePatientDataDict = fac.cachePatientDataDict
-    fac.cachePatientDataDict = {}  # make sure no one is found while writing these
-    # the patient data dict is currently an empty dict where things will be initially written.
-    # just leave this and we'll move things around after everyone is generated.
-
-    ward.infoList = [False, ward.iDictOffset+5, ward.iDictOffset+5]
-
     pop = _populate(fac, facilityDescr, patch)
-
-    freezerList = []
-    for pType,freezer in ward.freezers.items():
-        logger.debug('Ward %s has %d %s', ward._name, len(freezer.frozenAgentList), pType)
-        freezerList.append((pType,freezer.frozenAgentLoggerName))
-        freezer.saveFreezerData()
-
-    # since it's possible that there's no freezers because there are no agents, let's make
-    # another temp freezer
-    tFreezer = CopyOnWriteLMDBFreezer(ward, orig, changed, ward.infoList, False)
-    tFreezer.saveWardData((cacheVer,facilityDescr, freezerList))
-    tFreezer.saveInfoList()
-
-    orig.mset(ward.orig.items())
-    orig.flush()
-
-    for k in ward.orig.keys():
-        del ward.orig[k]
-
-    ward.orig = orig
-    for f in ward.freezers.values():
-        f.orig = orig
-
-    realCachePatientDataDict.mset(fac.patientDataDict.items())
-    fac.cachePatientDataDict = realCachePatientDataDict
-    for k in fac.patientDataDict.keys():
-        del fac.patientDataDict[k]
-    fac.patientDataDict = {}
 
     return [fac], fac.getWards(), pop
 

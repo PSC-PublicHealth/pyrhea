@@ -51,7 +51,8 @@ tierKeyMap = {CareTier.HOME: 'home',
 
 knownTierKeys = tierKeyMap.values() + ['death']
 
-def _pickWardSizes(nBeds, bedsPerWard):
+
+def pickWardSizes(nBeds, bedsPerWard):
     """
     Given a number of beds and a nominal number of beds per ward, generate an
     iterable giving a series of ward sizes which 'comes close to' the requested
@@ -82,11 +83,6 @@ def _pickWardSizes(nBeds, bedsPerWard):
         return samps
     else:
         return np.asarray([nBeds])
-
-def pickWardSizes(nBeds, bedsPerWard):
-    rslt = _pickWardSizes(nBeds, bedsPerWard)
-    print "%s %s -> %s" % (nBeds, bedsPerWard, rslt)
-    return rslt
 
 
 def buildChangeTree(lclRates, forceRelocateDiag=None):
@@ -426,6 +422,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of ICU beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_ICU_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)
@@ -435,6 +432,7 @@ def _populate(fac, descr, patch):
         assert ward is not None, 'Ran out of HOSP beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_HOSP_%s_%d' % (ward._name, i), patch, ward)
         ward.lock(a)
+        ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
                               fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
                               None)

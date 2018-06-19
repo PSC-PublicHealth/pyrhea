@@ -82,47 +82,31 @@ class PthStatusSetter(PatientStatusSetter):
         return 'PatientStatusSetter(pthStatus <- %s)' % PthStatus.names[self.newPthStatus]
 
 
-class PatientCumStatsCore(object):
-    """
-    This class provides mapping between PatientAgent info and totals in a PatientCumStats instance.
-    No sense working it out more than once.
-    """
-    __metaclass__ = SingletonMetaClass
-
-    def __init__(self):
-        self.nEntries = len(PatientOverallHealth.names) + len(DiagClassA.names)
-        self.idxTbl = {}
-        counter = 0
-        low = counter
-        for idx in PatientOverallHealth.names.keys():
-            self.idxTbl[(PatientOverallHealth, idx)] = counter
-            counter += 1
-        self.idxTbl[PatientOverallHealth] = (low, counter)  # convenient access to the range
-        low = counter
-        for idx in DiagClassA.names.keys():
-            self.idxTbl[(DiagClassA, idx)] = counter
-            counter += 1
-        self.idxTbl[DiagClassA] = (low, counter)  # convenient access to the range
-
-
 class PatientCumStats(object):
     def __init__(self):
-        self.core = PatientCumStatsCore()
-        self.valV = np.zeros([self.core.nEntries], dtype=np.int16)
+        nEntries = len(PatientOverallHealth.names)
+        self.valV = np.zeros([2 * nEntries], dtype=np.int32)  # upper half is for total ever
 
     def incrPatient(self, patientAgent):
-        status = patientAgent.getStatus()
-        self.valV[self.core.idxTbl[(PatientOverallHealth, status.overall)]] += 1
-        self.valV[self.core.idxTbl[(DiagClassA, status.diagClassA)]] += 1
+        nEntries = len(PatientOverallHealth.names)
+        pOH = patientAgent.getStatus().overall
+        self.valV[pOH] += 1
+        self.valV[pOH + nEntries] += 1
 
     def decrPatient(self, patientAgent):
-        status = patientAgent.getStatus()
-        self.valV[self.core.idxTbl[(PatientOverallHealth, status.overall)]] -= 1
-        self.valV[self.core.idxTbl[(DiagClassA, status.diagClassA)]] -= 1
+        pOH = patientAgent.getStatus().overall
+        self.valV[pOH] -= 1
 
-    def totalPop(self):
-        low, high = self.core.idxTbl[PatientOverallHealth]
-        return np.sum(self.valV[low:high])
+    def popTotal(self):
+        nEntries = len(PatientOverallHealth.names)
+        return np.sum(self.valV[:nEntries])
+
+    def popEver(self):
+        nEntries = len(PatientOverallHealth.names)
+        return np.sum(self.valV[nEntries:])
+
+    def popByOH(self, patientOverallHealth):
+        return self.valV[patientOverallHealth]
 
 
 class Ward(pyrheabase.Ward):
@@ -140,10 +124,6 @@ class Ward(pyrheabase.Ward):
 
     def getPatientList(self):
         return self.getLiveLockedAgents()
-
-    def getPatientCumStats(self):
-        """Return a statistical summary of all patients in the ward"""
-        return {}
 
     def setInfectiousAgent(self, iA):
         self.iA = iA
@@ -168,7 +148,7 @@ class Ward(pyrheabase.Ward):
             transferInfo = self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
             del self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
         else:
-            transferInfo = self.fac.getBedRequestPayload(patientAgent,self.tier)[-1]
+            transferInfo = self.fac.getBedRequestPayload(patientAgent, self.tier)[-1]
 
         self.fac.diagnosticPolicy.handlePatientArrival(self, patientAgent, transferInfo,
                                                        timeNow)
@@ -339,37 +319,23 @@ class PatientRecord(object):
                                                     else 'NonContagious'))
 
 class PatientStats(object):
-    def __init__(self):
-        self.curOccDict = {}
-        self.totOccDict = {}
+    def __init__(self, fac):
+        self.fac = fac
 
     @property
     def currentOccupancy(self):
-        return sum(self.curOccDict.values())
+        return sum([ward.cumStats.popTotal() for ward in self.fac.getWards()])
 
     @property
     def totalOccupancy(self):
-        return sum(self.totOccDict.values())
-
-    def addPatient(self, tier):
-        if tier in self.curOccDict:
-            self.curOccDict[tier] += 1
-        else:
-            self.curOccDict[tier] = 1
-        if tier in self.totOccDict:
-            self.totOccDict[tier] += 1
-        else:
-            self.totOccDict[tier] = 1
-
-    def remPatient(self, tier):
-        if tier in self.curOccDict:
-            self.curOccDict[tier] -= 1
-        else:
-            raise RuntimeError('No patient to remove')
+        return sum([ward.cumStats.popEver() for ward in self.fac.getWards()])
 
     def __str__(self):
+        dct = defaultdict(int)
+        for ward in self.fac.getWards():
+            dct[ward.tier] += ward.cumStats.popTotal()
         bedStr = ', '.join(['%s: %d' % (CareTier.names[tier], ct)
-                            for tier, ct in self.curOccDict.items()])
+                            for tier, ct in dct.items()])
         return '<occupied beds %s>' % bedStr
 
 
@@ -408,7 +374,7 @@ class Facility(pyrheabase.Facility):
         self.noteHolder = None
         self.idCounter = 0
         self.patientDataDict = {}
-        self.patientStats = PatientStats()
+        self.patientStats = PatientStats(self)
         transferDestinationPolicyClass = TransferDestinationPolicy
         treatmentPolicyClasses = []
         diagnosticPolicyClass = DiagnosticPolicy
@@ -429,6 +395,13 @@ class Facility(pyrheabase.Facility):
                                   for treatmentPolicyClass in treatmentPolicyClasses]
         self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
         self.arrivingPatientTransferInfoDict = {}
+
+    def finalizeBuild(self, facDescription):
+        """
+        This provides an opportunity for the facility to do any bookkeeping necessary after all
+        wards and agents have been fully initialized.
+        """
+        pass
 
     def __str__(self):
         return '<%s>' % self.name
@@ -544,7 +517,7 @@ class Facility(pyrheabase.Facility):
             a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
             a.setStatus(homeAddr=findQueueForTier(ward.tier, self.reqQueues).getGblAddr())
             a.setStatus(overall=payload)
-            ward.lock(a)
+            ward.handlePatientArrival(a, timeNow)
             self.handleIncomingMsg(pyrheabase.ArrivalMsg,
                                    self.getMsgPayload(pyrheabase.ArrivalMsg, a),
                                    timeNow)
@@ -748,9 +721,11 @@ def buildTimeTupleList(agent, timeNow):
     """
 
     ret = []
-    lastTime = timeNow
+    lastTime = timeNow if timeNow is not None else 0  # We can get entries from before the sim starts
     for histEntry in reversed(agent.agentHistory):
         t,abbrev,cat,tier = histEntry
+        if t is None:
+            t = 0  # We can get entries from before the sim starts
         ret.append((lastTime - t, abbrev, cat, tier))
         lastTime = t
 
@@ -923,7 +898,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         assert self.getStatus().diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
         self.ward.fac.noteHolder.addNote({"death": 1})
         if self.debug:
-            self.logger.debug('Alas poor %s! %s' % (self.name, timeNow))
+            self.logger.debug('Alas poor %s! %s', self.name, timeNow)
         facAddr = choice([tpl[1] for tpl in self.patch.serviceLookup('BirthQueue')])
         self.patch.launch(BirthMsg(self.name + '_birthMsg',
                                    self.patch,
