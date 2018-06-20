@@ -580,25 +580,21 @@ def MiscTimeFig(specialDict):
         catList = []
         for patchName, data in specialDict.items():
             for topic in ['localtiernthawed', 'bedHoldStats']:
-                topicDataList = data[topic]
-                assert isinstance(topicDataList, types.ListType), ('Special data %s is not a list'
-                                                                 % patchName)
-                for d in topicDataList:
-                    for k in d.keys():
-                        if k != 'day':
-                            cat = k.split('_')[0]
-                            if cat not in catList:
-                                catList.append(cat)
-            catList.sort()
-            figsMisc, axesMisc = plt.subplots(nrows=len(catList), ncols=len(patchList))
-            axesMisc.reshape((len(catList), len(patchList)))
-            if len(catList) == 1:
-                axesMisc = axesMisc[np.newaxis, :]
-            if len(patchList) == 1:
-                axesMisc = axesMisc[:, np.newaxis]
-            for colOff, patchName in enumerate(patchList):
-                allFields = {}
-                for topic in ['localtiernthawed', 'bedHoldStats']:
+                if topic in data:
+                    topicDataList = data[topic]
+                    assert isinstance(topicDataList, types.ListType), ('Special data %s is not a list'
+                                                                     % patchName)
+                    for d in topicDataList:
+                        for k in d.keys():
+                            if k != 'day':
+                                cat = k.split('_')[0]
+                                if cat not in catList:
+                                    catList.append(cat)
+        catList.sort()
+        for colOff, patchName in enumerate(patchList):
+            allFields = {}
+            for topic in ['localtiernthawed', 'bedHoldStats']:
+                if topic in data:
                     try:
                         topicDataList = specialDict[patchName][topic]
                         assert isinstance(topicDataList, types.ListType), \
@@ -631,37 +627,59 @@ def MiscTimeFig(specialDict):
                         del fields[None]
                         for catNm in fields.keys():
                             for key, lst in fields[catNm].items():
-                                fields[catNm][key] = np.asarray(lst)
+                                valV = np.asarray(lst)
+                                if np.count_nonzero(valV):
+                                    fields[catNm][key] = valV
+                                else:
+                                    del fields[catNm][key]
                             fields[catNm]['day'] = dayVec
                         allFields.update(fields)
                     except Exception, e:
                         print e
                         raise
 
-                for rowOff, catNm in enumerate(catList):
-                    if catNm in allFields:
-                        fldD = allFields[catNm]
-                        dayVec = fldD['day']
-                        if catNm == 'NursingHome':
-                            axesMisc[rowOff, colOff].plot(dayVec, fldD['frail'] + fldD['frail_held'], '-',
-                                                          label='commited frail')
-                            axesMisc[rowOff, colOff].plot(dayVec, fldD['frail_beds'], '-',
-                                                          label='frail beds')
-                            axesMisc[rowOff, colOff].plot(dayVec, fldD['non_frail'] + fldD['non_frail_held'], '-',
-                                                          label='commited non_frail')
-                            axesMisc[rowOff, colOff].plot(dayVec, fldD['non_frail_beds'], '-',
-                                                          label='non-frail beds')
-#                         for key, vec in fldD.items():
-#                             if key != 'day':
-#                                 assert dayVec.shape[0] == vec.shape[0], ('day vec mismatch for %s'
-#                                                                          % key)
-#                                 if np.count_nonzero(vec):
-#                                     axesMisc[rowOff, colOff].plot(dayVec, vec, '-', label=key)
-                    axesMisc[rowOff, colOff].set_xlabel('Days')
-                    axesMisc[rowOff, colOff].set_title(catNm)
-                    axesMisc[rowOff, colOff].legend()
-                figsMisc.tight_layout()
-                figsMisc.canvas.set_window_title("Misc Time Histories")
+        # Trim out categories for which we have only a 'day' vector
+        catList = [catNm for catNm in catList if len(allFields[catNm]) > 1]
+        figsMisc, axesMisc = plt.subplots(nrows=len(catList), ncols=len(patchList))
+        if hasattr(axesMisc, 'reshape'):
+            axesMisc.reshape((len(catList), len(patchList)))
+            if len(catList) == 1:
+                axesMisc = axesMisc[np.newaxis, :]
+            if len(patchList) == 1:
+                axesMisc = axesMisc[:, np.newaxis]
+        else:
+            axesMisc = np.asarray([[axesMisc]])
+        for colOff, patchName in enumerate(patchList):
+            for rowOff, catNm in enumerate(catList):
+                if catNm in allFields:
+                    fldD = allFields[catNm]
+                    dayVec = fldD['day']
+                    toPlotL = fldD.keys()
+                    toPlotL.remove('day')
+                    if 'frail' in toPlotL and 'frail_held' in toPlotL:
+                        fldD['commited_frail'] = fldD['frail'] + fldD['frail_held']
+                        del fldD['frail']
+                        del fldD['frail_held']
+                    if 'non_frail' in toPlotL and 'non_frail_held' in toPlotL:
+                        fldD['commited_non_frail'] = fldD['non_frail'] + fldD['non_frail_held']
+                        del fldD['non_frail']
+                        del fldD['non_frail_held']
+                    labelD = {'commited_frail' : 'commited frail',
+                             'commited_non_frail' : 'committed non-frail',
+                             'localtiernthawed' : 'num thawed'
+                             }
+                    for fldNm, yVec in fldD.items():
+                        if fldNm == 'day':
+                            continue
+                        assert dayVec.shape == yVec.shape, ('day vec mismatch for %s' % fldNm)
+                        label = labelD[fldNm] if fldNm in labelD else fldNm
+                        if np.count_nonzero(yVec):
+                            axesMisc[rowOff, colOff].plot(dayVec, yVec, '-', label=label)
+                axesMisc[rowOff, colOff].set_xlabel('Days')
+                axesMisc[rowOff, colOff].set_title(catNm)
+                axesMisc[rowOff, colOff].legend()
+            figsMisc.tight_layout()
+            figsMisc.canvas.set_window_title("Misc Time Histories")
     except KeyError as e:
         if e.message == 'localtiernthawed':
             print('localtiernthawed data not available; skipping time history of thaws')
