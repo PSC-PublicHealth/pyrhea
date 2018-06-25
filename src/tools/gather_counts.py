@@ -375,7 +375,7 @@ def main():
                         statTierDict[k]['value'].append(float(x[abbrev][tier][k]))
                         if opts.producetimeseries:
                             statTierDict[k]['ts'].append(x[abbrev][tier]["{0}TS".format(k)])
-                        
+
                 except:
                     cDList.append(0.0)
                     bDList.append(0.0)
