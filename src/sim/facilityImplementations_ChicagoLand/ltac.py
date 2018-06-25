@@ -97,8 +97,7 @@ class LTAC(Facility):
         bedCountMultiplier = (_c['bedCountMultiplier']['value'] if 'bedCountMultiplier' in _c
                               else 1.0)
         if 'nBeds' in descr:
-            nBeds = bedCountMultiplier * descr['nBeds']['value']
-            nWards = int(float(nBeds)/bedsPerWard) + 1
+            nBeds = int(round(bedCountMultiplier * descr['nBeds']['value']))
         else:
             meanPop = descr['meanPop']['value']
             nWards = int(bedCountMultiplier * math.ceil(meanPop / bedsPerWard))

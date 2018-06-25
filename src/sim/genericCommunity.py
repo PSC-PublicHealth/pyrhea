@@ -549,7 +549,7 @@ class CommunityManager(FacilityManager):
             logger.debug('%s (%s) at time %s thawed by category %s',
                          self.fac.name, ('%s_%s' % ward.getGblAddr().getLclAddr()), timeNow,
                          {PatientOverallHealth.names[k]: v for k, v in countD.items()})
-        self.fac.collectiveStatusStartDate = timeNow
+            self.fac.collectiveStatusStartDate = timeNow
 
     def allocateAvailableBed(self, tier):
         """

@@ -345,7 +345,6 @@ def main():
             fieldsOfInterest.append(key)
     if xdroAbbrevs:
         fieldsOfInterest.append('xdroAdmissions')
-
     if opts.nocsv:
         print 'CSV files not written'
     else:
