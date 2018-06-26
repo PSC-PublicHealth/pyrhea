@@ -296,7 +296,7 @@ def main():
     print "XDRO Facilities = {0}".format(xdroAbbrevs)
 
     pklNotes = [nf for nf in notes if nf.endswith('.pkl')]
-    mpzNotes = [nf for nf in notes if (nf.endswith('.mpz') or nf.endswith('.mpz'))]
+    mpzNotes = [nf for nf in notes if (nf.endswith('.mpk') or nf.endswith('.mpz'))]
     assert len(pklNotes) + len(mpzNotes) == len(notes), 'some input notes are in unknown format'
 
     # pkl files get handled in parallel

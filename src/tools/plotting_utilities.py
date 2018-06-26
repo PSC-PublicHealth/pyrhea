@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import scipy.sparse
-from ggplot import *
+from ggplot import ggplot, xlab, ggtitle, geom_histogram, aes
 import concurrent.futures
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -95,9 +95,9 @@ def bootstrap_test(ma, mb, bootstrap_size=10000, num_samples=1000):
             np.add.at(b_s, bidxs, 1)
             np.add.at(null_a_s, np.where(permute_idxs, aidxs, bidxs), 1)
             np.add.at(null_b_s, np.where(permute_idxs, bidxs, aidxs), 1)
-            
+
             yield tuple(x.reshape(ma.shape) for x in [a_s, b_s, null_a_s, null_b_s])
-            
+
     result = []
     for a,b,null_a,null_b in bootstrap_samples(ma, mb, bootstrap_size, num_samples):
         result.append(
@@ -411,12 +411,14 @@ def myBars(mxList, rowIdx, ax, colLabelL, idxFacTbl, facDict,
     ax.set_yticks([])
 
 def drawBarSets(abbrev, directMxList, indirectMxList, colLabels, idxFacTbl, facDict,
-                hideDirectTransfersToSelf=False):
+                hideDirectTransfersToSelf=False, titleSuffix=None):
+    if titleSuffix is None:
+        titleSuffix = ""
     facIdxTbl = {val: key for key, val in idxFacTbl.items()}
     idx = facIdxTbl[abbrev]
 
     figs, axisL = plt.subplots(nrows=2, ncols=1)
-    axisL[0].set_title("%s (%s)" % (abbrev, facDict[abbrev]['category']))
+    axisL[0].set_title("%s (%s) %s" % (abbrev, facDict[abbrev]['category'], titleSuffix))
     if hideDirectTransfersToSelf:
         hideThisIdx = idx
     else:
