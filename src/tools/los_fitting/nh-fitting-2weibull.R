@@ -6,6 +6,14 @@ nh.meta = nh.meta[code!='FAIR']
 nh.los = fread('nh-los.csv', header=F, skip=1, col.names=c('code','los','discharge.year'))
 nh.los = nh.los[code!='FAIR']
 
+# NOTE: we should drop SCNH and CPNH
+nh.los = nh.los[code!='CPNH']
+nh.los = nh.los[code!='SCNH']
+# NOTE: we should fit EXTW separately
+nh.los.extw = nh.los[code=='EXTW']
+nh.los = nh.los[code!='EXTW']
+
+
 nh.los[,los.uncorrected:=nh.los$los]
 nh.los$los = nh.los$los - runif(nrow(nh.los))
 
@@ -54,3 +62,26 @@ qqdata = function(a, b, quantile.width=0.1) {
     b=melt(quantile(b, seq(0,1,quantile.width)))$value
   )
 }
+
+compare.by.facility = function(facility.code) {
+  params.fac = as.list(d_[code==facility.code])
+  d.fac = nh.los[code==facility.code]
+  ggplot() + 
+    geom_histogram(aes(x=rweibullmix(n=nrow(d.fac), lambda = params.fac$k, shape = fit$shape, scale=fit$scale)),
+                 alpha=0.25, color='green', fill='green', binwidth=10) +
+    geom_histogram(aes(x=d.fac$los),
+                   fill='gray', alpha=0.5, binwidth=10) +
+    #scale_x_log10() +
+    ggtitle('Log-scale Density of Observed (gray) and fitted (green) NH LOS') +
+    xlab('Log-scale NH LOS')
+}
+
+qqdata.by.facility = function(facility.code, w) {
+  params.fac = as.list(d_[code==facility.code])
+  d.fac = nh.los[code==facility.code]
+  d.fac.fit = rweibullmix(n=nrow(d.fac), lambda = params.fac$k, shape = fit$shape, scale=fit$scale)
+  qqdata(d.fac$los, d.fac.fit, w)
+}
+  
+  
+  
