@@ -24,7 +24,6 @@ from collections import defaultdict
 
 from phacsl.utils.collections.phacollections import DefaultDict
 import phacsl.utils.collections.interdict as interdict
-
 import cPickle as pickle
 import gzip
 from scipy.stats import expon, binom
@@ -35,7 +34,7 @@ from typebase import DiagClassA, CareTier, PatientOverallHealth
 from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
 from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
-from facilitybase import MissingPatientRecordError, decodeHistoryEntry
+from facilitybase import MissingPatientRecordError, decodeHistoryEntry, findQueueForTier
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
@@ -683,6 +682,8 @@ class Community(Facility):
             assert losModel['pdf'] == 'expon(lambda=$0)', \
                 "Unexpected losModel form %s - only expon is supported" % losModel['pdf']
             rate = losModel['parms'][0]
+            #rate *= (779./675.)  # This is the one that scales the get-sick rate up to the go-home rate
+            #rate *= (675./779.)
             self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
     def calcTierRateConstants(self, prevFacAbbrev):

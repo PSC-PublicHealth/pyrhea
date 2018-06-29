@@ -33,7 +33,7 @@ from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, LTACQueue
 from stats import CachedCDFGenerator, BayesTree
 from hospital import estimateWork as hospitalEstimateWork
-from hospital import buildChangeTree, biasTransfers
+from hospital import buildChangeTree, biasTransfers, pickWardSizes
 
 category = 'LTAC'
 _schema = 'hospitalfacts_schema.yaml'
@@ -100,9 +100,7 @@ class LTAC(Facility):
             nBeds = int(round(bedCountMultiplier * descr['nBeds']['value']))
         else:
             meanPop = descr['meanPop']['value']
-            nWards = int(bedCountMultiplier * math.ceil(meanPop / bedsPerWard))
-
-        nBeds = nWards * bedsPerWard
+            nBeds = int(round(bedCountMultiplier * 1.1 * meanPop))
 
         # Add a way to dial the LOS up and down
         scaledLOSParms = self.scaleLOS(descr['losModel'],
@@ -112,10 +110,10 @@ class LTAC(Facility):
                                                     scale=math.exp(scaledLOSParms[0])))
         self.treeCache = {}
 
-        for i in xrange(nWards):
+        for i, bedCt in enumerate(pickWardSizes(nBeds, bedsPerWard)):
             self.addWard(Ward(('%s_%s_%s_%s_%d' %
                                (category, patch.name, descr['abbrev'], 'LTAC', i)),
-                              patch, CareTier.LTAC, bedsPerWard))
+                              patch, CareTier.LTAC, bedCt))
 
     def flushCaches(self):
         """
@@ -162,9 +160,10 @@ class LTAC(Facility):
                     return tree
             else:
                 # This patient doesn't belong in this ward
-                logger.warning('fac %s patient: %s careTier %s with status %s startTime: %s: '
+                logger.warning('fac %s patient: %s careTier %s overall %s with status %s startTime: %s: '
                                'this patient should be gone by now'
                                % (self.name, patientAgent.name, CareTier.names[ward.tier],
+                                  PatientOverallHealth.names[patientStatus.overall],
                                   DiagClassA.names[patientStatus.diagClassA], startTime))
                 return BayesTree(PatientStatusSetter())
 

@@ -339,7 +339,6 @@ def main():
 
     print "Processing Outputs"
 
-<<<<<<< HEAD
     fieldsOfInterest = ['colonizedDays', 'bedDays', 'prevalence']
     for key in valuesToGather.keys():
         if key != 'pthStatus':
@@ -736,118 +735,6 @@ def main():
 #             abbrevsSorted = sorted([x for x in statsByAbbrev.keys()])
 #             for abbrev in abbrevsSorted:
 #                 headRow.append("{0}".format(abbrev))
-=======
-    sys.stdout.flush()
-    statsByTier = {}
-    statsByAbbrev = {}
-    time1Counter = 0.0
-    time2Counter = 0.0
-    for abbrev,tD in totalCounts[0].items():
-        if abbrev not in statsByTier.keys():
-            statsByTier[abbrev] = {}
-            statsByAbbrev[abbrev] = {}
-            statDict = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-                           'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]}
-                           for k in valuesToGather.keys()}
-            #statDictTS = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-            #               'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} for k in valuesToGather.keys()}
-            #statDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]}
-            cDAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            bDAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            prevAs = np.array([0.0 for x in range(0,len(totalCounts))])
-            
-            
-            if opts.producetimeseries:
-                cTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
-                bTAs = [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]
-          
-        for tier,d in tD.items():
-            time1 = time.time()
-            if tier not in statsByTier[abbrev].keys():
-                statsByTier[abbrev][tier] = {}
-                #statsByTierTS[abbrev][tier] = {}
-                statTierDict = {k:{'value': np.array([0.0 for x in range(0,len(totalCounts))]),
-                                   'ts': [[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} for k in valuesToGather.keys()}
-                #statTierDict = {k:np.array([0.0 for x in range(0,len(totalCounts))]) for k in valuesToGather.keys()}
-                #statTierDictTS = {k:[[0.0 for x in range(0,runDays)] for y in range(0,len(totalCounts))]} 
-            cDList = []
-            bDList = []
-            if opts.producetimeseries:
-                cTs = []
-                bTs = []
-            for k in valuesToGather.keys():
-                statTierDict[k]['value'] = []
-                if opts.producetimeseries:
-                    statTierDict[k]['ts'] = []
-
-            for x in totalCounts:
-                try:
-                    cDList.append(float(x[abbrev][tier]['colonizedDays']))
-                    bDList.append(float(x[abbrev][tier]['bedDays']))
-                    if opts.producetimeseries:
-                        cTs.append(x[abbrev][tier]['colonizedDaysTS'])
-                        bTs.append(x[abbrev][tier]['bedDaysTS'])
-
-                    for k in valuesToGather.keys():
-                        statTierDict[k]['value'].append(float(x[abbrev][tier][k]))
-                        if opts.producetimeseries:
-                            statTierDict[k]['ts'].append(x[abbrev][tier]["{0}TS".format(k)])
-
-                except:
-                    cDList.append(0.0)
-                    bDList.append(0.0)
-                    if opts.producetimeseries:
-                        cTList.append(0)
-                        bTList.append(0)
-                    for k in valuesToGather.keys():
-                        statTierDict[k]['value'].append(0.0)
-                        if opts.producetimeseries:
-                            statTierDict[k]['ts'].append(0)
- 
-            cDs = np.array(cDList)
-            bDs = np.array(bDList)
-            for k in valuesToGather.keys():
-                statTierDict[k]['value'] = np.array(statTierDict[k]['value'])
-
-
-#            cDs = np.array([float(x[abbrev][tier]['colonizedDays']) for x in totalCounts])
-#            bDs = np.array([float(x[abbrev][tier]['bedDays']) for x in totalCounts])
-#            if opts.producetimeseries:
-#                cTs = [ x[abbrev][tier]['colonizedDaysTS'] for x in totalCounts ]
-#                bTs = [ x[abbrev][tier]['bedDaysTS'] for x in totalCounts ]
-#                #print "bTs = {0}".format(bTs)
-#            
-#            for k in valuesToGather.keys():
-#                #if k == "newColonized":
-#                #    print np.array([float(x[abbrev][tier][k]) for x in totalCounts])
-#                statTierDict[k]['value'] = np.array([float(x[abbrev][tier][k]) for x in totalCounts])
-#                if opts.producetimeseries:
-#                    statTierDict[k]['ts'] = [ x[abbrev][tier]["{0}TS".format(k)] for x in totalCounts ]
-
-            #ncDs = np.array([float(x[abbrev][tier]['newColonized']) for x in totalCounts])
-            #caDs = np.array([float(x[abbrev][tier]['creArrivals']) for x in totalCounts])
-            #aDs = np.array([float(x[abbrev][tier]['arrivals']) for x in totalCounts])
-            prevs = []
-            for i in range(0,len(cDs)):
-                prevs.append((cDs[i]/bDs[i]))
-                #print cTs
-                if opts.producetimeseries:
-                    for j in range(0,runDays):
-    #                    print j
-    #                    print cTs[i][j]
-                        cTAs[i][j] += cTs[i][j]
-                        bTAs[i][j] += bTs[i][j]
-                cDAs[i] += cDs[i]
-                bDAs[i] += bDs[i]
-                for k in valuesToGather.keys():
-                    statDict[k]['value'][i] += statTierDict[k]['value'][i]
-                    if opts.producetimeseries:
-                        for j in range(0,runDays):
-                            statDict[k]['ts'][i][j] += statTierDict[k]['ts'][i][j]
-#                 ncAs[i] += ncDs[i]
-#                 caDAs[i] += caDs[i]
-#                 aDAs[i] += aDs[i]
->>>>>>> 113100e... misc small errors.
 #                 
 #             csvWriter.writerow(headRow)
 #             
