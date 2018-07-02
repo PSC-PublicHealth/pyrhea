@@ -189,13 +189,18 @@ class BayesTree(object):
     def _innerDump(tree, tagTree, indent=0, ofile=sys.stdout):
         if isinstance(tree, types.TupleType):
             prob, path1, path2 = tree
-            topTag, tagPath1, tagPath2 = tagTree
-            if topTag:
-                ofile.write('%s(%s  tag=%s\n' % (' '*indent, prob, topTag))
+            if tagTree:
+                topTag, tagPath1, tagPath2 = tagTree
+                if topTag:
+                    ofile.write('%s(%f  tag=%s\n' % (' '*indent, prob, topTag))
+                else:
+                    ofile.write('%s(%f\n' % (' '*indent, prob))
+                BayesTree._innerDump(path1, tagPath1, indent+4, ofile=ofile)
+                BayesTree._innerDump(path2, tagPath2, indent+4, ofile=ofile)
             else:
                 ofile.write('%s(%f\n' % (' '*indent, prob))
-            BayesTree._innerDump(path1, tagPath1, indent+4, ofile=ofile)
-            BayesTree._innerDump(path2, tagPath2, indent+4, ofile=ofile)
+                BayesTree._innerDump(path1, None, indent+4, ofile=ofile)
+                BayesTree._innerDump(path2, None, indent+4, ofile=ofile)
             ofile.write('%s)\n' % (' '*indent))
         else:
             ofile.write('%s%s\n' % (' '*indent, tree))
