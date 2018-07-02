@@ -569,13 +569,14 @@ def overallHealthTimeFig(specialDict):
         figsOH.canvas.set_window_title("Time History of Patient Population Overall Health")
     except KeyError as e:
         if e.message == 'occupancyByOH':
-            print('occupancyByOH data not available; skipping time history of overall health')
+            print('occupancyByOH data not available; skipping time history of'
+                  ' overall health')
 
 
-def thawsTimeFig(specialDict):
+def miscTimeFig(specialDict):
+    patchList = specialDict.keys()[:]
+    patchList.sort()
     try:
-        patchList = specialDict.keys()[:]
-        patchList.sort()
         catList = []
         for patchName, data in specialDict.items():
             for topic in ['localtiernthawed', 'bedHoldStats']:
@@ -682,6 +683,8 @@ def thawsTimeFig(specialDict):
     except KeyError as e:
         if e.message == 'localtiernthawed':
             print('localtiernthawed data not available; skipping time history of thaws')
+        else:
+            raise
 
 
 def countBirthsDeaths(catNames, allOfCategoryDict):
@@ -928,7 +931,7 @@ def main():
     occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
     pathogenTimeFig(specialDict)
     overallHealthTimeFig(specialDict)
-    thawsTimeFig(specialDict)
+    miscTimeFig(specialDict)
 
     plt.show()
 
