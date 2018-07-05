@@ -16,13 +16,14 @@
 ###################################################################################
 
 import logging
-from random import random
 
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import PatientDiagnosis
 from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
 import labwork
+from generic_diagnostic import parseConstantByFacilityCategory
 
 _validator = None
 _constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'
@@ -31,9 +32,20 @@ _constants = None
 
 LOGGER = logging.getLogger(__name__)
 
+class SwabTestCore(object):
+    """This is where we put things that are best shared across all instances"""
+    __metaclass__ = SingletonMetaClass
+
+    def __init__(self):
+        self.swabDelayDaysByCategory = \
+            parseConstantByFacilityCategory('swabDelayDaysByCategory', innerKey='num',
+                                            constants=_constants)
+
+
 class SwabTest(labwork.LabWork):
     def __init__(self, category, debug=False):
-        delay = _constants['swabDelayDaysByCategory'][category]['value']
+        self.core = SwabTestCore()
+        delay = self.core.swabDelayDaysByCategory[category]
         super(SwabTest, self).__init__(sensitivity=_constants['swabDiagnosticSensitivity']['value'],
                                        specificity=_constants['swabDiagnosticSpecificity']['value'],
                                        delayDays=delay,

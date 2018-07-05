@@ -33,24 +33,27 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-def _parseConstantByFacilityCategory(fieldStr, key='category'):
+def parseConstantByFacilityCategory(fieldStr, key='category', innerKey='frac',
+                                    constants=None):
+    if constants is None:
+        constants = _constants
     topD = {}
-    for elt in _constants[fieldStr]:
+    for elt in constants[fieldStr]:
         cat = elt[key]
-        topD[cat] = float(elt['frac']['value'])
+        topD[cat] = float(elt[innerKey]['value'])
     return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 def _parseCommunicateDiagnosisBetweenFacility(fieldStr, key='category'):
-    return _parseConstantByFacilityCategory(fieldStr, key=key)
+    return parseConstantByFacilityCategory(fieldStr, key=key)
 
 def _parseRegistryAddCompliance(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 def _parseRegistrySearchCompliance(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
