@@ -41,7 +41,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
     """
     This treatment policy represents the application of the CRE Bundle- bathing, etc.
     """
-    
+
     """
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
@@ -52,7 +52,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         super(CREBundleTreatmentPolicy,self).__init__(patch,categoryNameMapper)
         self.core = CREBCore()
         self.active = False
-        
+
     def initializePatientTreatment(self, ward, patient):
         """
         This is called on patients at time zero, when they are first assigned to the
@@ -65,7 +65,7 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
             msg = ('Cannot set CRE Bundle treatment for patient in {0}: {1}'.format(ward, e))
             logger.fatal(msg)
             raise RuntimeError(msg)
-    
+
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.

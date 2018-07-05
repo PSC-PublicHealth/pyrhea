@@ -31,6 +31,7 @@ from typebase import PatientStatus, PatientDiagnosis  # @UnusedImport
 from stats import BayesTree
 from pathogenbase import PthStatus
 from registry import Registry  # @UnusedImport
+from labwork import LabWork, LabWorkMsg
 
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
@@ -160,6 +161,7 @@ class Ward(pyrheabase.Ward):
         """An opportunity for derived classes to customize the departure processing of patients"""
         for tP in self.fac.treatmentPolicies:
             tP.handlePatientDeparture(self, patientAgent, timeNow)
+        self.fac.diagnosticPolicy.handlePatientDeparture(self, patientAgent, timeNow)
         self.miscCounters['departures'] += 1
         self.cumStats.decrPatient(patientAgent)
 
@@ -393,7 +395,7 @@ class Facility(pyrheabase.Facility):
                                                                         self.categoryNameMapper)
         self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
                                   for treatmentPolicyClass in treatmentPolicyClasses]
-        self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
+        self.diagnosticPolicy = diagnosticPolicyClass(self, patch, self.categoryNameMapper)
         self.arrivingPatientTransferInfoDict = {}
 
     def finalizeBuild(self, facDescription):
@@ -426,6 +428,13 @@ class Facility(pyrheabase.Facility):
             self.patientDataDict[patientId] = pickle.dumps(pR, 2)  # keep a copy
             pR._owningFac = self
             return pR
+
+    def forgetPatientRecord(self, patientId):
+        """
+        The facility forgets it ever saw this patient.  Used to implement record-keeping errors.
+        """
+        if patientId in self.patientDataDict:
+            del self.patientDataDict[patientId]
 
     def getPatientRecords(self):
         """In case someone wants to exhaustively search patient records"""
@@ -525,6 +534,8 @@ class Facility(pyrheabase.Facility):
             if timeNow != 0:  # exclude initial populations
                 nh = self.getNoteHolder()
                 nh.addNote({'births': 1})
+        elif issubclass(msgType, LabWorkMsg):
+            LabWork.handleLabMsg(self, msgType, payload, timeNow)
         else:
             raise RuntimeError('%s: got unknown message type %s' % (self.name,
                                                                     msgType .__name__))

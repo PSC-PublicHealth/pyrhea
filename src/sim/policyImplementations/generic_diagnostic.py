@@ -72,9 +72,9 @@ class GDPCore(object):
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
-    def __init__(self, patch, categoryNameMapper):
+    def __init__(self, facility, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-        BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
+        BaseDiagnosticPolicy.__init__(self, facility, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         self.core = GDPCore()
@@ -95,6 +95,15 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
                     pRec.carriesPth = True
 
+    def handlePatientDeparture(self, ward, patient, timeNow):
+        """
+        This is called on patients when they depart from a ward.
+        """
+        BaseDiagnosticPolicy.handlePatientDeparture(self, ward, patient, timeNow)
+        # Apparently there is a fair chance the patient record gets lost between visits
+        if random() > self.core.sameFacilityDiagnosisMemory[ward.fac.category]:
+            ward.fac.forgetPatientRecord(patient.id)
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
@@ -107,7 +116,8 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
 
                 if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
-                    pRec.noteD['cpReason'] = 'passive'
+                    if 'cpReason' not in pRec.noteD:
+                        pRec.noteD['cpReason'] = 'passive'
                 elif patientStatus.pthStatus == PthStatus.COLONIZED:
                     randVal = random()  # re-use this to get proper passive/xdro split
                     if randVal <= self.effectiveness:
@@ -133,10 +143,7 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     else:
                         diagnosedPthStatus = PthStatus.CLEAR
 
-                # Do we remember to record the diagnosis in the patient record?
-                if (diagnosedPthStatus == PthStatus.COLONIZED and
-                        random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
-                    pRec.carriesPth = True
+                pRec.carriesPth = True  # though we might forget about this later
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 

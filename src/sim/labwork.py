@@ -5,7 +5,6 @@ Created on Jun 25, 2018
 '''
 
 from random import random
-import logging
 
 from quilt.peopleplaces import FutureMsg
 
@@ -94,24 +93,3 @@ class LabWork(object):
                 pRec = cls.posAction(pRec)
             else:
                 pRec = cls.negAction(pRec)
-                
-                
-class SwabTest(LabWork):
-    def __init__(self, debug=False):
-        super(self, SwabTest).__init__(_constants['swabDiagnosticSensitivity']['value'],
-                                       _constants['swabDiagnosticSpecificity']['value'],
-                                       _constants['swabDelayDays']['value'],
-                                       debug=debug)
-    
-    @classmethod
-    def posAction(cls, patientRecord):
-        patientRecord.carriesPth = True
-        return patientRecord
-
-    @classmethod
-    def negAction(cls, patientRecord):
-        patientRecord.carriesPth = False
-        return patientRecord
-
-                
-                

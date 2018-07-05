@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class Policy(object):
-    
+
     __metaclass__ = ClassIsInstanceMeta
 
     def __init__(self, patch, categoryNameMapper):
@@ -34,6 +34,10 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
+    def __init__(self, facility, patch, categoryNameMapper):
+        """Some derived classes need facility info"""
+        super(DiagnosticPolicy, self).__init__(patch, categoryNameMapper)
+    
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
@@ -41,6 +45,12 @@ class DiagnosticPolicy(Policy):
         if timeNow is not None:  # turn off debugging before time starts
             logger.debug('%s arrives %s %s', '%s_%s'%patient.id, ward._name, timeNow)
             logger.debug('%s status is %s', '%s_%s'%patient.id, str(patient.getStatus()))
+
+    def handlePatientDeparture(self, ward, patient, timeNow):
+        """
+        This is called on patients when they depart from a ward.
+        """
+        pass
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """

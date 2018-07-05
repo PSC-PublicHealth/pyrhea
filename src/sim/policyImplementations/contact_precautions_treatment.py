@@ -66,9 +66,8 @@ class CPTPCore(object):
 
 
 class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
-    """This policy implements contact precautions"""
-    
-    """
+    """This policy implements contact precautions
+
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
     """
