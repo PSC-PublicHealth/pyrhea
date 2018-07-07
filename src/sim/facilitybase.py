@@ -35,7 +35,7 @@ from labwork import LabWork, LabWorkMsg
 
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 HackBedMultiplier = 1
 
@@ -273,6 +273,15 @@ class PatientRecord(object):
 
     def __exit__(self, tp, val, tb):  # @UnusedVariable
         self._owningFac.mergePatientRecord(self.patientId, self, None)
+    
+    def forgetPathogenInfo(self):
+        """
+        Scenarios sometimes require that patient information be 'lost', but we don't want to
+        lose it completely for bookkeeping reasons.  This method loses only the pathogen-
+        related parts of the record.
+        """
+        self.carriesPth = False
+        self.carriesOther = False
 
     @property
     def isContagious(self):
@@ -432,9 +441,12 @@ class Facility(pyrheabase.Facility):
     def forgetPatientRecord(self, patientId):
         """
         The facility forgets it ever saw this patient.  Used to implement record-keeping errors.
+        Completely removing the record causes too many bookkeeping problems, so we just wipe the
+        pathogen-related parts.
         """
         if patientId in self.patientDataDict:
-            del self.patientDataDict[patientId]
+            with self.getPatientRecord(patientId) as pRec:
+                pRec.forgetPathogenInfo()
 
     def getPatientRecords(self):
         """In case someone wants to exhaustively search patient records"""
@@ -489,7 +501,7 @@ class Facility(pyrheabase.Facility):
             patientRec.isFrail = isFrail
             if timeNow is not None:
                 if patientRec.arrivalDate != timeNow:
-                    logger.debug('Patient %s has returned to %s', patientId, self.name)
+                    LOGGER.debug('Patient %s has returned to %s', patientId, self.name)
                     patientRec.arrivalDate = timeNow
                     patientRec.prevVisits += 1
                 if timeNow != 0:  # Exclude initial populations
@@ -505,19 +517,20 @@ class Facility(pyrheabase.Facility):
             myPayload, innerPayload = payload
             timeNow = super(Facility, self).handleIncomingMsg(msgType, innerPayload, timeNow)
             patientId, tier, isFrail, patientName = myPayload # @UnusedVariable
-            if not self.patientRecordExists(patientId):
-                logger.error('%s has no record of patient %s', self.name, patientId)
-            patientRec = self.getPatientRecord(patientId)
-            patientRec.departureDate = timeNow
-            self.mergePatientRecord(patientId, patientRec, timeNow)
-            #if patientRec.arrivalDate != 0:  # exclude initial populations
-            if True:  # include initial populations
-                lengthOfStay = timeNow - patientRec.arrivalDate
-                losKey = (CareTier.names[tier] + '_LOS')
+            if self.patientRecordExists(patientId):
+                with self.getPatientRecord(patientId, timeNow=timeNow) as patientRec:
+                    patientRec.departureDate = timeNow
+                    lengthOfStay = timeNow - patientRec.arrivalDate
+                    losKey = (CareTier.names[tier] + '_LOS')
+                    nh = self.getNoteHolder()
+                    if losKey not in nh:
+                        nh.addNote({losKey: HistoVal([])})
+                    nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
+            else:
+                # this can happen if the scenario calls for the patientRec to be 'lost'
+                LOGGER.error('%s has no record of patient %s', self.name, patientId)
                 nh = self.getNoteHolder()
-                if losKey not in nh:
-                    nh.addNote({losKey: HistoVal([])})
-                nh.addNote({(CareTier.names[tier] + '_departures'): 1, losKey: lengthOfStay})
+                nh.addNote({(CareTier.names[tier] + '_departures'): 1})
         elif issubclass(msgType, BirthMsg):
             if timeNow is None:
                 raise RuntimeError('Only arrival messages should happen before execution starts')

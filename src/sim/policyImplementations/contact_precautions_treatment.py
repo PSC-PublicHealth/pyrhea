@@ -116,7 +116,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        with ward.fac.getPatientRecord(patient.id) as pRec:
+        with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
             pRec.noteD['cpReason'] = None
 
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
