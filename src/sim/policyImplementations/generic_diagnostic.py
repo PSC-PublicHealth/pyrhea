@@ -146,7 +146,9 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     else:
                         diagnosedPthStatus = PthStatus.CLEAR
 
-                pRec.carriesPth = True  # though we might forget about this later
+                if diagnosedPthStatus in (PthStatus.COLONIZED, PthStatus.CHRONIC,
+                                          PthStatus.INFECTED):
+                    pRec.carriesPth = True  # though we might forget about this later
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 
