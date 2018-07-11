@@ -40,7 +40,7 @@ def parseConstantByFacilityCategory(fieldStr, key='category', innerKey='frac',
     topD = {}
     for elt in constants[fieldStr]:
         cat = elt[key]
-        topD[cat] = float(elt[innerKey]['value'])
+        topD[cat] = elt[innerKey]['value']
     return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):

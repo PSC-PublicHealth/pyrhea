@@ -33,10 +33,11 @@ class LabWork(object):
         '''
         sensitivity is the sensitivity (effectiveness) of the test.
         specificity is the specificity (1.0 - false positive rate) of the test
-        delayDays is the number of days in the future for results arrival
+        delayDays is the integer number of days in the future for results arrival
         '''
         self.sensitivity = sensitivity
         self.falsePosRate = 1.0 - specificity
+        assert isinstance(delayDays, (int, long)), 'delayDays is not an integer'
         self.delayDays = delayDays
         self.debug = debug
 
@@ -78,18 +79,24 @@ class LabWork(object):
             rslt = (random() <= self.sensitivity)
         else:
             rslt = (random() <= self.falsePosRate)
-        labWorkMsg = LabWorkMsg(ward._name, ward.patch, (patientId, rslt), ward.getReqQueueAddr(),
-                                timeNow + self.delayDays, self.debug)
+        labWorkMsg = LabWorkMsg(ward._name, ward.patch, (patientId, rslt, self.__class__.__name__),
+                                ward.getReqQueueAddr(), timeNow + self.delayDays, self.debug)
         ward.patch.launch(labWorkMsg, timeNow)
 
     @classmethod
     def handleLabMsg(cls, fac, msgType, payload, timeNow):
-        print 'handler for %s' % cls.__name__
-        assert cls == msgType, 'lab message of type %s passed to %s' % (msgType.__name__,
-                                                                        cls.__name__)
-        patientId, rslt = payload
+        assert issubclass(msgType, LabWorkMsg), ('lab message of type %s passed to %s'
+                                                 % (msgType.__name__, cls.__name__))
+        patientId, rslt, sendingClassName = payload
+        for subCls in cls.__subclasses__():
+            if subCls.__name__ == sendingClassName:
+                sendingClass = subCls
+                break
+        else:
+            raise RuntimeError('Cannot find sending class %s for labwork for patient %s'
+                               % (sendingClassName, patientId))
         with fac.getPatientRecord(patientId) as pRec:
             if rslt:
-                pRec = cls.posAction(pRec)
+                pRec = sendingClass.posAction(pRec)
             else:
-                pRec = cls.negAction(pRec)
+                pRec = sendingClass.negAction(pRec)

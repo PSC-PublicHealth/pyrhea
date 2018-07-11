@@ -51,6 +51,10 @@ class SwabTest(labwork.LabWork):
                                        delayDays=delay,
                                        debug=debug)
 
+    def trueTestFun(self, patientStatus):
+        return patientStatus.pthStatus in (PthStatus.COLONIZED, PthStatus.CHRONIC,
+                                           PthStatus.INFECTED)
+
     @classmethod
     def posAction(cls, patientRecord):
         patientRecord.carriesPth = True
