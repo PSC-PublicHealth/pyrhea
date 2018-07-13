@@ -86,8 +86,9 @@ class Monitor(object):
 
     def solidifyFields(self):
         ra = np.recarray((0,), dtype = self.dtype)
-        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w")
-    
+        bz.set_nthreads(3)
+        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w", auto_flush=False)
+        
     def collectData(self, timeNow):
         """
         traverses each ward of each facility and updates pthData
@@ -110,6 +111,8 @@ class Monitor(object):
                     row.extend(fn(ward, timeNow))
                 self.pthData.append(row)
 
+
+        self.flush()
         self.pthDataDF = None
         pyrheautils.resetMiscCounters(self.patch, timeNow)
 
