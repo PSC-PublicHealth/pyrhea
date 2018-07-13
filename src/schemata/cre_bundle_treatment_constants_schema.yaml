@@ -6,6 +6,16 @@
 '$ref': '#/definitions/cre_bundle_treatment_constants'
 
 'definitions':
+  'nonNegIntByCategory':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'category': {'$ref': 'facilityfacts_schema.yaml#/definitions/category'}
+        'num': {'$ref': 'basics_schema.yaml#/definitions/nonneginteger'}
+      'required':
+        - 'category'
+        - 'num'
 
   'cre_bundle_treatment_constants':
     'type': 'object'
@@ -18,9 +28,15 @@
         'description': 'sensitivity of a single rectal swab (screening test) to detect CRE colonization' 
       'swabDiagnosticSpecificity':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': '1.0 minus false positive rate for a single rectal swab.' 
+        'description': '1.0 minus false positive rate for a single rectal swab.'
+      'swabDelayDaysByCategory':
+        '$ref': '#/definitions/nonNegIntByCategory'
+        'description': 'Number of days delay before the results of a rectal swab test are returned'
                  
     'required':
     - 'transmissibilityMultiplier'
+    - 'swabDiagnosticSensitivity'
+    - 'swabDiagnosticSpecificity'
+    - 'swabDelayDaysByCategory'
       
      

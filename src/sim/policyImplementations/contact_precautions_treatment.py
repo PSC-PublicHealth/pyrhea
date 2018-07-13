@@ -66,9 +66,8 @@ class CPTPCore(object):
 
 
 class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
-    """This policy implements contact precautions"""
-    
-    """
+    """This policy implements contact precautions
+
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
     """
@@ -117,7 +116,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        with ward.fac.getPatientRecord(patient.id) as pRec:
+        with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
             pRec.noteD['cpReason'] = None
 
     def getTransmissionFromMultiplier(self, careTier, **kwargs):

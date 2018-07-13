@@ -803,6 +803,14 @@ class Community(Facility):
         pR._owningFac = self
         return pR
 
+    def forgetPatientRecord(self, patientId):
+        """
+        The facility forgets it ever saw this patient.  Used to implement record-keeping errors.
+        """
+        if patientId in self.patientDataDict or patientId in self.cachePatientDataDict:
+            with self.getPatientRecord(patientId) as pRec:
+                pRec.forgetPathogenInfo()
+
     def mergePatientRecord(self, patientId, newPatientRec, timeNow):
         patientRec = self.getPatientRecord(patientId, timeNow)
         patientRec.merge(newPatientRec)

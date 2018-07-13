@@ -39,18 +39,18 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
             self.evtList.append((elt['times']['startDate'], elt['abbrev'], 'START'))
             self.evtList.append((elt['times']['endDate'], elt['abbrev'], 'END'))
         self.evtList.sort()
-        
+
     def begin(self, callingAgent, timeNow):
         assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                       % self.patch.name)
-        
+
         for when, abbrev, action in self.evtList:
             if when != timeNow:
                 assert(timeNow < when), ('It is too late to %s intervention at %s'
                                          % (action, abbrev))
                 timeNow = callingAgent.sleep(when - timeNow)
             print "{0}: {1} {2}".format(abbrev, when, action)
-                
+
             for fac in self.patch.allFacilities:
                 if fac.abbrev == abbrev:
                     fac.flushCaches()

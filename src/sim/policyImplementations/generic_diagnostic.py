@@ -33,24 +33,27 @@ _constants = None
 
 logger = logging.getLogger(__name__)
 
-def _parseConstantByFacilityCategory(fieldStr, key='category'):
+def parseConstantByFacilityCategory(fieldStr, key='category', innerKey='frac',
+                                    constants=None):
+    if constants is None:
+        constants = _constants
     topD = {}
-    for elt in _constants[fieldStr]:
+    for elt in constants[fieldStr]:
         cat = elt[key]
-        topD[cat] = float(elt['frac']['value'])
+        topD[cat] = elt[innerKey]['value']
     return topD
 
 def _parseSameFacilityDiagnosisMemoryByCategory(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 def _parseCommunicateDiagnosisBetweenFacility(fieldStr, key='category'):
-    return _parseConstantByFacilityCategory(fieldStr, key=key)
+    return parseConstantByFacilityCategory(fieldStr, key=key)
 
 def _parseRegistryAddCompliance(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 def _parseRegistrySearchCompliance(fieldStr):
-    return _parseConstantByFacilityCategory(fieldStr)
+    return parseConstantByFacilityCategory(fieldStr)
 
 class GDPCore(object):
     """This is where we put things that are best shared across all instances"""
@@ -72,9 +75,9 @@ class GDPCore(object):
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
-    def __init__(self, patch, categoryNameMapper):
+    def __init__(self, facility, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-        BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
+        BaseDiagnosticPolicy.__init__(self, facility, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         self.core = GDPCore()
@@ -95,6 +98,15 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                 with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
                     pRec.carriesPth = True
 
+    def handlePatientDeparture(self, ward, patient, timeNow):
+        """
+        This is called on patients when they depart from a ward.
+        """
+        BaseDiagnosticPolicy.handlePatientDeparture(self, ward, patient, timeNow)
+        # Apparently there is a fair chance the patient record gets lost between visits
+        if random() > self.core.sameFacilityDiagnosisMemory[ward.fac.category]:
+            ward.fac.forgetPatientRecord(patient.id)
+
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
         This provides a way to introduce false positive or false negative diagnoses.  The
@@ -107,7 +119,8 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
 
                 if pRec.carriesPth:
                     diagnosedPthStatus = PthStatus.COLONIZED
-                    pRec.noteD['cpReason'] = 'passive'
+                    if 'cpReason' not in pRec.noteD:
+                        pRec.noteD['cpReason'] = 'passive'
                 elif patientStatus.pthStatus == PthStatus.COLONIZED:
                     randVal = random()  # re-use this to get proper passive/xdro split
                     if randVal <= self.effectiveness:
@@ -133,10 +146,9 @@ class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
                     else:
                         diagnosedPthStatus = PthStatus.CLEAR
 
-                # Do we remember to record the diagnosis in the patient record?
-                if (diagnosedPthStatus == PthStatus.COLONIZED and
-                        random() <= self.core.sameFacilityDiagnosisMemory[ward.fac.category]):
-                    pRec.carriesPth = True
+                if diagnosedPthStatus in (PthStatus.COLONIZED, PthStatus.CHRONIC,
+                                          PthStatus.INFECTED):
+                    pRec.carriesPth = True  # though we might forget about this later
         else:
             diagnosedPthStatus = oldDiagnosis.pthStatus
 

@@ -5,7 +5,6 @@ Created on Jun 25, 2018
 '''
 
 from random import random
-import logging
 
 from quilt.peopleplaces import FutureMsg
 
@@ -34,10 +33,11 @@ class LabWork(object):
         '''
         sensitivity is the sensitivity (effectiveness) of the test.
         specificity is the specificity (1.0 - false positive rate) of the test
-        delayDays is the number of days in the future for results arrival
+        delayDays is the integer number of days in the future for results arrival
         '''
         self.sensitivity = sensitivity
         self.falsePosRate = 1.0 - specificity
+        assert isinstance(delayDays, (int, long)), 'delayDays is not an integer'
         self.delayDays = delayDays
         self.debug = debug
 
@@ -79,39 +79,24 @@ class LabWork(object):
             rslt = (random() <= self.sensitivity)
         else:
             rslt = (random() <= self.falsePosRate)
-        labWorkMsg = LabWorkMsg(ward._name, ward.patch, (patientId, rslt), ward.getReqQueueAddr(),
-                                timeNow + self.delayDays, self.debug)
+        labWorkMsg = LabWorkMsg(ward._name, ward.patch, (patientId, rslt, self.__class__.__name__),
+                                ward.getReqQueueAddr(), timeNow + self.delayDays, self.debug)
         ward.patch.launch(labWorkMsg, timeNow)
 
     @classmethod
     def handleLabMsg(cls, fac, msgType, payload, timeNow):
-        print 'handler for %s' % cls.__name__
-        assert cls == msgType, 'lab message of type %s passed to %s' % (msgType.__name__,
-                                                                        cls.__name__)
-        patientId, rslt = payload
+        assert issubclass(msgType, LabWorkMsg), ('lab message of type %s passed to %s'
+                                                 % (msgType.__name__, cls.__name__))
+        patientId, rslt, sendingClassName = payload
+        for subCls in cls.__subclasses__():
+            if subCls.__name__ == sendingClassName:
+                sendingClass = subCls
+                break
+        else:
+            raise RuntimeError('Cannot find sending class %s for labwork for patient %s'
+                               % (sendingClassName, patientId))
         with fac.getPatientRecord(patientId) as pRec:
             if rslt:
-                pRec = cls.posAction(pRec)
+                pRec = sendingClass.posAction(pRec)
             else:
-                pRec = cls.negAction(pRec)
-                
-                
-class SwabTest(LabWork):
-    def __init__(self, debug=False):
-        super(self, SwabTest).__init__(_constants['swabDiagnosticSensitivity']['value'],
-                                       _constants['swabDiagnosticSpecificity']['value'],
-                                       _constants['swabDelayDays']['value'],
-                                       debug=debug)
-    
-    @classmethod
-    def posAction(cls, patientRecord):
-        patientRecord.carriesPth = True
-        return patientRecord
-
-    @classmethod
-    def negAction(cls, patientRecord):
-        patientRecord.carriesPth = False
-        return patientRecord
-
-                
-                
+                pRec = sendingClass.negAction(pRec)
