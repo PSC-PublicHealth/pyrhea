@@ -837,19 +837,17 @@ def _populate(fac, descr, patch):
     meanPop = float(descr['meanPop']['value'])
     logger.info('Generating the population for %s (%s freeze-dried people)'
                 % (descr['abbrev'], meanPop))
-    agentList = []
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.HOME)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
-        a = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
-        a.reHome(fac.manager.patch)
-        a.setStatus(homeAddr=findQueueForTier(CareTier.HOME, fac.reqQueues).getGblAddr())
-        ward.handlePatientArrival(a, None)
+        agent = PatientAgent('PatientAgent_HOME_%s_%d' % (ward._name, i), patch, ward)
+        agent.reHome(fac.manager.patch)
+        agent.setStatus(homeAddr=findQueueForTier(CareTier.HOME, fac.reqQueues).getGblAddr())
+        ward.handlePatientArrival(agent, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
-                              fac.getMsgPayload(pyrheabase.ArrivalMsg, a),
+                              fac.getMsgPayload(pyrheabase.ArrivalMsg, agent),
                               None)
-        agentList.append(a)
-    return agentList
+    return []
 
 TOTAL_COMMUNITY = 0
 
