@@ -828,6 +828,8 @@ def main():
             csvWriter.writerow(entryRow)
 
 if __name__ == "__main__":
-    main()
+    print "This code is deprecated.  Use gather_counts.py instead"
+    if 0:
+        main()
 
 
