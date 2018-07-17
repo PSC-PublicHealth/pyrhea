@@ -313,7 +313,7 @@ def main():
         for args in argsList:
             totalStats.append(pool_helper(args))
     print 'Finished scanning pickled notes'
-    
+
     # read any mpz files in line
     if mpzNotes:
         print 'reading pre-parsed notes'

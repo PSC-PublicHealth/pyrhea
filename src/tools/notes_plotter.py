@@ -26,6 +26,12 @@ sys.path.append(os.path.join(cwd, "../sim"))
 
 import re
 import yaml
+import math
+import pickle
+import ujson
+import types
+from imp import load_source
+from collections import defaultdict
 import phacsl.utils.formats.yaml_tools as yaml_tools
 import phacsl.utils.formats.csv_tools as csv_tools
 import phacsl.utils.notes.noteholder as noteholder
@@ -37,12 +43,7 @@ from phacsl.utils.notes.statval import HistoVal
 from stats import lognormplusexp, doubleweibull, fullCRVFromPDFModel, fullLogNormCRVFromMean
 import pathogenbase as pth
 import map_transfer_matrix as mtm
-import math
-import pickle
-import ujson
-import types
-from imp import load_source
-from collections import defaultdict
+import tools_util as tu
 from pyrhea import getLoggerConfig
 
 import numpy as np
@@ -150,7 +151,7 @@ def loadFacilityDescription(abbrev, facilityDirs):
 
 def loadFacilityTypeConstants(category, implementationDir):
     sys.path.append(implementationDir)
-    
+
     fullPath = pyrheautils.pathTranslate(os.path.join(implementationDir,
                                                       category.lower() + '.py'))
     newMod = load_source(category.lower(), fullPath)
@@ -846,14 +847,11 @@ def main():
 
     runDesc = args[0]
 
-    schemautils.setSchemaBasePath(SCHEMA_DIR)
-    inputDict = checkInputFileSchema(args[0],
-                                     os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
-    modelDir = inputDict['modelDir']
-    pyrheautils.PATH_STRING_MAP['MODELDIR'] = modelDir
+    inputDict = tu.readModelInputs(args[0])
+    pyrheautils.prepPathTranslations(inputDict)
+    facDict = tu.getFacDict(inputDict)
+
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
-    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
-    constDir = os.path.join(modelDir, 'constants')
 
     if opts.notes:
         notesFName = opts.notes
