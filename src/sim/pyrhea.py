@@ -923,8 +923,9 @@ def main():
                 m = bcz_monitor.Monitor(clData['bczmonitor'], patch)
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
-                for tv in inputDict['trackedValues']:
-                    m.registerTrackable(tv)
+                if 'trackedValues' in inputDict:
+                    for tv in inputDict['trackedValues']:
+                        m.registerTrackable(tv)
                 m.solidifyFields()
 
                 if clData['taumod']:

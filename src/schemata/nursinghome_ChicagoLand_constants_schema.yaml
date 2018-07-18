@@ -81,6 +81,10 @@
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
         'description': 'Scales the number of beds in each facility of this type'
       }
+      'heldBedDurationDays': {
+        '$ref': 'basics_schema.yaml#/definitions/posinteger',
+        'description': 'Number of days the facility will hold a patient bed after that patient moves to a higher tier of care'
+      }
     'required':
       - 'deathRate'
       - 'hospTransferToICURate'

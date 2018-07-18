@@ -105,6 +105,7 @@ class NursingHome(Facility):
         self.bedAllocDict = {'frail_beds': frailBeds, 'non_frail_beds': (nBeds - frailBeds),
                              'frail': 0, 'non_frail': 0,
                              'frail_held': 0, 'non_frail_held': 0}
+        self.bedHoldTime = _c['heldBedDurationDays']['value']
 
         totDsch = float(descr['totalDischarges']['value'])
         totTO = sum([elt['count']['value'] for elt in descr['totalTransfersOut']])
@@ -243,7 +244,7 @@ class NursingHome(Facility):
                 cancelHoldMsg = CancelHoldMsg(self.name, self.manager.patch,
                                               (pOH, pId, timeNow),
                                               self.reqQueues[0].getGblAddr(),
-                                              timeNow + 14, debug=True)
+                                              timeNow + self.bedHoldTime)
                 self.manager.patch.launch(cancelHoldMsg, timeNow)
             return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
         elif issubclass(msgType, pyrheabase.ArrivalMsg):
