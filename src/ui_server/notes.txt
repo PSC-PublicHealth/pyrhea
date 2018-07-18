@@ -1,0 +1,4 @@
+This contains notes on the setup process for the UI build environment
+
+cd src/ui_server
+npm install @angular/cli
