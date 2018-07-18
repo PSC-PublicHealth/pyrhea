@@ -91,5 +91,6 @@
       - 'vsnfTransferToVentRate'
       - 'vsnfTransferToSkilNrsRate'
       - 'initialUnhealthyFrac'
+      - 'heldBedDurationDays'
       
       
