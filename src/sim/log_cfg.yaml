@@ -63,6 +63,8 @@ loggers:
   policybase:
     level: DEBUG
 #    handlers: [rabbitmq]
+  cre_bundle_scenario:
+    level: INFO
 root:
   level: WARNING
   handlers: [console]

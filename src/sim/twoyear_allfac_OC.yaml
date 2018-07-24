@@ -39,9 +39,9 @@
     'policyClass': 'DummyTreatmentPolicy'
 
   - 'category': 'scenario'
-#    'policyClass': 'XDROPlusCREBundleScenario'
-    #'policyClass': 'CREBundleScenario'
-    'policyClass': 'XDRORegistryScenario'
+    #'policyClass': 'XDROPlusCREBundleScenario'
+    'policyClass': 'CREBundleScenario'
+    #'policyClass': 'XDRORegistryScenario'
 
 'notesFileName': 'notes_twoyear_allfac_OC.pkl'
 

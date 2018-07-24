@@ -42,8 +42,8 @@
   - 'category': 'COMMUNITY'
     'policyClass': 'DummyTreatmentPolicy'
     
-#  - 'category': 'scenario'
-#    'policyClass': 'XDROPlusCREBundleScenario'
+  - 'category': 'scenario'
+    'policyClass': 'CREBundleScenario'
 
 #'runDurationDays': 1095
 'runDurationDays': 730

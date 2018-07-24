@@ -40,8 +40,8 @@
     'policyClass': 'DummyTreatmentPolicy'
 
   - 'category': 'scenario'
-    'policyClass': 'XDROPlusCREBundleScenario'
-    #'policyClass': 'CREBundleScenario'
+    #'policyClass': 'XDROPlusCREBundleScenario'
+    'policyClass': 'CREBundleScenario'
     #'policyClass': 'XDRORegistryScenario'
 
 'notesFileName': 'notes_week_ChicagoLand.pkl'
