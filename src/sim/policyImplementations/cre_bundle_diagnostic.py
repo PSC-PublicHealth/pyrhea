@@ -24,6 +24,7 @@ from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
 import labwork
 from generic_diagnostic import parseConstantByFacilityCategory
+from cre_bundle_treatment import TIERS_IMPLEMENTING_BUNDLE
 
 _validator = None
 _constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'
@@ -92,8 +93,9 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
             diagnosedPthStatus = parentDiagnosis.pthStatus
             if self.active and patientStatus.justArrived:
-                if not pRec.isContagious and parentDiagnosis.pthStatus in (PthStatus.CLEAR,
-                                                                           PthStatus.RECOVERED):
+                if ((not pRec.isContagious)
+                    and parentDiagnosis.pthStatus in (PthStatus.CLEAR, PthStatus.RECOVERED)
+                    and (ward.fac.implCategory, ward.tier) in TIERS_IMPLEMENTING_BUNDLE):
                     # Only test patients not already known to need isolation. Trust
                     # whatever method marked pRec to have set appropriate counters.
                     #

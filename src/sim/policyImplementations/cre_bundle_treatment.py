@@ -27,15 +27,21 @@ _constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'
 _constants_schema = 'cre_bundle_treatment_constants_schema.yaml'
 _constants = None
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
+
+TIERS_IMPLEMENTING_BUNDLE = frozenset([('NURSINGHOME', CareTier.NURSING),
+                                       ('LTAC', CareTier.LTAC),
+                                       ('HOSPITAL', CareTier.ICU),
+                                       ('VSNF', CareTier.VENT),
+                                       ('VSNF', CareTier.SKILNRS)])
 
 class CREBCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
-    
+
     def __init__(self):
         self.effectiveness = _constants['transmissibilityMultiplier']['value']
-    
+
 
 class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
     """
@@ -60,10 +66,11 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         """
         super(CREBundleTreatmentPolicy, self).initializePatientTreatment(ward, patient)
         try:
-            patient.setTreatment(creBundle=self.active)
+            if (ward.fac.implCategory, ward.tier) in TIERS_IMPLEMENTING_BUNDLE:
+                patient.setTreatment(creBundle=self.active)
         except Exception, e:
             msg = ('Cannot set CRE Bundle treatment for patient in {0}: {1}'.format(ward, e))
-            logger.fatal(msg)
+            LOGGER.fatal(msg)
             raise RuntimeError(msg)
 
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
@@ -96,17 +103,17 @@ class CREBundleTreatmentPolicy(BaseTreatmentPolicy):
         If the treatment elements in **kwargs have the given boolean values (e.g. rehab=True),
         return the scale factor by which the transmission coefficient tau is multiplied when
         the patient with this treatment is the recipient of the transmission.
-        
+
         The CRE Bundle interventions prevent patients from spreading, not from becoming colonized.
         """
         return 1.0
-    
+
     def setValue(self, key, val):
         """
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         This class can be activated and deactivated via the 'active' flag (True/False)
         """
         if key == 'active':
