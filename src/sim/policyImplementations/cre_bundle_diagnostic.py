@@ -16,26 +16,63 @@
 ###################################################################################
 
 import logging
-from random import random
 
 import pyrheautils
+from phacsl.utils.collections.phacollections import SingletonMetaClass
 from facilitybase import PatientDiagnosis
 from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
+import labwork
+from generic_diagnostic import parseConstantByFacilityCategory
+from cre_bundle_treatment import TIERS_IMPLEMENTING_BUNDLE
 
 _validator = None
 _constants_values = '$(CONSTANTS)/cre_bundle_treatment_constants.yaml'
 _constants_schema = 'cre_bundle_treatment_constants_schema.yaml'
 _constants = None
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
+
+class SwabTestCore(object):
+    """This is where we put things that are best shared across all instances"""
+    __metaclass__ = SingletonMetaClass
+
+    def __init__(self):
+        self.swabDelayDaysByCategory = \
+            parseConstantByFacilityCategory('swabDelayDaysByCategory', innerKey='num',
+                                            constants=_constants)
+
+
+class SwabTest(labwork.LabWork):
+    def __init__(self, category, debug=False):
+        self.core = SwabTestCore()
+        delay = self.core.swabDelayDaysByCategory[category]
+        super(SwabTest, self).__init__(sensitivity=_constants['swabDiagnosticSensitivity']['value'],
+                                       specificity=_constants['swabDiagnosticSpecificity']['value'],
+                                       delayDays=delay,
+                                       debug=debug)
+
+    def trueTestFun(self, patientStatus):
+        return patientStatus.pthStatus in (PthStatus.COLONIZED, PthStatus.CHRONIC,
+                                           PthStatus.INFECTED)
+
+    @classmethod
+    def posAction(cls, patientRecord):
+        patientRecord.carriesPth = True
+        patientRecord.noteD['cpReason'] = 'swab'
+        return patientRecord
+
+    @classmethod
+    def negAction(cls, patientRecord):
+        patientRecord.carriesPth = False
+        return patientRecord
+
 
 class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
-    def __init__(self,  patch, categoryNameMapper):
+    def __init__(self,  facility, patch, categoryNameMapper):
         #super(CREBundleDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-        GenericDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
-        self.swabEffectiveness = _constants['swabDiagnosticSensitivity']['value']
-        self.swabFalsePosRate = 1.0 - _constants['swabDiagnosticSpecificity']['value']
+        GenericDiagnosticPolicy.__init__(self, facility, patch, categoryNameMapper)
+        self.swabTest = SwabTest(facility.category)
         self.active = False
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
@@ -54,34 +91,17 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
                                                                           timeNow=timeNow)
 
         with ward.fac.getPatientRecord(patientId, timeNow=timeNow) as pRec:
-            if self.active:
-                if patientStatus.justArrived:
-                    if pRec.isContagious or parentDiagnosis.pthStatus not in (PthStatus.CLEAR,
-                                                                            PthStatus.RECOVERED):
-                        # Only test patients not already known to need isolation. Trust
-                        # whatever method marked pRec to have set appropriate counters.
-                        diagnosedPthStatus = parentDiagnosis.pthStatus
-                    else:
-                        # This patient gets tested
-                        if patientStatus.pthStatus == PthStatus.COLONIZED:
-                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabEffectiveness)
-                                                  else PthStatus.CLEAR)
-                        else:
-                            diagnosedPthStatus = (PthStatus.COLONIZED if (random() <= self.swabFalsePosRate)
-                                                  else PthStatus.CLEAR)
-
-                        if diagnosedPthStatus == PthStatus.COLONIZED:
-                            pRec.noteD['cpReason'] = 'swab'
-                            sameFacProb = self.core.sameFacilityDiagnosisMemory[ward.fac.category]
-                            if random() <= sameFacProb:
-                                # We remember to add it to the patient's in-house record!
-                                pRec.carriesPth = True
-
-                        ward.miscCounters['creSwabsPerformed'] += 1
-                else:
-                    diagnosedPthStatus = parentDiagnosis.pthStatus
-            else:
-                diagnosedPthStatus = parentDiagnosis.pthStatus
+            diagnosedPthStatus = parentDiagnosis.pthStatus
+            if self.active and patientStatus.justArrived:
+                if ((not pRec.isContagious)
+                    and parentDiagnosis.pthStatus in (PthStatus.CLEAR, PthStatus.RECOVERED)
+                    and (ward.fac.implCategory, ward.tier) in TIERS_IMPLEMENTING_BUNDLE):
+                    # Only test patients not already known to need isolation. Trust
+                    # whatever method marked pRec to have set appropriate counters.
+                    #
+                    # This patient gets tested
+                    self.swabTest.performLab(patientId, patientStatus, ward, timeNow)
+                    ward.miscCounters['creSwabsPerformed'] += 1
 
         return PatientDiagnosis(patientStatus.overall,
                                 patientStatus.diagClassA,
@@ -95,7 +115,7 @@ class CREBundleDiagnosticPolicy(GenericDiagnosticPolicy):
         Setting values may be useful for changing phases in a scenario, for example. The
         values that can be set are treatment-specific; attempting to set an incorrect value
         is an error.
-        
+
         This class can be activated and deactivated via the 'active' flag (True/False)
         """
         if key == 'active':
