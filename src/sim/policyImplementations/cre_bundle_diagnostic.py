@@ -16,6 +16,7 @@
 ###################################################################################
 
 import logging
+from collections import defaultdict
 
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass
@@ -23,7 +24,6 @@ from facilitybase import PatientDiagnosis
 from generic_diagnostic import GenericDiagnosticPolicy
 from pathogenbase import PthStatus
 import labwork
-from generic_diagnostic import parseConstantByFacilityCategory
 from cre_bundle_treatment import TIERS_IMPLEMENTING_BUNDLE
 
 _validator = None
@@ -33,15 +33,23 @@ _constants = None
 
 LOGGER = logging.getLogger(__name__)
 
+def _parseConstantByFacilityCategory(fieldStr, key='category'):
+    topD = {}
+    for elt in _constants[fieldStr]:
+        cat = elt[key]
+        topD[cat] = float(elt['num']['value'])
+    return topD
+
 class SwabTestCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
 
     def __init__(self):
-        self.swabDelayDaysByCategory = \
-            parseConstantByFacilityCategory('swabDelayDaysByCategory', innerKey='num',
-                                            constants=_constants)
-
+        if 'swabDelayDaysByCategory' in _constants:
+            self.swabDelayDaysByCategory = \
+                _parseConstantByFacilityCategory('swabDelayDaysByCategory')
+        else:
+            self.swabDelayDaysByCategory = defaultdict(lambda: 1) # assume 1 day everywhere
 
 class SwabTest(labwork.LabWork):
     def __init__(self, category, debug=False):

@@ -29,6 +29,7 @@ from typebase import PatientStatus, PatientDiagnosis  # @UnusedImport
 from stats import BayesTree
 from pathogenbase import PthStatus
 from registry import Registry  # @UnusedImport
+from labwork import LabWork, LabWorkMsg
 
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
@@ -360,7 +361,7 @@ class Facility(pyrheabase.Facility):
                                                                         self.categoryNameMapper)
         self.treatmentPolicies = [treatmentPolicyClass(patch, self.categoryNameMapper)
                                   for treatmentPolicyClass in treatmentPolicyClasses]
-        self.diagnosticPolicy = diagnosticPolicyClass(patch, self.categoryNameMapper)
+        self.diagnosticPolicy = diagnosticPolicyClass(self, patch, self.categoryNameMapper)
         self.arrivingPatientTransferInfoDict = {}
 
     def __str__(self):
@@ -484,6 +485,8 @@ class Facility(pyrheabase.Facility):
             if timeNow != 0:  # exclude initial populations
                 nh = self.getNoteHolder()
                 nh.addNote({'births': 1})
+        elif issubclass(msgType, LabWorkMsg):
+            LabWork.handleLabMsg(self, msgType, payload, timeNow)
         else:
             raise RuntimeError('%s: got unknown message type %s' % (self.name,
                                                                     msgType .__name__))

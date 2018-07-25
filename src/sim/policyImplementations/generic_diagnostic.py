@@ -72,9 +72,9 @@ class GDPCore(object):
 
 
 class GenericDiagnosticPolicy(BaseDiagnosticPolicy):
-    def __init__(self, patch, categoryNameMapper):
+    def __init__(self, facility, patch, categoryNameMapper):
         #super(GenericDiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-        BaseDiagnosticPolicy.__init__(self, patch, categoryNameMapper)
+        BaseDiagnosticPolicy.__init__(self, facility, patch, categoryNameMapper)
         self.effectiveness = _constants['pathogenDiagnosticEffectiveness']['value']
         self.falsePosRate = _constants['pathogenDiagnosticFalsePositiveRate']['value']
         self.core = GDPCore()

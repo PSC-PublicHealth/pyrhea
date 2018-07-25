@@ -34,6 +34,9 @@ class Policy(object):
 
 
 class DiagnosticPolicy(Policy):
+    def __init__(self, facility, patch, categoryNameMapper):
+        super(DiagnosticPolicy, self).__init__(patch, categoryNameMapper)
+    
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.
