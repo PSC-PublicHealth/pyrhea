@@ -79,9 +79,9 @@ def expandGlobbedList(pathList):
     return newPathList
 
 
-def prevalenceBoxPlots(sampDF, targetD, tier, logy=False):
+def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', colKey='prev_sample'):
     tierDF = sampDF[sampDF['tier']==tier]
-    tierGps = tierDF.groupby('fac')
+    tierGps = tierDF.groupby('abbrev')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
     tupleL = [tpl for tpl in tierGps]
     fig, axes = plt.subplots(1, 1)  # @UnusedVariable
@@ -96,16 +96,17 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False):
         markerXL = []
         markerYL = []
         for idx, (key, subDF) in enumerate(tupleBlockL):
-            #print 'fac %s tier %s' % (key, tier)
-            #print subDF
+            print 'fac %s tier %s' % (key, tier)
             labelL.append(key)
-            sampL.append(subDF['prev_sample'].dropna())
-            markerXL.append(1.0 + idx)
-            markerYL.append(targetD[(key, tier)])
+            sampL.append(subDF[colKey].dropna())
+            if targetD is not None:
+                markerXL.append(1.0 + idx)
+                markerYL.append(targetD[(key, tier)])
         print 'plotting %s' % str(labelL)
         axes.tick_params(axis='x', labelsize='small', labelrotation=45.0)
         axes.boxplot(sampL, labels=labelL)
-        axes.plot(markerXL, markerYL, 'D')
+        if markerYL:
+            axes.plot(markerXL, markerYL, 'D')
         if nBlocks > 1:
             axes.set_title('%s %d' % (tier, blockNum))
         else:
@@ -113,19 +114,20 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False):
         if logy:
             axes.set_yscale('log')
         plt.tight_layout()
-        plt.savefig('prevalence_%s_%02d.png' % (tier, block))
+        plt.savefig('%s_%s_%02d.png' % (label, tier, block))
         plt.cla()  # to save memory
 
 
-def tierPrevalenceBoxPlot(sampDF, targetD, logy=False):
+def tierPrevalenceBoxPlot(sampDF, targetD, logy=False, label='prevalence', colKey='prev_sample'):
     # Need a different summing pattern for this copy of sampDF
     sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
     sampDF = sampDF.add_suffix('_sum').reset_index()
     sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
 
     tierTargetD = defaultdict(set)
-    for (fac, tier), val in targetD.items():  # @UnusedVariable
-        tierTargetD[tier].add(val)
+    if targetD is not None:
+        for (fac, tier), val in targetD.items():  # @UnusedVariable
+            tierTargetD[tier].add(val)
 
     labelL = []
     sampL = []
@@ -134,18 +136,20 @@ def tierPrevalenceBoxPlot(sampDF, targetD, logy=False):
     for col, tier in enumerate(sampDF['tier'].unique()):
         labelL.append(tier)
         tierDF = sampDF[sampDF['tier']==tier]
-        sampL.append(tierDF['prev_sample'].dropna())
-        for val in tierTargetD[tier]:
-            markerXL.append(1.0 + col)
-            markerYL.append(val)
+        sampL.append(tierDF[colKey].dropna())
+        if targetD is not None:
+            for val in tierTargetD[tier]:
+                markerXL.append(1.0 + col)
+                markerYL.append(val)
 
     fig, axes = plt.subplots(1, 1)  # @UnusedVariable
     print 'plotting tier collective boxplots'
     axes.boxplot(sampL, labels=labelL)
-    axes.plot(markerXL, markerYL, 'D')
+    if markerYL:
+        axes.plot(markerXL, markerYL, 'D')
     if logy:
         axes.set_yscale('log')
-    plt.savefig('prevalence_pooled_over_tiers.png')
+    plt.savefig('%s_pooled_over_tiers.png' % label)
 
 
 def main(argv=None):
@@ -202,7 +206,8 @@ def main(argv=None):
         # MAIN BODY #
         with open(opts.tauopts, 'rU') as f:
             tauOpts = yaml.load(f)
-        dayL = tauOpts['DayList']
+        #dayL = tauOpts['DayList']
+        dayL = range(90)
 
         with open(opts.target, 'rU') as f:
             targetD = pickle.load(f)
@@ -226,14 +231,22 @@ def main(argv=None):
             days = [maxDay - day for day in dayL]
             sampDFL.append(df[df.day.isin(days)])
         sampDF = pd.concat(sampDFL)
+        sampDF['TOTAL'] = sampDF[['COLONIZED', 'CLEAR', 'INFECTED', 'CHRONIC',
+                                  'RECOVERED', 'UNDETCOLONIZED']].sum(axis=1)
         savSampDF = sampDF.copy()
-        sampDF = sampDF.groupby(['tier', 'fac', 'day', 'run']).sum()  # Sum over wards within a sample
-        sampDF = sampDF.drop(columns=['ward'])
+        #sampDF = sampDF.groupby(['tier', 'abbrev', 'day', 'run']).sum()  # Sum over wards within a sample
+        sampDF = sampDF.groupby(['tier', 'abbrev', 'run']).sum()  # Sum over wards within a sample
+        #sampDF = sampDF.drop(columns=['ward'])
         sampDF = sampDF.add_suffix('_sum').reset_index()
         sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
+        
+        #colKey, label, tD = 'prev_sample', 'prevalence', targetD
+        colKey, label, tD = 'newColonized_sum', 'incidence', None
         for tier in sampDF['tier'].unique():
-            prevalenceBoxPlots(sampDF, targetD, tier, logy=opts.log)
-        tierPrevalenceBoxPlot(savSampDF, targetD, logy=opts.log)
+            prevalenceBoxPlots(sampDF, tD, tier, logy=opts.log,
+                               label=label, colKey=colKey)
+        tierPrevalenceBoxPlot(savSampDF, tD, logy=opts.log,
+                              label=label, colKey=colKey)
 
     except Exception, e:
         indent = len(program_name) * " "
