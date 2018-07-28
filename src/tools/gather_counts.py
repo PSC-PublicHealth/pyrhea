@@ -48,6 +48,14 @@ import tools_util as tu
 DEFAULT_OUT_FILE = 'counts_output'
 
 
+def pandasVersionIsAtLeast23():
+    """There is a frustrating incompatibility in versions of Pandas below 0.23.0"""
+    # Thanks to stackoverflow.com/questions/11887762/how-do-i-compare-version-numbers-in-python
+    # user kindall !
+    versionTuple = tuple(map(int, (pd.__version__.split("."))))
+    return versionTuple >= (0, 23, 0)
+
+
 def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
     """Convert the time series contents of a notes file to a Pandas DataFrame"""
     print "note = {0}".format(note)
@@ -90,7 +98,11 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
                 if entryDF is None:
                     entryDF = facDF
                 else:
-                    entryDF = pd.concat((entryDF, facDF), sort=True)
+                    if pandasVersionIsAtLeast23():
+                        entryDF = pd.concat((entryDF, facDF), sort=True)
+                    else:
+                        entryDF = pd.concat((entryDF, facDF))
+                        
             entryDF = entryDF.reset_index(drop=True)
             bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
