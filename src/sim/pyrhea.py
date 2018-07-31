@@ -948,6 +948,8 @@ def main():
                 quitNow = True
         if quitNow:
             raise RuntimeError('Probable typos found in the policy section of the input file')
+        # Check that constants replacements happened as expected
+        pyrheautils.checkReplacementsWereUsed()
 
     except Exception as e:
         if patchGroup:

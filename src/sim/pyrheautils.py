@@ -106,14 +106,21 @@ def readConstantsReplacementFile(fileName):
     if hasattr(newMod, "facilitiesReplacementData"):
         facilitiesReplacementData = getattr(newMod, "facilitiesReplacementData")
 
+usedSet = set()
+
 def replaceData(fileName, yData):
     global constantsReplacementData
     global saveNewConstants
+    global usedSet
 
-    if fileName not in constantsReplacementData:
+    trFileName = os.path.abspath(pathTranslate(fileName))
+    filesToReplD = {os.path.abspath(pathTranslate(fn)) : yd
+                    for fn, yd in constantsReplacementData.items()}
+    if trFileName not in filesToReplD:
         return yData
 
-    repl = constantsReplacementData[fileName]
+    usedSet.add(trFileName)
+    repl = filesToReplD[trFileName]
 
     yaml = replaceYamlData(repl, yData)
 
@@ -123,7 +130,14 @@ def replaceData(fileName, yData):
 
     return yaml
 
-        
+def checkReplacementsWereUsed():
+    unusedL = []
+    for fileName in constantsReplacementData:
+        if os.path.abspath(pathTranslate(fileName)) not in usedSet:
+            unusedL.append(fileName)
+    if unusedL:
+        raise RuntimeError('The following constants replacement paths failed: %s'
+                           % unusedL)
 
 def replaceYamlData(replacementData, yData):
     for path, val in replacementData:
