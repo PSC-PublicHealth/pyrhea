@@ -43,12 +43,13 @@ class XDROPlusCREBundleScenario(BaseScenarioPolicy):
     def begin(self, callingAgent, timeNow):
         assert hasattr(self.patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                       % self.patch.name)
+        baseTime = timeNow
 
         for when, abbrev, action in self.evtList:
-            if when != timeNow:
-                assert(timeNow < when), ('It is too late to %s intervention at %s'
+            if baseTime + when != timeNow:
+                assert(timeNow < baseTime + when), ('It is too late to %s intervention at %s'
                                          % (action, abbrev))
-                timeNow = callingAgent.sleep(when - timeNow)
+                timeNow = callingAgent.sleep((baseTime + when) - timeNow)
             print "{0}: {1} {2}".format(abbrev, when, action)
 
             for fac in self.patch.allFacilities:
