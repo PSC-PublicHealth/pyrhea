@@ -31,14 +31,14 @@ import scipy.stats as st
 
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
-import pyrheautils
-import schemautils
+from pyrheautils import prepPathTranslations, pathTranslate
 import pathogenbase as pth
 from facilitybase import CareTier
-from notes_plotter import readFacFiles, checkInputFileSchema
-from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA
+#from notes_plotter import readFacFiles, checkInputFileSchema
+#from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA
 from time_series_plotter import mergeNotesFiles, getTimeSeriesList
-import print_xdro_counts
+import tools_util as tu
+#import print_xdro_counts
 #import affinity
 
 #if cpu_count() < 60:
@@ -61,11 +61,13 @@ class Constants:
     daysPerYear = 365.0
     minutesPerHour = 60.0
     workDayHours = 8.0
+
+
 class Cost:
     def __init__(self,value_,year_):
         self.value = value_
         self.year = year_
-        
+
     def discountedValue(self,targetYear,discountRate=0.03):
         yearDiff = targetYear - self.year
         if yearDiff == 0:
@@ -91,22 +93,20 @@ class Cost:
             return Cost(self.value*other,self.year)
         else:
             raise RuntimeError("Doesn't make sense")
-        
-            
-    
-    
+
+
 class Distribution(object):
     def __init__(self,type_,args_):
         self.type = type_
         self.args = args_
-        
+
     def draw(self):
         if self.type == 'value':
             return self.args['value']
         elif self.type == 'gamma':
             mean = self.args['mean']
             stdev = self.args['stdev']
-            
+
             alpha = (mean/stdev)**2
             beta = (stdev**2)/mean
             
@@ -215,7 +215,8 @@ def computeCostsOfBundles(numBundles_,numSwabs_, targetYear_, params_):
     return Cost(value, targetYear_)      
         
                                         
-def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGloves_, cGowns_, rNurseWage_, personAge_, annualWage_, hourlyWage_, targetYear_, params_):
+def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGloves_, cGowns_,
+                      rNurseWage_, personAge_, annualWage_, hourlyWage_, targetYear_, params_):
     outcomesDict = params_['outcomes']
     outcomeCosts = {x:{} for x in outcomesDict.keys()}
     
@@ -420,9 +421,16 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
             
             utilityWeight = Distribution(v['utilityWeight']['distribution']['type'],
                                          v['utilityWeight']['distribution']['args']).draw()
-            QALYLost = Cost(((utilityWeight*baseQALYCases.discountedValue(targetYear_).value)/Constants.daysPerYear)*attrLOS \
-                            +npQDead.discountedValue(targetYear_).value,
+            
+            # Joel's attempted mod
+            disUtilityWeight = (1.0 - utilityWeight) * (baseQALYCases.discountedValue(targetYear_).value
+                                                        / Constants.daysPerYear)
+            QALYLost = Cost(disUtilityWeight*attrLOS + npQDead.discountedValue(targetYear_).value,
                             targetYear_)
+            # end Joel's attempted mod
+            #QALYLost = Cost(((utilityWeight*baseQALYCases.discountedValue(targetYear_).value)/Constants.daysPerYear)*attrLOS \
+            #                +npQDead.discountedValue(targetYear_).value,
+            #                targetYear_)
             
             outcomeCosts[k]['QALYs Lost'] = QALYLost                
             #print "QLost = {0}".format(QALYLost)
@@ -779,7 +787,7 @@ def extractCRESwabsGiven(abbrev,specialDict,burninDays):
             sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
     return sums   
 def extractXDROCounts(abbrev,specialDict,burninDays):
-    cpList = print_xdro_counts.getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
+    cpList = getTimeSeriesList(abbrev, specialDict, 'localtierarrivals')
     sumT = 0.0
     for dayVec,curves in cpList:
         dayIndex = np.where(dayVec == (burninDays + 1))[0][0]
@@ -790,7 +798,6 @@ def extractXDROCounts(abbrev,specialDict,burninDays):
 def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
     specialDict = mergeNotesFiles([note], False)
     #print "specialDict = {0}".format(specialDict)
-    specialXDRODict = print_xdro_counts.mergeNotesFiles([note], False)
     #print "specialXDRODict = {0}".format(specialXDRODict)
     newColL = {}#defaultdict(lambda:0.0)
     newColAll = 0.0
@@ -843,7 +850,7 @@ def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
     for abbrev in abbrevs:
         xdroByAbbrev[abbrev] = 0.0
         if abbrev in xdroabbrevs:
-            xdroByAbbrev[abbrev]  += extractXDROCounts(abbrev,specialXDRODict,burninDays)
+            xdroByAbbrev[abbrev]  += extractXDROCounts(abbrev,specialDict,burninDays)
         else:
             xdroByAbbrev[abbrev] = 0.0
     print "leaving"
@@ -855,9 +862,16 @@ def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
     #newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
 
 def getNewCols_poolHelper(args):
-    return getNewCols(*args)
+    try:
+        return getNewCols(*args)
+    except Exception as e:
+        print 'ERROR: getNewCols failed'
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return None
     
-def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs, params, opts, facDict, fracAttribMort, notes): 
+def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs,
+                    params, opts, facDict, fracAttribMort, notes):
     costsOfReal = {x:{} for x in abbrevs}
     randomInt = random.randint(0,len(notes)-1)
     newColAll = newColsArray[randomInt]
@@ -906,7 +920,8 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, x
         #contPrecCosts = Cost(0.0,opts.targetyear)
         #for fType,cpDays in cpDaysByType.items():
         print facDict[abbrev]['category']
-        cpCosts = computeCostsOfContactPrecautions(cpDaysByType[abbrev], facDict[abbrev]['category'], rNurseWage, cGloves, cGowns, opts.targetyear, params)
+        cpCosts = computeCostsOfContactPrecautions(cpDaysByType[abbrev], facDict[abbrev]['category'],
+                                                   rNurseWage, cGloves, cGowns, opts.targetyear, params)
         print "cpCosts = {0}".format(cpCosts)
         contPrecCostsByAbbrev[abbrev] = Cost(cpCosts['pCP'].value + cpCosts['oCP'].value,opts.targetyear)
         #    cpst = computeCostsOfContactPrecautions(cpDays, fType, rNurseWage, cGloves, cGowns, opts.targetyear, params) 
@@ -925,7 +940,8 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, x
         #sys.stdout.flush()
         #print "NCOLALL = {0}".format(newColAll)
         #sys.stdout.flush()
-        outcomesDictByAbbrev[abbrev] = determineOutcomes(newColAll[abbrev],0,infectionGivenCol,fracAttribMort,cGloves,cGowns,rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
+        outcomesDictByAbbrev[abbrev] = determineOutcomes(newColAll[abbrev],0,infectionGivenCol,fracAttribMort,cGloves,cGowns,
+                                                         rNurseWage, personAge, annualWage, hourlyWage, opts.targetyear, params) # Replace with RHEA
         print "This is the granddady"
         #sys.stdout.flush()
         #costsOfRealization[i]['outcomesDict'] = outcomesDict
@@ -979,7 +995,13 @@ def determine_costs(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, x
     #costsOfRealizationTmp[i] = costsOfReal
 
 def determine_costs_helper(args):
-    return determine_costs(*args)
+    try:
+        return determine_costs(*args)
+    except Exception as e:
+        print 'ERROR: determine_costs failed'
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return None
     
 def main():
     
@@ -996,16 +1018,16 @@ def main():
                             "  (Remember to protect the filename string from the shell!)"))
     parser.add_option('-r','--nreals',type='int',default=1000,
                      help='number of realizations of the costing model to run through')
-    parser.add_option('-y','--targetyear',type='int',default=2017,
+    parser.add_option('-y','--targetyear',type='int',default=2018,
                       help='year that you would like the costing to be computed in')
     parser.add_option('-x','--xdroyamlfile',type='string', default=None,
                       help="specify the xdro scenario yaml file if there is one, if not, XDRO won't be costed")
     parser.add_option('-m','--nprocs',type='int',default=1,
                       help='number of cpus to run the costing model over')
-    
+
     opts, args = parser.parse_args()
-    
-    inputDict = checkInputFileSchema(args[0], os.path.join(SCHEMA_DIR, INPUT_SCHEMA))
+
+    inputDict = tu.readModelInputs(args[0])
     if opts.out:
         outFileName = opts.out
     else:
@@ -1014,17 +1036,16 @@ def main():
     if 'trackedFacilities' not in inputDict or not len(inputDict['trackedFacilities']):
         raise RuntimeError('Run description file does not list any tracked facilities')
 
-    modelDir = inputDict['modelDir']
-    pyrheautils.PATH_STRING_MAP['MODELDIR'] = os.path.abspath(modelDir)
-    implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
-    pyrheautils.PATH_STRING_MAP['IMPLDIR'] = implDir
+    prepPathTranslations(inputDict)
+    modelDir = pathTranslate(inputDict['modelDir'])
+    implDir = pathTranslate(inputDict['facilityImplementationDir'])
 
-    facDirList = [pyrheautils.pathTranslate(fPth) for fPth in inputDict['facilityDirs']]
-    facDict = readFacFiles(facDirList)
-    
+    facDict = tu.getFacDict(inputDict)
+
     ### get the abbreviations within a 13 mile radius
-    facilitiesWithin13Miles = []
-    with open("{0}/constants/facilities_in_13miles.yaml".format(modelDir),"rb") as f:
+    ### get the abbreviations within a 13 mile radius
+    facIn13Path = pathTranslate("$(CONSTANTS)/facilities_in_13miles.yaml")
+    with open(facIn13Path, "rb") as f:
         facilitiesWithin13Miles = yaml.load(f)['facilitiesWithin13Miles']['locAbbrevList']
     
     #for x,v in facDict.items():
@@ -1033,11 +1054,7 @@ def main():
     burninDays = int(inputDict['burnInDays'])
     runDays = int(inputDict['runDurationDays'])
     
-    paths = {}
-    for pT in inputDict['pathTranslations']:
-        paths[pT['key']] = pT['value']
-        
-    with open("{0}/costModel_ChicagoLand.yaml".format(paths['CONSTANTS']),"rb") as f:
+    with open(pathTranslate("$(MODELDIR)/costModel_ChicagoLand.yaml"),"rb") as f:
         params = yaml.load(f)
         
     notes = []
@@ -1061,11 +1078,11 @@ def main():
         for abbrev in inputDict['trackedFacilities']:
             if abbrev in facDict:
                 abbrevs.append(abbrev)
-                
+
     nprocs = opts.nprocs
-    
+
     argsList = [(abbrevs, notes[i], facDict, xdroabbrevs, burninDays) for i in range(0,len(notes))]
-    
+
     p = Pool(nprocs)
     nColsReturnTmp = p.map(getNewCols_poolHelper,argsList)
     p.close()
@@ -1101,10 +1118,10 @@ def main():
 #             xdroArray[k] = v[3]
 #         #print cpDaysArray   
 #         #print xdroArray
-        
+
     nReals = opts.nreals
-    
-#     costs = {'Societal Costs': , 
+
+#     costs = {'Societal Costs': ,
 #              'CRE Bundle Intervention Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
 #              'XDRO Intervention Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
 #              'Non Intervention CP Costs': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
@@ -1117,34 +1134,36 @@ def main():
 #              'QALYs Lost': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts},
 #              'CRE Bundles': {x:{y:{} for y in abbrevs} for x in fractionAttribMorts}
 #              }
-    
-    costCats= ['Societal Costs' , 
-                    'CRE Bundle Intervention Costs' ,
-                     'XDRO Intervention Costs',
-                     'Non Intervention CP Costs' ,
-                     'Intervention Costs' ,
-                     'thirdParty Costs',
-                     'Hospitalization Costs',
-                     'Cases', 
-                     'Deaths',
-                     #'CPDays' , 
-                     'QALYs Lost' ,
-                     #'CRE Bundles' 
-                     ]
+
+    costCats= ['Societal Costs' ,
+               'CRE Bundle Intervention Costs' ,
+               'XDRO Intervention Costs',
+               'Non Intervention CP Costs' ,
+               'Intervention Costs' ,
+               'thirdParty Costs',
+               'Hospitalization Costs',
+               'Cases', 
+               'Deaths',
+               #'CPDays' , 
+               'QALYs Lost' ,
+               #'CRE Bundles' 
+               ]
     
     costs = {c:{x:{y:{} for y in abbrevs} for x in fractionAttribMorts} for c in costCats}
     totalCosts = {c:{x:{} for x in fractionAttribMorts} for c in costCats}
-    
+
     #newColsArray, cpDaysArray, creBundlesArray, xdroArray, abbrevs, params, opts, fracAttribMort, notes): 
-    
-    
+
+
     for fracAttribMort in fractionAttribMorts:
         costsOfRealization = [{} for x in range(0,nReals)]
-        costArgList = [(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs,params, opts, facDict, fracAttribMort,notes) for x in range(0,nReals)]
+        costArgList = [(newColsArray, cpDaysArray, creBundlesArray, creSwabsArray, xdroArray, abbrevs,
+                        params, opts, facDict, fracAttribMort,notes) for x in range(0,nReals)]
         pp = Pool(nprocs)
+        print costArgList[0][-1]
         costOfRealByAbbrev = pp.map(determine_costs_helper,costArgList)
         pp.close()
-    
+
     for fracAttribMort in fractionAttribMorts:
         for cat in costCats:
             print "stuff for cat {0}".format(cat)
