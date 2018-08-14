@@ -920,6 +920,7 @@ def main():
             sys.exit('Exception during initialization')
 
     logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
+    runFailed = False
     try:
         exitMsg = patchGroup.start()
         logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
@@ -927,6 +928,7 @@ def main():
         logger.error('%s exception %s; traceback follows' % (patchGroup.name, e))
         import traceback
         traceback.print_exc(file=sys.stderr)
+        runFailed = True
     finally:
         logger.info('%s writing notes and exiting' % patchGroup.name)
 
@@ -939,6 +941,10 @@ def main():
     #                 recs = nh['occupancy']
     #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
     #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
+            if runFailed:
+                # edit output file name to show failure
+                baseNm, extNm = os.path.splitext(outputNotesName)
+                outputNotesName = baseNm + '_FAILED' + extNm
             if outputNotesName.lower().endswith('.json'):
                 with open(outputNotesName, 'w') as f:
                     f.write('{\n')
