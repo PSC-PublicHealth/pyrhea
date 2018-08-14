@@ -37,7 +37,7 @@ def _parseConstantByFacilityCategory(fieldStr, key='category'):
     topD = {}
     for elt in _constants[fieldStr]:
         cat = elt[key]
-        topD[cat] = float(elt['num']['value'])
+        topD[cat] = int(elt['num']['value'])
     return topD
 
 class SwabTestCore(object):
