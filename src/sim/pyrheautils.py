@@ -31,9 +31,10 @@ logger = logging.getLogger(__name__)
 
 PATH_STRING_MAP = {}
 
-def prepPathTranslations(inp):
+def prepPathTranslations(inp, homeDir=None):
     """
     load up PATH_STRING_MAP based on the (already read in) pyrhea input yaml file/input dict
+    if provided, homeDir is used as a reference directory to resolve relative path definitions
     """
     global PATH_STRING_MAP
 
@@ -56,12 +57,15 @@ def prepPathTranslations(inp):
                            ('AGENTDIR', '$(SIMDIR)/agents/$(MODEL)'),
                            ]
 
-    for k,v in defaultTranslations:
+    for k, v in defaultTranslations:
         PATH_STRING_MAP[k] = v
 
     for inputKey, xlateKey in primaryKeys:
         if inputKey in inp:
-            PATH_STRING_MAP[xlateKey] = inp[inputKey]
+            inpTrans = inp[inputKey]
+            if homeDir and not os.path.isabs(inpTrans):
+                inpTrans = os.path.join(homeDir, inpTrans)
+            PATH_STRING_MAP[xlateKey] = inpTrans
 
     if 'pathTranslations' in inp:
         for elt in inp['pathTranslations']:
