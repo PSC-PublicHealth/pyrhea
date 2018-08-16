@@ -1,0 +1,40 @@
+#! /bin/bash
+#
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=2
+#SBATCH -p RM-shared
+#SBATCH --time=1:00:00
+#SBATCH --array=0-%maxfile%
+ar=$SLURM_ARRAY_TASK_ID
+
+scenario=%scenario%
+
+echo $scenario
+
+source ${HOME}/setup_python_path_olympus.sh
+
+runyaml=%runyaml%
+basedir=%basedir%
+bundledir=%bundledir%
+workdir=%workdir%
+topdir=%topdir%
+minNotesSz=%minNotesSz%
+pyrheadir=%pyrheadir%
+targetdir=%targetdir%
+tooldir=$pyrheadir/src/tools
+cd $tooldir
+
+narr=()
+for fn in `$topdir/find_notes.py $targetdir $minNotesSz`
+do
+	narr+=($fn)
+done
+
+myNote=${narr[$ar]}
+outName="${workdir}/${myNote}_counts"
+sto=$workdir/gather_counts_${ar}.out
+
+runName=$bundledir/$runyaml
+
+python gather_counts.py -n $targetdir/$myNote -m 1 -x $workdir/xdro_facs.yaml \
+       --nocsv --nostats --out $outName  $runName >& $sto

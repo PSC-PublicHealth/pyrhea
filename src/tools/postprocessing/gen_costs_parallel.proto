@@ -1,0 +1,38 @@
+#! /bin/bash
+#
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=28
+#SBATCH -p RM
+#SBATCH --time=1:00:00
+
+scenario=%scenario%
+runyaml=%runyaml%
+basedir=%basedir%
+bundledir=%bundledir%
+workdir=%workdir%
+topdir=%topdir%
+minNotesSz=%minNotesSz%
+pyrheadir=%pyrheadir%
+targetdir=%targetdir%
+tooldir=$pyrheadir/src/tools
+
+echo $scenario
+
+source ${HOME}/setup_python_path_olympus.sh
+
+cd $tooldir
+
+narr=()
+for fn in `$topdir/find_notes.py $targetdir $minNotesSz`
+do
+	narr+=($fn)
+done
+
+outName="${workdir}/${scenario}_costs"
+sto=$workdir/compute_costs.out
+
+runName=$bundledir/$runyaml
+
+python compute_costs.py ${narr[@]/#/-n $targetdir\/} \
+    -r 5000 -m 14 -x $workdir/xdro_facs.yaml \
+    --out $outName $runName >& $sto

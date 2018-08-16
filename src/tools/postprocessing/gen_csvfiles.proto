@@ -1,0 +1,32 @@
+#! /bin/bash
+#
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=28
+#SBATCH -p RM
+#SBATCH --time=1:00:00
+
+scenario=%scenario%
+runyaml=%runyaml%
+basedir=%basedir%
+bundledir=%bundledir%
+workdir=%workdir%
+topdir=%topdir%
+minNotesSz=%minNotesSz%
+pyrheadir=%pyrheadir%
+targetdir=%targetdir%
+tooldir=$pyrheadir/src/tools
+
+echo $scenario
+
+source ${HOME}/setup_python_path_olympus.sh
+
+cd $tooldir
+
+outName="${workdir}/${scenario}_cumulative_counts"
+sto=$workdir/gather_csvfiles.out
+
+runName=$bundledir/$runyaml
+
+python gather_counts.py -n $workdir/\*.mpz --glob -m 1 \
+    -x $workdir/xdro_facs.yaml \
+    --nostats --out $outName  $runName >& $sto
