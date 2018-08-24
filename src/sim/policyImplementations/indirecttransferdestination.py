@@ -16,6 +16,7 @@
 ###################################################################################
 
 import logging
+from collections import defaultdict
 
 import pyrheautils
 from phacsl.utils.collections.phacollections import SingletonMetaClass, enum
@@ -64,8 +65,8 @@ class IndirectTransferCore(object):
     def _buildWeightedLists(self):
         nmDict = CareTier.names
         tierFacSets = {tier: set(self.getTierAddrMap(tier).keys()) for tier in nmDict.keys()}
-        pairsSeen = set()
         self.tbl = {}
+        tmpTbl = {}
         self.totTbl = {}
         for transferMatrixFilePath in _constants['transferFilePaths']:
             LOGGER.info('Importing the weight data file %s', transferMatrixFilePath)
@@ -74,24 +75,24 @@ class IndirectTransferCore(object):
             for srcName, rec in rawTbl.items():
                 if srcName not in self.tbl:
                     self.tbl[srcName] = {}
+                    tmpTbl[srcName] = {}
                     self.totTbl[srcName] = {}
-                for destName in rec.keys():
-                    if (srcName, destName) in pairsSeen:
-                        raise RuntimeError('Duplicate weight table entries for %s -> %s' %
-                                           (srcName, destName))
-                    else:
-                        pairsSeen.add((srcName, destName))
                 for tier in nmDict.keys():
                     if tier not in self.tbl[srcName]:
-                        self.tbl[srcName][tier] = []
+                        tmpTbl[srcName][tier] = defaultdict(lambda: 0)
                         self.totTbl[srcName][tier] = 0.0
-                    wtL = self.tbl[srcName][tier]
                     wtSum = self.totTbl[srcName][tier]
                     for destName, ct in rec.items():
                         if destName in tierFacSets[tier]:
-                            wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
+                            tmpTbl[srcName][tier][destName] += ct
                             wtSum += ct
                     self.totTbl[srcName][tier] = wtSum
+            for srcName in tmpTbl:
+                for tier in tmpTbl[srcName]:
+                    wtL = []
+                    for destName, ct in tmpTbl[srcName][tier].items():
+                        wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
+                    self.tbl[srcName][tier] = wtL
             LOGGER.info('Import complete.')
         for srcName, subTbl in self.tbl.items():
             for wtL in subTbl.values():
