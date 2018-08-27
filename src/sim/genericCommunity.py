@@ -704,16 +704,20 @@ class Community(Facility):
         return (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
                 needsSkilNrsRate, needsVentRate)
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
-        patientStatus = patientAgent.getStatus()
-        ward = patientAgent.ward
-        careTier = ward.tier
+    def getPrevFacAbbrev(self, patientAgent):
         for ent in reversed(patientAgent.agentHistory):
             if decodeHistoryEntry(ent)['category'] != 'COMMUNITY':
                 prevFacAbbrev = decodeHistoryEntry(ent)['abbrev']
                 break
         else:
             prevFacAbbrev = None
+        return prevFacAbbrev
+
+    def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        careTier = ward.tier
+        prevFacAbbrev = self.getPrevFacAbbrev(patientAgent)
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
         if patientAgent.getDiagnosis().diagClassA == DiagClassA.WELL:

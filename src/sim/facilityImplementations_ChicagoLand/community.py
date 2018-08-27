@@ -15,6 +15,7 @@
 #                                                                                 #
 ###################################################################################
 import logging
+import random
 logger = logging.getLogger(__name__)
 
 from scipy.stats import expon
@@ -29,6 +30,8 @@ import pyrheautils
 
 # Setting _constants_schema here does not work because of order of operations
 # _constants_schema = 'community_ChicagoLand_constants_schema.yaml'
+
+BYPASS_KEY = '_bypass_'
 
 class CommunityManagerCore(object):
     """This is a place to put infrastructure we must share between community managers"""
@@ -134,6 +137,23 @@ class CommunityCore(object):
                     self.tbl[srcName][ctgNameMapper(ctg)] = ct/tot
             logger.info('Import complete.')
 
+        assert BYPASS_KEY not in self.tbl, ('Internal BYPASS key %s has collided with a facility name'
+                                            % BYPASS_KEY)
+
+        for transferFilePath in _constants['bypassCategoryMapFilePaths']:
+            logger.info('Importing the weight data file %s', transferFilePath)
+            rawTbl = pyrheautils.importConstants(transferFilePath,
+                                                 _constants['srcToCategoryMapFileSchema'])
+            assert rawTbl.keys() == ['COMMUNITY'], ("Bypass category transfer file {0}".format(transferFilePath)
+                                                    + " has an unexpected format")
+            # normalize on the fly
+            for rec in rawTbl.values():  # of which there will be only one
+                tot = sum(rec.values())
+                self.tbl[BYPASS_KEY] = {}
+                for ctg, ct in rec.items():
+                    self.tbl[BYPASS_KEY][ctgNameMapper(ctg)] = ct/tot
+            logger.info('Import complete.')
+
         # We need to add an entry for 'no source' representing the net weights
         # marginalized across sources
         dct = defaultdict(lambda: 0.0)
@@ -149,6 +169,9 @@ class CommunityCore(object):
         Return net fraction of patients transferring to HOSPITAL, NURSINGHOME/SNF,
         VSNF, and LTAC in that order as a tuple.  The sum of the return values is
         expected to be 1.0.
+        
+        For this implementation, pFAbbrev may be BYPASS_KEY above rather than an
+        actual facility abbreviation or None.
         """
         if self.tbl is None:
             self._buildWeightedLists(ctgNameMapper)
@@ -157,9 +180,11 @@ class CommunityCore(object):
                 for key in ['HOSPITAL', 'NURSINGHOME', 'VSNF', 'LTAC']]
         return tuple(rslt)
 
+
 class Community(genericCommunity.Community):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         self.meanPop = descr['meanPop']['value']
+        self.bypassFrac = _constants['fracBypassIndirect']['value']
         super(Community, self).__init__(descr, patch, policyClasses=policyClasses,
                                         categoryNameMapper=categoryNameMapper,
                                         managerClass=CommunityManager,
@@ -217,6 +242,12 @@ class Community(genericCommunity.Community):
 
         return (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
                 needsSkilNrsRate, needsVentRate)
+
+    def getPrevFacAbbrev(self, patientAgent):
+        if random.random() < self.bypassFrac:
+            return BYPASS_KEY
+        else:
+            return genericCommunity.Community.getPrevFacAbbrev(self, patientAgent)
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):

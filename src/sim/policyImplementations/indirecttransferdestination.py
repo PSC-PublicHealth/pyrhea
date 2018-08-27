@@ -16,6 +16,7 @@
 ###################################################################################
 
 import logging
+import random
 from collections import defaultdict
 
 import pyrheautils
@@ -44,6 +45,11 @@ class IndirectTransferCore(object):
         self.tierAddrMap = None
         self.tbl = None
         self.totTbl = None
+        self.bypassFracByTier = {}
+        for tier, tierNm in CareTier.names.items():
+            self.bypassFracByTier[tier] = (_constants['fracBypassIndirectByTier'][tierNm]['value']
+                                           if tierNm in _constants['fracBypassIndirectByTier']
+                                           else 0.0)
 
     def _buildTierAddrMap(self):
         self.tierAddrMap = {}
@@ -62,38 +68,55 @@ class IndirectTransferCore(object):
             self._buildTierAddrMap()
         return self.tierAddrMap[tier]
 
+    def _buildWtLists(self, tmpTbl):
+        for srcName in tmpTbl:
+            for tier in tmpTbl[srcName]:
+                wtL = []
+                for destName, ct in tmpTbl[srcName][tier].items():
+                    wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
+                self.tbl[srcName][tier] = wtL
+
+    def _addRecToTbl(self, srcName, rec, tmpTbl, tierFacSets):
+        if srcName not in self.tbl:
+            self.tbl[srcName] = {}
+            tmpTbl[srcName] = {}
+            self.totTbl[srcName] = {}
+        for tier in CareTier.names.keys():
+            if tier not in self.tbl[srcName]:
+                self.tbl[srcName][tier] = {}
+                tmpTbl[srcName][tier] = defaultdict(lambda: 0)
+                self.totTbl[srcName][tier] = 0.0
+            wtSum = self.totTbl[srcName][tier]
+            for destName, ct in rec.items():
+                if destName in tierFacSets[tier]:
+                    tmpTbl[srcName][tier][destName] += ct
+                    wtSum += ct
+            self.totTbl[srcName][tier] = wtSum
+
     def _buildWeightedLists(self):
-        nmDict = CareTier.names
-        tierFacSets = {tier: set(self.getTierAddrMap(tier).keys()) for tier in nmDict.keys()}
+        tierFacSets = {tier: set(self.getTierAddrMap(tier).keys())
+                       for tier in CareTier.names.keys()}
         self.tbl = {}
         tmpTbl = {}
         self.totTbl = {}
-        for transferMatrixFilePath in _constants['transferFilePaths']:
-            LOGGER.info('Importing the weight data file %s', transferMatrixFilePath)
-            rawTbl = pyrheautils.importConstants(transferMatrixFilePath,
+        for transferFilePath in _constants['transferFilePaths']:
+            LOGGER.info('Importing the weight data file %s', transferFilePath)
+            rawTbl = pyrheautils.importConstants(transferFilePath,
                                                  _constants['transferFileSchema'])
             for srcName, rec in rawTbl.items():
-                if srcName not in self.tbl:
-                    self.tbl[srcName] = {}
-                    tmpTbl[srcName] = {}
-                    self.totTbl[srcName] = {}
-                for tier in nmDict.keys():
-                    if tier not in self.tbl[srcName]:
-                        tmpTbl[srcName][tier] = defaultdict(lambda: 0)
-                        self.totTbl[srcName][tier] = 0.0
-                    wtSum = self.totTbl[srcName][tier]
-                    for destName, ct in rec.items():
-                        if destName in tierFacSets[tier]:
-                            tmpTbl[srcName][tier][destName] += ct
-                            wtSum += ct
-                    self.totTbl[srcName][tier] = wtSum
-            for srcName in tmpTbl:
-                for tier in tmpTbl[srcName]:
-                    wtL = []
-                    for destName, ct in tmpTbl[srcName][tier].items():
-                        wtL.append((ct, (destName, self.getTierAddrMap(tier)[destName])))
-                    self.tbl[srcName][tier] = wtL
+                self._addRecToTbl(srcName, rec, tmpTbl, tierFacSets)
             LOGGER.info('Import complete.')
+        for transferFilePath in _constants['bypassTransferFilePaths']:
+            LOGGER.info('Importing the weight data file %s', transferFilePath)
+            rawTbl = pyrheautils.importConstants(transferFilePath,
+                                                 _constants['transferFileSchema'])
+            assert rawTbl.keys() == ['COMMUNITY'], ("Bypass transfer file {0}".format(transferFilePath)
+                                                    + " has an unexpected format")
+            for rec in rawTbl.values():
+                self._addRecToTbl(None, rec, tmpTbl, tierFacSets)
+            LOGGER.info('Import complete.')
+            
+        self._buildWtLists(tmpTbl)
         for srcName, subTbl in self.tbl.items():
             for wtL in subTbl.values():
                 wtL.sort(reverse=True)
@@ -171,21 +194,10 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
 
     def getOrderedCandidateFacList(self, thisFacility, patientAgent,  # @UnusedVariable
                                    oldTier, newTier, timeNow):  # @UnusedVariable
-        timeTupleL = facilitybase.buildTimeTupleList(patientAgent, timeNow)
-        transType, rootFac, daysSince = self.classifyTrans(newTier, timeTupleL)
-        if transType == TransType.OTHER:
-            return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
-                                                                  oldTier, newTier, timeNow)
-        else:
-            if transType in (TransType.HOSP_INDIRECT, TransType.NH_READMIT):
-                pairList, tot = self.core.getWeightedList(rootFac, newTier)
-            else:
-                raise RuntimeError('Unknown transfer type %s' % transType)
-#             print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],
-#                                            CareTier.names[newTier], tot)
-#             print 'pairList: %s' % str([(wt, tpl[0]) for wt, tpl in pairList])
-#             print 'newTier: %s' % CareTier.names[newTier]
-
+        if random.random() < self.core.bypassFracByTier[newTier]:
+            # Bypass the indirect transfer mechanism
+            print 'bypass'
+            pairList, tot = self.core.getWeightedList(None, newTier)
             try:
                 return [addr for destNm, addr                                   # @UnusedVariable
                         in transferbydrawwithreplacement.randomOrderByWt(pairList, tot,
@@ -194,6 +206,30 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                 LOGGER.error('Hit IndexError %s for %s %s -> %s at %s', e, thisFacility.abbrev,
                                oldTier, newTier, timeNow)
                 raise
+        else:
+            timeTupleL = facilitybase.buildTimeTupleList(patientAgent, timeNow)
+            transType, rootFac, daysSince = self.classifyTrans(newTier, timeTupleL)
+            if transType == TransType.OTHER:
+                return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
+                                                                      oldTier, newTier, timeNow)
+            else:
+                if transType in (TransType.HOSP_INDIRECT, TransType.NH_READMIT):
+                    pairList, tot = self.core.getWeightedList(rootFac, newTier)
+                else:
+                    raise RuntimeError('Unknown transfer type %s' % transType)
+    #             print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],
+    #                                            CareTier.names[newTier], tot)
+    #             print 'pairList: %s' % str([(wt, tpl[0]) for wt, tpl in pairList])
+    #             print 'newTier: %s' % CareTier.names[newTier]
+    
+                try:
+                    return [addr for destNm, addr                               # @UnusedVariable
+                            in transferbydrawwithreplacement.randomOrderByWt(pairList, tot,
+                                                                             cull=thisFacility.abbrev)]
+                except IndexError, e:
+                    LOGGER.error('Hit IndexError %s for %s %s -> %s at %s', e, thisFacility.abbrev,
+                                   oldTier, newTier, timeNow)
+                    raise
 
 
 def getPolicyClasses():
