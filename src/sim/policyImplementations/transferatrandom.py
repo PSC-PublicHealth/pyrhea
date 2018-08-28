@@ -36,7 +36,8 @@ class RandomTransferDestinationPolicy(BaseTransferDestinationPolicy):
     def __init__(self, patch, categoryNameMapper):
         super(RandomTransferDestinationPolicy, self).__init__(patch, categoryNameMapper)
 
-    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier,
+                                   modifierDct, timeNow):
         queueClass = tierToQueueMap[newTier]
         facAddrList = [tpl[1] for tpl in self.patch.serviceLookup(queueClass.__name__)]
         random.shuffle(facAddrList)

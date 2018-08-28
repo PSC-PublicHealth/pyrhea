@@ -25,13 +25,12 @@ from stats import CachedCDFGenerator
 from pathogenbase import PthStatus
 from typebase import PatientOverallHealth, CareTier
 import facilitybase
+from pyrheabase import TierUpdateModKey
 import genericCommunity
 import pyrheautils
 
 # Setting _constants_schema here does not work because of order of operations
 # _constants_schema = 'community_ChicagoLand_constants_schema.yaml'
-
-BYPASS_KEY = '_bypass_'
 
 class CommunityManagerCore(object):
     """This is a place to put infrastructure we must share between community managers"""
@@ -137,8 +136,9 @@ class CommunityCore(object):
                     self.tbl[srcName][ctgNameMapper(ctg)] = ct/tot
             logger.info('Import complete.')
 
-        assert BYPASS_KEY not in self.tbl, ('Internal BYPASS key %s has collided with a facility name'
-                                            % BYPASS_KEY)
+        assert genericCommunity.BYPASS_KEY not in self.tbl, ('Internal BYPASS key %s has collided'
+                                                             ' with a facility name'
+                                                             % genericCommunity.BYPASS_KEY)
 
         for transferFilePath in _constants['bypassCategoryMapFilePaths']:
             logger.info('Importing the weight data file %s', transferFilePath)
@@ -149,9 +149,9 @@ class CommunityCore(object):
             # normalize on the fly
             for rec in rawTbl.values():  # of which there will be only one
                 tot = sum(rec.values())
-                self.tbl[BYPASS_KEY] = {}
+                self.tbl[genericCommunity.BYPASS_KEY] = {}
                 for ctg, ct in rec.items():
-                    self.tbl[BYPASS_KEY][ctgNameMapper(ctg)] = ct/tot
+                    self.tbl[genericCommunity.BYPASS_KEY][ctgNameMapper(ctg)] = ct/tot
             logger.info('Import complete.')
 
         # We need to add an entry for 'no source' representing the net weights
@@ -169,7 +169,7 @@ class CommunityCore(object):
         Return net fraction of patients transferring to HOSPITAL, NURSINGHOME/SNF,
         VSNF, and LTAC in that order as a tuple.  The sum of the return values is
         expected to be 1.0.
-        
+
         For this implementation, pFAbbrev may be BYPASS_KEY above rather than an
         actual facility abbreviation or None.
         """
@@ -191,7 +191,7 @@ class Community(genericCommunity.Community):
                                         wardClass=CommunityWard)
         self.core = CommunityCore()
 
-    def calcTierRateConstants(self, pFAbbrev):
+    def calcTierRateConstants(self, flowKey):
         """
         These constants represent the fraction of the newly-sick that die, that
         need rehab as a (v)SNF, and that need care at the HOSP, ICU, LTAC, SKILNRS,
@@ -199,7 +199,7 @@ class Community(genericCommunity.Community):
         """
         (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
          needsSkilNrsRate, needsVentRate) = (super(Community, self)
-                                             .calcTierRateConstants(pFAbbrev))
+                                             .calcTierRateConstants(flowKey))
 
         # un-weight to adjust for deathRate
         liveRate = 1.0 - deathRate
@@ -212,7 +212,7 @@ class Community(genericCommunity.Community):
         needsVentRate /= liveRate
 
         # Adjust for this particular patient's history
-        wtHOSP, wtSNF, wtVSNF, wtLTACH = self.core.getCategoryWeights(pFAbbrev,
+        wtHOSP, wtSNF, wtVSNF, wtLTACH = self.core.getCategoryWeights(flowKey,
                                                                       self.categoryNameMapper)
         needsVSNFTotRate = needsRehabRate + needsSkilNrsRate + needsVentRate
         if needsVSNFTotRate > 0.0:
@@ -243,11 +243,11 @@ class Community(genericCommunity.Community):
         return (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
                 needsSkilNrsRate, needsVentRate)
 
-    def getPrevFacAbbrev(self, patientAgent):
+    def updateModifiers(self, patientAgent, modifierDct):
+        genericCommunity.Community.updateModifiers(self, patientAgent, modifierDct)
         if random.random() < self.bypassFrac:
-            return BYPASS_KEY
-        else:
-            return genericCommunity.Community.getPrevFacAbbrev(self, patientAgent)
+            # replace FLOW_KEY to signal bypass
+            modifierDct[TierUpdateModKey.FLOW_KEY] = genericCommunity.BYPASS_KEY
 
 
 def generateFull(facilityDescr, patch, policyClasses=None, categoryNameMapper=None):

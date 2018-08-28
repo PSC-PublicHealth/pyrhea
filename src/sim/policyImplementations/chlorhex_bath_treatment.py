@@ -26,8 +26,8 @@ from pathogenbase import PthStatus
 from registry import Registry
 
 _validator = None
-_constants_values = '$(CONSTANTS)/contact_precautions_constants.yaml'
-_constants_schema = 'contact_precautions_constants_schema.yaml'
+_constants_values = '$(CONSTANTS)/chlorhex_bath_constants.yaml'
+_constants_schema = 'chlorhex_bath_constants_schema.yaml'
 _constants = None
 
 logger = logging.getLogger(__name__)
@@ -56,33 +56,34 @@ def _parseFracByStatusByTierByCategory(fieldStr):
     return topD
 
 
-class CPTPCore(object):
+class CBTPCore(object):
     """This is where we put things that are best shared across all instances"""
     __metaclass__ = SingletonMetaClass
-    
+
     def __init__(self):
         self.baseFracTbl = _parseFracByStatusByTierByCategory('baseFractionUnderContactPrecautions')
         self.effectiveness = _constants['transmissibilityMultiplier']['value']
 
 
-class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
-    """This policy implements contact precautions
+class ChlorhexBathTreatmentPolicy(BaseTreatmentPolicy):
+    """This policy implements contact precautions"""
 
+    """
     If the presence of this treatment corresponds to a flag in TreatmentProtocol,
     the name of that flag is the treatmentKey.
     """
-    treatmentKey = 'contactPrecautions'
+    treatmentKey = 'chlorhexBath'
 
     def __init__(self, patch, categoryNameMapper):
-        super(ContactPrecautionsTreatmentPolicy, self).__init__(patch, categoryNameMapper)
-        self.core = CPTPCore()
+        super(ChlorhexBathTreatmentPolicy, self).__init__(patch, categoryNameMapper)
+        self.core = CBTPCore()
 
     def initializePatientTreatment(self, ward, patient, timeNow=0):
         """
         This is called on patients at time zero, when they are first assigned to the
         ward in which they start the simulation.
         """
-        super(ContactPrecautionsTreatmentPolicy, self).initializePatientTreatment(ward, patient)
+        super(BaseTreatmentPolicy, self).initializePatientTreatment(ward, patient)
         pthStatus = patient.getPthStatus()
         cat = ward.fac.category
         tier = ward.tier
@@ -109,6 +110,12 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         """
         This is called on patients when they arrive at a ward.
         """
+        # Check for any info delivered with the transfer
+        if 'carriesPth' in transferInfoDict:
+            # Transfer probability was checked on the sending end
+            with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
+                pRec.carriesPth = True
+
         self.initializePatientTreatment(ward, patient, timeNow=timeNow)
 
     def handlePatientDeparture(self, ward, patient, timeNow):
@@ -116,7 +123,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
         This is called on patients when they depart from a ward.
         """
         patient.setTreatment(contactPrecautions=False) # Forget any contact precautions
-        with ward.fac.getPatientRecord(patient.id, timeNow=timeNow) as pRec:
+        with ward.fac.getPatientRecord(patient.id) as pRec:
             pRec.noteD['cpReason'] = None
 
     def getTransmissionFromMultiplier(self, careTier, **kwargs):
@@ -173,7 +180,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
             ### Track all contact precaution days
             ward.miscCounters['patientDaysOnCP'] += ward.checkInterval
 
-            ### Need to track the reason they are on CP
+            ### Need to track the reason they are on CP 
             if 'cpReason' in pRec.noteD:
                 cpReason = pRec.noteD['cpReason']
                 if cpReason == "passive":
@@ -191,7 +198,7 @@ class ContactPrecautionsTreatmentPolicy(BaseTreatmentPolicy):
 
 
 def getPolicyClasses():
-    return [ContactPrecautionsTreatmentPolicy]
+    return [ChlorhexBathTreatmentPolicy]
 
 
 ###########

@@ -152,10 +152,10 @@ class VentSNF(Facility):
             lclRates, pthRates = tpl
             self.rateD[tier] = (lclRates, None)  # force recalculation of biases
 
-    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, modifierDct, timeNow):
         """Specialized to prioritize transfers to our own wards if possible"""
         facAddrList = super(VentSNF, self).getOrderedCandidateFacList(patientAgent, oldTier, newTier,
-                                                                      timeNow)
+                                                                      modifierDct, timeNow)
         if (newTier in [CareTier.NURSING, CareTier.SKILNRS, CareTier.VENT]
             and oldTier != newTier):
             queueClass = tierToQueueMap[newTier]
@@ -164,7 +164,7 @@ class VentSNF(Facility):
             facAddrList = lclList + facAddrList
         return facAddrList
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()

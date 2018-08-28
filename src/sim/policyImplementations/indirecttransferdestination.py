@@ -24,8 +24,10 @@ from phacsl.utils.collections.phacollections import SingletonMetaClass, enum
 from policybase import TransferDestinationPolicy as BaseTransferDestinationPolicy
 from facilitybase import CareTier, tierToQueueMap
 import facilitybase
+from pyrheabase import TierUpdateModKey
 import transferbydrawwithreplacement
 import categorydrawwithreplacement
+from genericCommunity import BYPASS_KEY
 
 _validator = None
 _constants_values = '$(MODELDIR)/constants/indirecttransferdestination_constants.yaml'
@@ -45,11 +47,6 @@ class IndirectTransferCore(object):
         self.tierAddrMap = None
         self.tbl = None
         self.totTbl = None
-        self.bypassFracByTier = {}
-        for tier, tierNm in CareTier.names.items():
-            self.bypassFracByTier[tier] = (_constants['fracBypassIndirectByTier'][tierNm]['value']
-                                           if tierNm in _constants['fracBypassIndirectByTier']
-                                           else 0.0)
 
     def _buildTierAddrMap(self):
         self.tierAddrMap = {}
@@ -113,7 +110,7 @@ class IndirectTransferCore(object):
             assert rawTbl.keys() == ['COMMUNITY'], ("Bypass transfer file {0}".format(transferFilePath)
                                                     + " has an unexpected format")
             for rec in rawTbl.values():
-                self._addRecToTbl(None, rec, tmpTbl, tierFacSets)
+                self._addRecToTbl(BYPASS_KEY, rec, tmpTbl, tierFacSets)
             LOGGER.info('Import complete.')
             
         self._buildWtLists(tmpTbl)
@@ -144,92 +141,24 @@ class IndirectTransferDestinationPolicy(BaseTransferDestinationPolicy):
                                CategoryDrawWithReplacementTransferDestinationPolicy(patch,
                                                                             categoryNameMapper))
 
-    def classifyTrans(self, newTier, timeTupleL):
-        """
-        Given a list returned by buildTimeTupleList, what type of transfer is this?
-        Returns a TransType enum, the relevant starting facility, and the days since
-        discharge from that facility
-        """
-        hospCategoryL = ['HOSPITAL', 'LTAC', 'LTACH']
-        curDays, curFac, curCategory, curTier = timeTupleL[0]
-        if curCategory in hospCategoryL:
-            return TransType.OTHER, curFac, 0
-        else:
-            dayTot = 0
-            firstHOffset = None
-            firstHDays = None
-            firstNHOffset = None
-            firstNHDays = None
-            firstComOffset = None
-            firstComDays = None
-            for offset in xrange(len(timeTupleL)):
-                days, fac, cat, tier = timeTupleL[offset]  # @UnusedVariable
-                if cat in hospCategoryL:
-                    firstHOffset = offset
-                    firstHDays = dayTot
-                    break
-                elif cat == 'COMMUNITY' and firstComOffset is None:
-                    firstComOffset = offset
-                    firstComDays = dayTot
-                    firstNHOffset = None  # Only count NH's which come before home
-                    firstNHDays = None
-                elif cat != 'COMMUNITY' and firstNHOffset is None:
-                    firstNHOffset = offset
-                dayTot += days
-                if dayTot > 365:
-                    return TransType.OTHER, curFac, 0
-            else:
-                # This patient has never been to a hospital
-                return TransType.OTHER, curFac, 0
-            if firstComOffset is None:
-                # Patient hasn't been home since last hosp visit, so this cannot be
-                # an indirect transfer
-                return TransType.OTHER, curFac, 0
-            elif firstNHOffset is None:
-                assert firstHOffset is not None, 'logic error'
-                return TransType.HOSP_INDIRECT, timeTupleL[firstHOffset][1], firstHDays
-            else:
-                # This is believed to count as NH-Readmit from the last NH before going home.
-                return TransType.NH_READMIT, timeTupleL[firstNHOffset][1], firstNHDays
-
     def getOrderedCandidateFacList(self, thisFacility, patientAgent,  # @UnusedVariable
-                                   oldTier, newTier, timeNow):  # @UnusedVariable
-        if random.random() < self.core.bypassFracByTier[newTier]:
-            # Bypass the indirect transfer mechanism
-            print 'bypass'
-            pairList, tot = self.core.getWeightedList(None, newTier)
+                                   oldTier, newTier, modifierDct, timeNow):  # @UnusedVariable
+        assert TierUpdateModKey.FLOW_KEY in modifierDct, 'FLOW_KEY has not been set'
+        flowKey = modifierDct[TierUpdateModKey.FLOW_KEY]
+        if flowKey is None:
+            return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
+                                                                  oldTier, newTier,
+                                                                  modifierDct, timeNow)
+        else:
             try:
-                return [addr for destNm, addr                                   # @UnusedVariable
+                pairList, tot = self.core.getWeightedList(flowKey, newTier)
+                return [addr for destNm, addr                               # @UnusedVariable
                         in transferbydrawwithreplacement.randomOrderByWt(pairList, tot,
                                                                          cull=thisFacility.abbrev)]
             except IndexError, e:
                 LOGGER.error('Hit IndexError %s for %s %s -> %s at %s', e, thisFacility.abbrev,
-                               oldTier, newTier, timeNow)
+                             oldTier, newTier, timeNow)
                 raise
-        else:
-            timeTupleL = facilitybase.buildTimeTupleList(patientAgent, timeNow)
-            transType, rootFac, daysSince = self.classifyTrans(newTier, timeTupleL)
-            if transType == TransType.OTHER:
-                return self.fallbackPolicy.getOrderedCandidateFacList(thisFacility, patientAgent,
-                                                                      oldTier, newTier, timeNow)
-            else:
-                if transType in (TransType.HOSP_INDIRECT, TransType.NH_READMIT):
-                    pairList, tot = self.core.getWeightedList(rootFac, newTier)
-                else:
-                    raise RuntimeError('Unknown transfer type %s' % transType)
-    #             print '%s %s -> %s: tot=%d' % (thisFacility.name, CareTier.names[oldTier],
-    #                                            CareTier.names[newTier], tot)
-    #             print 'pairList: %s' % str([(wt, tpl[0]) for wt, tpl in pairList])
-    #             print 'newTier: %s' % CareTier.names[newTier]
-    
-                try:
-                    return [addr for destNm, addr                               # @UnusedVariable
-                            in transferbydrawwithreplacement.randomOrderByWt(pairList, tot,
-                                                                             cull=thisFacility.abbrev)]
-                except IndexError, e:
-                    LOGGER.error('Hit IndexError %s for %s %s -> %s at %s', e, thisFacility.abbrev,
-                                   oldTier, newTier, timeNow)
-                    raise
 
 
 def getPolicyClasses():

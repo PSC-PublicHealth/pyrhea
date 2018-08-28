@@ -313,7 +313,7 @@ class CRE(Pathogen):
             self.treatmentProbModifierDict = dct
         return self.treatmentProbModifierDict
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()

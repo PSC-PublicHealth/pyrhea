@@ -84,7 +84,8 @@ class MinDistanceTransferDestinationPolicy(BaseTransferDestinationPolicy):
         tplList.sort()
         return [c for a, b, c in tplList]  # @UnusedVariable
 
-    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier,
+                                   modifierDct, timeNow):
         if newTier not in self.cache:
             self.cache[newTier] = self.buildCacheEntry(oldFacility, newTier)
         return self.cache[newTier][:]

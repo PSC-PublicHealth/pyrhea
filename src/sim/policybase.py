@@ -148,11 +148,11 @@ class TreatmentPolicy(Policy):
         """
         return transferInfoDict
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierList,
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, modifierDict,
                   timeNow=None):
         """
         This returns a tuple of form (careTier, patientTreatment).
-        modifierList is for functional modifiers, like pyrheabase.TierUpdateModFlag.FORCE_MOVE,
+        modifierDict is for functional modifiers, like pyrheabase.TierUpdateModKey.FORCE_MOVE:True,
         and is not generally relevant to the decisions made by this method.
         """
         if patientDiagnosis.diagClassA == DiagClassA.WELL:
@@ -240,7 +240,8 @@ class TreatmentPolicy(Policy):
 
 
 class TransferDestinationPolicy(Policy):
-    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, facility, patientAgent, oldTier, newTier,
+                                   modifierDct, timeNow):
         raise RuntimeError('Base TransferDestinationPolicy was called for %s' % facility.name)
 
 class ScenarioPolicy(object):
