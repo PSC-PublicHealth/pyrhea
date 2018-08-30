@@ -36,9 +36,22 @@
           indirect transfer count data marginalized over destinations
         'type': 'array'
         'items': {'type': 'string'}
+      'bypassCategoryMapFilePaths':
+        'description': >
+          Paths to YAML files containing weighted category map data.  These transfer
+          tables are used for for the patient flow which bypasses the indirect
+          transfer mechanism.  These transfers are independent of patient history.
+        'type': 'array'
+        'items': {'type': 'string'}
       'srcToCategoryMapFileSchema':
         'description': 'Schema for the YAML files containing the source to category maps'
         'type': 'string'
+      'fracBypassIndirec':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': >
+          Fraction of patients which are transferred according to the tables given in
+          bypassTransferFilePaths (ignoring history) rather than those given in transferFilePaths
+          (dependent on their history if available).
       'kalmanQ':
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
@@ -54,5 +67,8 @@
       - 'communityNeedsSkilNrsRate'
       - 'communityPatientCheckInterval'
       - 'initialUnhealthyFrac'
+      - 'srcToCategoryMapFilePaths'
+      - 'bypassCategoryMapFilePaths'
+      - 'fracBypassIndirect'
       
       

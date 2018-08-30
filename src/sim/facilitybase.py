@@ -873,10 +873,6 @@ class PatientAgent(pyrheabase.PatientAgent):
                     print tree.tree
                     print tree.tagTree
                 raise
-            global LAST_TREE_LIST
-            global LAST_PATIENT
-            LAST_TREE_LIST = treeL
-            LAST_PATIENT = self
             for tree in treeL:
                 setter = tree.traverse()
                 self._status = setter.set(self._status, timeNow)

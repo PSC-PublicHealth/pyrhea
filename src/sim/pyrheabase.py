@@ -348,8 +348,6 @@ class PatientAgent(peopleplaces.Person):
                                               for k, v in modifierDict.items()}
                 print "%s tier change %s to %s has no available facilities" % (self.name, self.tier,
                                                                                tier)
-                import pdb
-                pdb.Pdb().set_trace()
             assert facAddrList, ("%s tier change %s to %s has no available facilities"
                                  % (self.name, self.tier, tier))
             homeAddr = self._status.homeAddr

@@ -13,7 +13,14 @@
       'transferFilePaths':
         'description': >
           Paths to YAML files containing weighted transfer data.  Typically the
-          weights correspond to historical transfer count data.
+          weights correspond to historical indirect transfer count data.
+        'type': 'array'
+        'items': {'type': 'string'}
+      'bypassTransferFilePaths':
+        'description': >
+          Paths to YAML files containing weighted transfer data.  These transfer
+          tables are used for for the patient flow which bypasses the indirect
+          transfer mechanism.  These transfers are independent of patient history.
         'type': 'array'
         'items': {'type': 'string'}
       'transferFileSchema':
@@ -21,6 +28,7 @@
         'type': 'string'
     'required':
       - 'transferFilePaths'
+      - 'bypassTransferFilePaths'
       - 'transferFileSchema'
       
       

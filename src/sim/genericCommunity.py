@@ -594,6 +594,7 @@ class Community(Facility):
                                patch, nBeds))
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
+        self.trappedPatientFlowDct = {}
 
         pdName = cachePatientDataFname(descr['abbrev'])
         self.patientDataDict = {}
@@ -724,6 +725,7 @@ class Community(Facility):
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
         if patientAgent.getDiagnosis().diagClassA == DiagClassA.WELL:
+            self.trappedPatientFlowDct[patientAgent.id] = flowKey # in case patient gets trapped
             key = (flowKey, startTime - patientStatus.startDateA,
                    timeNow - patientStatus.startDateA)
             if key in self.treeCache:
@@ -762,10 +764,12 @@ class Community(Facility):
                            'this patient should be gone by now',
                             self.name, patientAgent.name, CareTier.names[careTier],
                             DiagClassA.names[patientAgent.getStatus().diagClassA], startTime)
-            # Prevent derived class from routing this patient through the bypass flow, because
-            # that flow may not provide a destination of the tier already assigned to this
-            # patient.
-            Community.updateModifiers(self, patientAgent, modifierDct)
+
+            # This patient must use the same flow key as when it first tried to depart, or the
+            # outgoing flow may not provide the CareTier it needs.
+            flowKey = self.trappedPatientFlowDct[patientAgent.id]
+            modifierDct[pyrheabase.TierUpdateModKey.FLOW_KEY] = flowKey
+
             return BayesTree(PatientStatusSetter())
 
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
