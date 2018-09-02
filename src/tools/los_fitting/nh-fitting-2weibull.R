@@ -20,19 +20,23 @@ for (eFac in excludeList) {
 nh.los[,los.uncorrected:=nh.los$los]
 nh.los$los = nh.los$los - runif(nrow(nh.los))
 
-censor.threshold = 1000
-                                          
-nh.los[,censored:=nh.los$los < censor.threshold]
-
-init.lambda = c(0.239557,   0.760443)
-init.shape =  c(0.615004,   1.367461)
-init.scale =  c(154.628632, 20.287383)
-
 # Separate out EXTW, which has separate characteristics
 extw.meta = nh.meta[code == 'EXTW']
 nh.meta = nh.meta[code != 'EXTW']
 extw.los = nh.los[code == 'EXTW']
 nh.los = nh.los[code != 'EXTW']
+
+censor.threshold = 1000
+                                          
+nh.los[,censored:=nh.los$los < censor.threshold]
+
+extw.censor.threshold = 3000
+
+extw.los[,censored:=extw.los$los < extw.censor.threshold]
+
+init.lambda = c(0.239557,   0.760443)
+init.shape =  c(0.615004,   1.367461)
+init.scale =  c(154.628632, 20.287383)
 
 cat('performing fitting for bulk of samples\n')
 baseFit = weibullRMM_SEM(nh.los$los, nh.los$censored, maxit=100, lambda=init.lambda, shape=init.shape, scale=init.scale, k=2, verb=T)
@@ -86,10 +90,12 @@ fwrite(d_,'per-facility-k.csv')
 
 sink('dist-params.csv')
 summary(baseFit)
+cat('nobs: ', length(nh.los$los), '\n')
 sink()
 
 sink('extw-dist-params.csv')
 summary(extwFit)
+cat('nobs: ', length(extw.los$los), '\n')
 sink()
 
 qqdata = function(a, b, quantile.width=0.1) {
