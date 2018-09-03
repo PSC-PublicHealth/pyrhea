@@ -129,10 +129,12 @@ def main(argv=None):
             print("outfile = %s" % opts.outfile)
 
         # MAIN BODY #
-        with open('per-facility-k.csv', 'rU') as f:
-            pFKKeys, pFKRecs = csv_tools.parseCSV(f)
-            pFKDct = {rec['code']: rec for rec in pFKRecs}
-        print(pFKKeys)
+#         with open('per-facility-k.csv', 'rU') as f:
+#             pFKKeys, pFKRecs = csv_tools.parseCSV(f)
+#             pFKDct = {rec['code']: rec for rec in pFKRecs}
+#         print(pFKKeys)
+        pFKDF = pd.read_csv('per-facility-k.csv')
+        print(pFKDF.columns)
 
         dpDct = parseDistParams('dist-params.csv')
         extwDct = parseDistParams('extw-dist-params.csv')
@@ -143,21 +145,20 @@ def main(argv=None):
                         'shape1': extwDct['shape'][0], 'scale1':extwDct['scale'][0],
                         'shape2': extwDct['shape'][1], 'scale2':extwDct['scale'][0],
                         'lnLikPerSample': extwDct['loglik']/extwDct['nobs'],
-                        'nsamples': extwDct['nobs']
+                        'nsamples': extwDct['nobs'], 'notes': 'fit separately'
                         }, ignore_index=True)
-        shape1 = dpDct['shape'][0]
-        scale1 = dpDct['scale'][0]
-        shape2 = dpDct['shape'][1]
-        scale2 = dpDct['scale'][1]
-        for abbrev, rec in pFKDct.items():
-            df = df.append({'abbrev': abbrev,
-                            'shape1': shape1, 'scale1':scale1,
-                            'shape2': shape2, 'scale2':scale2,
-                            'k': 1.0 - rec['k']
-                            }, ignore_index=True)
-        df = df.sort_values(by=['abbrev'])
+        newDF = pFKDF[['code', 'k', 'n.obs']].rename(index=str, columns={'code':'abbrev',
+                                                                         'n.obs':'nsamples'})
+        newDF['shape1'] = dpDct['shape'][0]
+        newDF['scale1'] = dpDct['scale'][0]
+        newDF['shape2'] = dpDct['shape'][1]
+        newDF['scale2'] = dpDct['scale'][1]
+        newDF['notes'] = ''
+        newDF['k'] = 1.0 - newDF['k']
+        df = df.append(newDF, ignore_index=True)
+        df = df.sort_values(by=['abbrev']).reset_index(drop=True)
         print(df)
-        df.to_csv(opts.outfile)
+        df.to_csv(opts.outfile, index=False)
 
     except TypeError, e:
         indent = len(program_name) * " "
