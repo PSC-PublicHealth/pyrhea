@@ -55,6 +55,11 @@ def collectBarSamples(df):
     return ((counts['LOS'].values - 0.5*quantum), counts['Count'].values, barWidth)
 
 
+def calcNegativeLogLikPerSample(sampDF, facCRV):
+    logLikV = facCRV.logpdf(sampDF['LOS'].values)
+    return -sum(logLikV)/sampDF['LOS'].count()
+
+
 def main(argv=None):
     '''Command line options.'''
 
@@ -70,8 +75,7 @@ def main(argv=None):
 
     if argv is None:
         argv = sys.argv[1:]
-    if True:
-#     try:
+    try:
         # setup option parser
         parser = OptionParser(version=program_version_string, epilog=program_longdesc,
                               description=program_license)
@@ -126,23 +130,27 @@ def main(argv=None):
                 cat = facDict[fac]['category']
                 print('%s: %d samples, mean %s median %s' % (fac, nSamples,
                                                              facCRV.mean(), facCRV.median()))
+                print('     vs. declared meanLOS %s' % facDict[fac]['meanLOS']['value'])
+                print('     mean of LOS samples: %s' % facSampDF['LOS'].mean())
+                print('     negative log likelihood per sample: %s'
+                      % calcNegativeLogLikPerSample(facSampDF, facCRV))
                 constants = loadFacilityTypeConstants(catToImplDict[cat].lower(), implDir)
-                fig, axes = plt.subplots(1, 1)
+                fig, axes = plt.subplots(1, 1)  # @UnusedVariable
                 lP = LOSPlotter(facDict[fac], constants, catToImplDict)
                 bins, counts, barWidth = collectBarSamples(facSampDF)
                 rects = axes.bar(bins, counts, width=barWidth,  # @UnusedVariable
                                         color='b')
                 lP.plot(IMPL_TIER_DICT[catToImplDict[cat]], axes, int(max(bins)-min(bins)),
                         min(bins) - barWidth, max(bins) + barWidth, sum(counts))
-
                 axes.set_title('%s (%d samples)' % (fac, nSamples))
+
         plt.show()
 
-#     except Exception, e:
-#         indent = len(program_name) * " "
-#         sys.stderr.write(program_name + ": " + repr(e) + "\n")
-#         sys.stderr.write(indent + "  for help use --help")
-#         return 2
+    except Exception, e:
+        indent = len(program_name) * " "
+        sys.stderr.write(program_name + ": " + repr(e) + "\n")
+        sys.stderr.write(indent + "  for help use --help")
+        return 2
 
 
 if __name__ == "__main__":
