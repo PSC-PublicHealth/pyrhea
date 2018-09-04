@@ -129,10 +129,6 @@ def main(argv=None):
             print("outfile = %s" % opts.outfile)
 
         # MAIN BODY #
-#         with open('per-facility-k.csv', 'rU') as f:
-#             pFKKeys, pFKRecs = csv_tools.parseCSV(f)
-#             pFKDct = {rec['code']: rec for rec in pFKRecs}
-#         print(pFKKeys)
         pFKDF = pd.read_csv('per-facility-k.csv')
         print(pFKDF.columns)
 
