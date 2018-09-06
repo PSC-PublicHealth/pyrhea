@@ -318,7 +318,7 @@ class Hospital(Facility):
         self.hospTreeCache = {}
         self.icuTreeCache = {}
 
-    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, modifierDct, timeNow):
         """Specialized to restrict transfers to being between our own HOSP and ICU"""
         queueClass = tierToQueueMap[newTier]
         if ((oldTier == CareTier.ICU and newTier == CareTier.HOSP)
@@ -329,11 +329,11 @@ class Hospital(Facility):
         else:
             facAddrList = super(Hospital, self).getOrderedCandidateFacList(patientAgent,
                                                                            oldTier, newTier,
-                                                                           timeNow)
+                                                                           modifierDct, timeNow)
 #             print '%s: clause 2: %s %s' % (self.abbrev, CareTier.names[newTier], facAddrList[:3])
         return facAddrList
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         ward = patientAgent.ward
         treatment = patientAgent.getTreatmentProtocol()

@@ -189,7 +189,8 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
         BaseTransferDestinationPolicy.__init__(self, patch, categoryNameMapper)
         self.core = DWRCore(patch)
 
-    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier,
+                                   modifierDct, timeNow):
         pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
 #             print 'newTier: %s' % CareTier.names[newTier]
         try:

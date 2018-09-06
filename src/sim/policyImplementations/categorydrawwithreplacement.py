@@ -124,7 +124,8 @@ class CategoryDrawWithReplacementTransferDestinationPolicy(DrawWithReplacementTr
                                                                            categoryNameMapper)
         self.core = CDWRCore(patch)
 
-    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, oldFacility, patientAgent, oldTier, newTier,
+                                   modifierDict, timeNow):
         pairList, tot = self.core.getTierWeightedList(oldFacility.category, newTier)
 #         print '%s %s -> %s: tot=%d' % (oldFacility.name, CareTier.names[oldTier],
 #                                        CareTier.names[newTier], tot)

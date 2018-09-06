@@ -24,7 +24,7 @@ from quilt.peopleplaces import SimpleMsg, ArrivalMsg, DepartureMsg  # to export 
 
 logger = logging.getLogger(__name__)
 
-TierUpdateModFlag = enum('FORCE_MOVE')
+TierUpdateModKey = enum('FORCE_MOVE', 'FLOW_KEY')
 
 
 class Ward(peopleplaces.Location):
@@ -307,36 +307,45 @@ class PatientAgent(peopleplaces.Person):
     def newWardAddr(self, value):
         self.newLocAddr = value
 
-    def handleTierUpdate(self, timeNow):
+    def handleTierUpdate(self, modifierDict, timeNow):
         """
-        The PatientAgent computes a new needed CareTier and a (potentially empty) list
-        of modifiers, which the caller may use to relocate the PatientAgent as needed.
+        The PatientAgent computes a new needed CareTier and may update the dict of
+        modifers.  modifierDict is literally a back channel for downstream communication
+        and may be modified by the routines for which it is a parameter.
         """
-        return self.ward.tier, []
+        return self.ward.tier
 
     def handleDeath(self, timeNow):
         pass
 
-    def getCandidateFacilityList(self, timeNow, newTier):
+    def getCandidateFacilityList(self, timeNow, modifierDct, newTier):
+        """
+        modifierDict is literally a back channel for downstream communication and may be
+        modified in the routines for which it is a parameter
+        """
         facAddrList = [tpl[1] for tpl in self.patch.serviceLookup('FacRequestQueue')]
         shuffle(facAddrList)
         return facAddrList
 
     def getNewLocAddr(self, timeNow):
-        tier, modifiers = self.handleTierUpdate(timeNow)
-        if tier == self.tier and TierUpdateModFlag.FORCE_MOVE not in modifiers:
+        modifierDict = {}  # Literally a back channel for downstream communication
+        tier = self.handleTierUpdate(modifierDict, timeNow)
+        if tier == self.tier and (TierUpdateModKey.FORCE_MOVE not in modifierDict
+                                  or not modifierDict[TierUpdateModKey]):
             return self.locAddr  # things stay the same
         elif tier is None:
             self.tier = None
             return None  # signal death
         else:
-            facAddrList = self.getCandidateFacilityList(timeNow, tier)
+            facAddrList = self.getCandidateFacilityList(timeNow, modifierDict, tier)
             if not facAddrList:
                 print 'FAILING - patient id %s' % str(self.id)
                 if hasattr(self, 'agentHistory'):
                     print 'patient history %s' % str(self.agentHistory)
                 else:
                     print 'patient has no history!'
+                print 'modifierDict is %s' % {TierUpdateModKey.names[k]: v
+                                              for k, v in modifierDict.items()}
                 print "%s tier change %s to %s has no available facilities" % (self.name, self.tier,
                                                                                tier)
             assert facAddrList, ("%s tier change %s to %s has no available facilities"

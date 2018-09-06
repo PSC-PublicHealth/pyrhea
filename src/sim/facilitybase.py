@@ -178,6 +178,7 @@ class ForcedStateWard(Ward):
         newTier, patientAgent._treatment = self.fac.prescribe(self, patientAgent.id,
                                                               patientAgent.getDiagnosis(),
                                                               patientAgent.getTreatmentProtocol(),
+                                                              {},
                                                               timeNow=timeNow)[0:2]
         assert newTier == self.tier, ('%s %s %s tried to force state of %s to match but failed'
                                       % (self._name, CareTier.names[careTier],
@@ -471,10 +472,11 @@ class Facility(pyrheabase.Facility):
         """
         pass
 
-    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, timeNow):
+    def getOrderedCandidateFacList(self, patientAgent, oldTier, newTier, modifierDct, timeNow):
         oCFL = self.transferDestinationPolicy.getOrderedCandidateFacList(self,
                                                                          patientAgent,
                                                                          oldTier, newTier,
+                                                                         modifierDct,
                                                                          timeNow)
         return oCFL
 
@@ -633,26 +635,28 @@ class Facility(pyrheabase.Facility):
         return self.diagnosticPolicy.diagnose(ward, patientId, patientStatus,
                                               oldDiagnosis, timeNow=timeNow)
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, timeNow=None):
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, 
+                  modifierDct, timeNow=None):
         """
-        This returns a tuple of either form (careTier, patientTreatment) or
-        (careTier, patientTreatment, modifierList)
+        This returns a tuple of either form (careTier, patientTreatment).
+        modifierDct is a back-channel for down-stream communication and may be modified
+        by the routines to which it is a parameter.
         """
         if patientDiagnosis.relocateFlag:
-            modifierList = [pyrheabase.TierUpdateModFlag.FORCE_MOVE]
+            modifierDct = {pyrheabase.TierUpdateModKey.FORCE_MOVE: True}
         else:
-            modifierList = []
+            modifierDct = {}
         careTier = None
         for tP in self.treatmentPolicies:
             newTier, patientTreatment = tP.prescribe(ward, patientId,
                                                      patientDiagnosis, patientTreatment,
-                                                     modifierList, timeNow=timeNow)
+                                                     modifierDct, timeNow=timeNow)
             if careTier and (newTier != careTier):
                 raise RuntimeError(('Treatment policies at %s prescribe different careTiers'
                                     % self.abbrev)
                                    (' for %s %s' % (patientDiagnosis, patientTreatment)))
             careTier = newTier
-        return (careTier, patientTreatment, modifierList)
+        return careTier, patientTreatment
 
     def getInitialOverallHealth(self, ward, timeNow):  # @UnusedVariable
         """
@@ -679,9 +683,9 @@ class Facility(pyrheabase.Facility):
                              )
 
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):  # @UnusedVariable
         """
-        Return a Bayes tree the traversal of which yields a patientStatus.
+        Return a Bayes tree the traversal of which yields a patientStatus update.
 
         Elements of the tree are either a terminal patientStatus value or a 3-tuple
         of the form (k opt1 opt2), where opt1 and opt2 are likewise elements of the tree
@@ -774,6 +778,7 @@ class PatientAgent(pyrheabase.PatientAgent):
                                                            self.id,
                                                            self.getDiagnosis(),
                                                            TREATMENT_DEFAULT,
+                                                           {},
                                                            timeNow=timeNow)[0:2]
 
         self.lastUpdateTime = timeNow
@@ -844,7 +849,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         """
         return self._treatment
 
-    def updateDiseaseState(self, treatment, facility, timeNow):  # @UnusedVariable
+    def updateDiseaseState(self, treatment, facility, modifierDct, timeNow):  # @UnusedVariable
         """This should embody healing, community-acquired infection, etc."""
         dT = timeNow - self.lastUpdateTime
         previousStatus = self.getStatus()
@@ -852,7 +857,7 @@ class PatientAgent(pyrheabase.PatientAgent):
             treeL = []
             try:
                 for src in [self.ward.fac, self.ward.iA]:
-                    tree = src.getStatusChangeTree(self, self.lastUpdateTime, timeNow)
+                    tree = src.getStatusChangeTree(self, modifierDct, self.lastUpdateTime, timeNow)
                     treeL.append(tree)
             except Exception, e:
                 self.logger.critical('Got exception %s on patient %s (id %s) for from %s'
@@ -879,19 +884,22 @@ class PatientAgent(pyrheabase.PatientAgent):
             if self.getTreatment('creBundle'):
                 self.ward.miscCounters['creBundlesHandedOut'] += 1
 
-    def updateEverything(self, timeNow):
+    def updateEverything(self, modifierDct, timeNow):
+        """
+        modifierDict is literally a back channel for downstream communication.  It may be updated
+        in the routines to which it is a parameter.
+        """
 #         if self.lastUpdateTime != timeNow:
         if True:
-            self.updateDiseaseState(self.getTreatmentProtocol(), self.ward.fac, timeNow)
+            self.updateDiseaseState(self.getTreatmentProtocol(), self.ward.fac, modifierDct, timeNow)
             if self.getStatus().diagClassA == DiagClassA.DEATH:
-                return None, []
+                return None
             self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self.getStatus(),
                                                      self.getDiagnosis(), timeNow=timeNow)
-            tpl = self.ward.fac.prescribe(self.ward, self.id, self.getDiagnosis(),
-                                          self.getTreatmentProtocol(), timeNow=timeNow)
-            newTier, self._treatment = tpl[0:2]
+            newTier, self._treatment = self.ward.fac.prescribe(self.ward, self.id, self.getDiagnosis(),
+                                                               self.getTreatmentProtocol(), modifierDct,
+                                                               timeNow=timeNow)
             self.setStatus(justArrived=False)
-            modifierList = (tpl[2] if len(tpl) == 3 else [])
             if self.debug:
                 self.logger.debug('%s: status -> %s, diagnosis -> %s, treatment -> %s',
                                   self.name, self.getStatus(), self.getDiagnosis(),
@@ -901,12 +909,12 @@ class PatientAgent(pyrheabase.PatientAgent):
                                   self.ward.fac.getPatientRecord(self.id))
                 self.logger.debug('%s: modifiers are %s',
                                   self.name,
-                                  [pyrheabase.TierUpdateModFlag.names[flg]
-                                   for flg in modifierList])
+                                  {pyrheabase.TierUpdateModKey.names[flg]: val
+                                   for flg, val in modifierDct.items()})
             self.lastUpdateTime = timeNow
-            return newTier, modifierList
+            return newTier
         else:
-            return self.ward.tier, []
+            return self.ward.tier
 
     def getPostArrivalPauseTime(self, timeNow):  # @UnusedVariable
         if self.ward.checkInterval > 1:
@@ -914,9 +922,9 @@ class PatientAgent(pyrheabase.PatientAgent):
         else:
             return 0
 
-    def handleTierUpdate(self, timeNow):
-        newTier, modifierList = self.updateEverything(timeNow)
-        return newTier, modifierList
+    def handleTierUpdate(self, modifierDict, timeNow):
+        newTier = self.updateEverything(modifierDict, timeNow)
+        return newTier
 
     def handleDeath(self, timeNow):
         assert self.getStatus().diagClassA == DiagClassA.DEATH, '%s is not dead?' % self.name
@@ -938,8 +946,8 @@ class PatientAgent(pyrheabase.PatientAgent):
             self.setStatus(relocateFlag=False)
         return newAddr
 
-    def getCandidateFacilityList(self, timeNow, newTier):
-        cFL = self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, timeNow)
+    def getCandidateFacilityList(self, timeNow, modifierDct, newTier):
+        cFL = self.ward.fac.getOrderedCandidateFacList(self, self.ward.tier, newTier, modifierDct, timeNow)
         return cFL
 
     def __getstate__(self):

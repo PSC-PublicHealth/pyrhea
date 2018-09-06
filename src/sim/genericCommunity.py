@@ -51,6 +51,8 @@ _constants_values = '$(MODELDIR)/constants/community_constants.yaml'
 _constants_schema = 'community_constants_schema.yaml'
 _constants = None
 
+BYPASS_KEY = '_bypass_'  # used by some derived classes
+
 USE_CUSTOM_ENCODING = False  # the custom encoding turns out to be only marginally beneficial
 
 def importCommunity(moduleName):
@@ -592,6 +594,7 @@ class Community(Facility):
                                patch, nBeds))
         self.collectiveStatusStartDate = 0
         self.treeCache = {}
+        self.trappedPatientFlowDct = {}
 
         pdName = cachePatientDataFname(descr['abbrev'])
         self.patientDataDict = {}
@@ -686,7 +689,7 @@ class Community(Facility):
             #rate *= (675./779.)
             self.cachedCDFs[classKey] = CachedCDFGenerator(expon(scale=1.0/rate))
 
-    def calcTierRateConstants(self, prevFacAbbrev):
+    def calcTierRateConstants(self, flowKey):
         """
         These constants represent the fraction of the newly-sick that die, that
         need rehab as a (v)SNF, and that need care at the HOSP, ICU, LTAC, SKILNRS,
@@ -704,20 +707,26 @@ class Community(Facility):
         return (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
                 needsSkilNrsRate, needsVentRate)
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):  # @UnusedVariable
-        patientStatus = patientAgent.getStatus()
-        ward = patientAgent.ward
-        careTier = ward.tier
+    def updateModifiers(self, patientAgent, modifierDct):
         for ent in reversed(patientAgent.agentHistory):
             if decodeHistoryEntry(ent)['category'] != 'COMMUNITY':
                 prevFacAbbrev = decodeHistoryEntry(ent)['abbrev']
                 break
         else:
             prevFacAbbrev = None
+        modifierDct[pyrheabase.TierUpdateModKey.FLOW_KEY] = prevFacAbbrev
+
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):  # @UnusedVariable
+        patientStatus = patientAgent.getStatus()
+        ward = patientAgent.ward
+        careTier = ward.tier
+        self.updateModifiers(patientAgent, modifierDct)
+        flowKey = modifierDct[pyrheabase.TierUpdateModKey.FLOW_KEY]
         assert careTier == CareTier.HOME, \
             "The community only offers CareTier 'HOME'; found %s" % careTier
         if patientAgent.getDiagnosis().diagClassA == DiagClassA.WELL:
-            key = (prevFacAbbrev, startTime - patientStatus.startDateA,
+            self.trappedPatientFlowDct[patientAgent.id] = flowKey # in case patient gets trapped
+            key = (flowKey, startTime - patientStatus.startDateA,
                    timeNow - patientStatus.startDateA)
             if key in self.treeCache:
                 return self.treeCache[key]
@@ -725,7 +734,7 @@ class Community(Facility):
                 changeProb = 1.0  # since the agent was already randomly chosen to be un-frozen
                 try:
                     (deathRate, needsRehabRate, needsHospRate, needsICURate, needsLTACRate,
-                     needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(prevFacAbbrev)
+                     needsSkilNrsRate, needsVentRate) = self.calcTierRateConstants(flowKey)
                 except:
                     logger.error('exception on historyL %s',
                                  str(reversed(patientAgent.agentHistory)))
@@ -755,11 +764,22 @@ class Community(Facility):
                            'this patient should be gone by now',
                             self.name, patientAgent.name, CareTier.names[careTier],
                             DiagClassA.names[patientAgent.getStatus().diagClassA], startTime)
+
+            # This patient must use the same flow key as when it first tried to depart, or the
+            # outgoing flow may not provide the CareTier it needs.
+            flowKey = self.trappedPatientFlowDct[patientAgent.id]
+            modifierDct[pyrheabase.TierUpdateModKey.FLOW_KEY] = flowKey
+
             return BayesTree(PatientStatusSetter())
 
     def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, # @UnusedVariable
-                  timeNow=None):  # @UnusedVariable
-        """This returns a tuple (careTier, patientTreatment)"""
+                  modifierDct, timeNow=None):  # @UnusedVariable
+        """
+        This returns a tuple (careTier, patientTreatment)
+        
+        modifierDct is a back channel for downstream communication.  It may be modified by 
+        routines for which it is a parameter.
+        """
         if patientDiagnosis.diagClassA == DiagClassA.WELL:
             if (patientDiagnosis.overall == PatientOverallHealth.HEALTHY
                 or patientDiagnosis.overall == PatientOverallHealth.UNHEALTHY):

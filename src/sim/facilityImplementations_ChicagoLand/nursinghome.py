@@ -292,7 +292,7 @@ class NursingHome(Facility):
                     assert bAD[heldKey] >= 0, '%s cannot find bed hold to cancel'
             return timeNow
 
-    def getStatusChangeTree(self, patientAgent, startTime, timeNow):
+    def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
         patientStatus = patientAgent.getStatus()
         patientDiagnosis = patientAgent.getDiagnosis()
         ward = patientAgent.ward
