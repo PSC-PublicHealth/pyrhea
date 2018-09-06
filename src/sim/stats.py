@@ -68,6 +68,42 @@ class DoubleWeibull(rv_continuous):
 
 doubleweibull = DoubleWeibull(name='doubleweibull', a=0.0)
 
+class DoubleExpon(rv_continuous):
+    """
+    defined to yield k*expon(scale=1.0/lmda1) + (1-k)*expon(scale=1.0/lmda2)
+    """
+    def _argcheck(self, k, lmda1, lmda2):
+        return (np.all(k >= 0.0) and np.all(k<= 1.0) and np.all(lmda1 > 0.0)
+                and np.all(lmda2 > 0.0))
+    def _pdf(self, x, k, lmda1, lmda2):
+        submodels = [expon(scale=1.0/lmda1), expon(scale=1.0/lmda2)]
+        return (k * submodels[0].pdf(x)) + ((1.0 - k) * submodels[1].pdf(x))
+
+    def _cdf(self, x, k, lmda1, lmda2):
+        submodels = [expon(scale=1.0/lmda1), expon(scale=1.0/lmda2)]
+        return (k * submodels[0].cdf(x)) + ((1.0 - k) * submodels[1].cdf(x))
+
+    def _logpdf(self, x, k, lmda1, lmda2):
+        # pdf = k lmda1 exp(-lmda1 x) + (1-k)lmda2 exp(-lmda2 x)
+        #     = k lmda1 exp(-lmda1 x)(1 + ((1-k)/k)(lmda2/lmda1)exp(lmda1-lmda2 x))
+        if k < 0.5:
+            return self._logpdf(x, 1.0-k, lmda2, lmda1)
+        else:
+            rslt = (np.log(k) + np.log(lmda1) - (lmda1 * x)
+                    + np.log(1.0 + (((1.0-k)/k)*(lmda2/lmda1)*np.exp((lmda1 - lmda2) * x))))
+            return rslt
+
+    def _rvs(self, k, lmda1, lmda2):
+        size = self._size
+        print self
+        print dir(self)
+        submodels = [expon(scale=1.0/lmda1), expon(scale=1.0/lmda2)]
+        submodel_choices = np.random.choice(2, size, p=[k, 1.0-k])
+        submodel_samples = [submodel.rvs(size=size)
+                            for submodel in submodels]
+        return np.choose(submodel_choices, submodel_samples)
+
+doubleexpon = DoubleExpon(name='doubleexpon', a=0.0)
 
 class CachedCDFGenerator:
     """

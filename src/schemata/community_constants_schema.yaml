@@ -21,6 +21,10 @@
         '$ref': 'basics_schema.yaml#/definitions/fraction',
         'description': 'Fraction of residents who are initially UNHEALTHY rather than HEALTHY'
       }
+      'populationScale': {
+         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+         'description': 'Scale overall population size by this value relative to meanPop'
+      }
       'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
@@ -70,5 +74,6 @@
       - 'srcToCategoryMapFilePaths'
       - 'bypassCategoryMapFilePaths'
       - 'fracBypassIndirect'
-      
+      - 'populationScale'
+     
       

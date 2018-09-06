@@ -62,8 +62,8 @@ loggers:
   genericCommunity:
     level: INFO
   policybase:
-    #level: DEBUG
-    level: WARNING
+    level: DEBUG
+    #level: WARNING
   bcz_monitor:
     level: WARNING
 #    handlers: [rabbitmq]

@@ -3,3 +3,6 @@
 *.html
 *.png
 *.pkl
+*.mpz
+/src/ui_server/node_modules
+

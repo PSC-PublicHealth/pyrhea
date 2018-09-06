@@ -154,7 +154,7 @@ def ldecode(typeTpl, valL):
     else:
         return valL[0], valL[1:]
 
-cacheVer = 7
+cacheVer = 8
 LastMemCheck = time.time()
 
 class FreezerError(RuntimeError):
@@ -587,7 +587,9 @@ class Community(Facility):
                           categoryNameMapper=categoryNameMapper)
         descr = self.mapDescrFields(descr)
         meanPop = descr['meanPop']['value']
-        nBeds = int(round(3.0*meanPop))
+        popScale = _constants['populationScale']['value']
+        meanPop *= popScale
+        nBeds = int(round(3.0*popScale*meanPop))
         self.setCDFs(_constants['losModelMap'])
         self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name,
                                                               descr['abbrev']),
@@ -855,6 +857,8 @@ def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Community description %(abbrev)s is missing the expected field 'meanPop'" % descr
     meanPop = float(descr['meanPop']['value'])
+    popScale = _constants['populationScale']['value']
+    meanPop *= popScale
     logger.info('Generating the population for %s (%s freeze-dried people)'
                 % (descr['abbrev'], meanPop))
     for i in xrange(int(round(meanPop))):
