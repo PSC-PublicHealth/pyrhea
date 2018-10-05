@@ -22,6 +22,7 @@ from random import random
 from collections import defaultdict
 from scipy.stats import expon
 import pyrheautils
+import pathogenutils as pthu
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier, PatientOverallHealth, DiagClassA, TreatmentProtocol
@@ -37,68 +38,16 @@ _constants = None
 logger = logging.getLogger(__name__)
 
 def _parseFracByTierByFacilityByCategory(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        facilities = elt['facilities']
-        if cat not in topD:
-            topD[cat] = {}
-        for facElt in facilities:
-            abbrev = facElt['abbrev']
-            tiers = facElt['tiers']
-            if abbrev not in topD[cat]:
-                topD[cat][abbrev] = {}
-            for tierElt in tiers:
-                tier = tierElt['tier']
-                val = tierElt['frac']['value']
-                assert tier not in topD[cat][abbrev], ('Redundant %s for %s %s' %
-                                                      (fieldStr, abbrev, CareTier.names[tier]))
-                topD[cat][abbrev][tier] = val
-    return topD
-
+    return pthu.parseFracByTierByFacilityByCategory(fieldStr, _constants)
 
 def _parseFracByTierByCategory(fieldStr, eltKey='frac'):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        tiers = elt['tiers']
-        if cat not in topD:
-            topD[cat] = {}
-        for tierElt in tiers:
-            tier = tierElt['tier']
-            val = tierElt[eltKey]['value']
-            assert tier not in topD[cat], ('Redundant categoryInitialFracColonized for %s %s' %
-                                           (cat, CareTier.names[tier]))
-            topD[cat][tier] = val
-    return topD
+    return pthu.parseFracByTierByCategory(fieldStr, _constants, eltKey='frac')
 
 def _parseScaleByTierByCategory(fieldStr):
-    return _parseFracByTierByCategory(fieldStr, eltKey='scale')
+    return pthu.parseFracByTierByCategory(fieldStr, _constants, eltKey='scale')
 
 def _parseTierTierScaleList(fieldStr):
-    result = {}
-    for elt in _constants[fieldStr]:
-        fmTier = CareTier.__dict__[elt['tierFrom']]
-        toTier = CareTier.__dict__[elt['tierTo']]
-        value = elt['scale']['value']
-        result[(fmTier, toTier)] = value
-    return result
-
-def _getValByTierByCategory(tbl, tblNameForErr, ward, implCategory, overrideTbl=None):
-    wardCat = ward.fac.category
-    tierStr = CareTier.names[ward.tier]
-    if overrideTbl:
-        # Potential override values are stored by [category][abbrev][tierName]
-        abbrev = ward.fac.abbrev
-        if (wardCat in overrideTbl
-            and abbrev in overrideTbl[wardCat]
-            and tierStr in overrideTbl[wardCat][abbrev]):
-            return overrideTbl[wardCat][abbrev][tierStr]
-    if (wardCat in tbl and tierStr in tbl[wardCat]):
-        return tbl[wardCat][tierStr]
-    else:
-        raise RuntimeError('No way to set %s for %s tier %s' %
-                           (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
+    return pthu.parseTierTierScaleList(fieldStr, _constants)
 
 
 class CRECore(object):
@@ -152,8 +101,6 @@ class CRE(Pathogen):
         """
         super(CRE, self).__init__(ward, implCategory)
         self.core = CRECore()
-        self.patientPth = self._emptyPatientPth()
-        self.patientPthTime = None
         self.propogationInfo = {}
         self.propogationInfoKey = None
         self.propogationInfoTime = None
@@ -163,13 +110,13 @@ class CRE(Pathogen):
                                                                   ward.fac.category,
                                                                   ward.tier)
 
-        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, implCategory,
-                                           overrideTbl=self.core.tauOverrideTbl)
+        self.tau = pthu.getValByTierByCategory(self.core.tauTbl, 'tau', ward, ward.fac.category,
+                                               overrideTbl=self.core.tauOverrideTbl)
 #         if 'PRES_100_L' in ward._name:
 #             print '########## tau is %s' % self.tau
-        self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
-                                                      'exposureCutoff',
-                                                      ward, implCategory)
+        self.exposureCutoff = pthu.getValByTierByCategory(self.core.exposureCutoffTbl,
+                                                          'exposureCutoff',
+                                                          ward, ward.fac.category)
 
         tierName = CareTier.names[self.ward.tier]
         self.colDischDelayTime = 0.0  # the default
@@ -250,21 +197,6 @@ class CRE(Pathogen):
                      else defaultPthStatus)
         canClear = (random() > self.core.fracPermanentlyColonized)
         patient._status = patient._status._replace(pthStatus=pthStatus)._replace(canClear=canClear)
-
-    def getPatientPthCounts(self, timeNow):
-        """
-        Returns a dict of the form {PthStatus.CLEAR : nClearPatients, ...}
-        """
-        if self.patientPthTime != timeNow:
-            d = self._emptyPatientPth()
-            try:
-                for pt in self.ward.getPatientList():
-                    d[pt._status.pthStatus] += 1
-            except FreezerError:
-                pass  # We're going to have to ignore freeze-dried patients
-            self.patientPth = d
-            self.patientPthTime = timeNow
-        return self.patientPth
 
     def getPatientStateKey(self, status, treatment):
         """ treatment is the patient's current treatment status """

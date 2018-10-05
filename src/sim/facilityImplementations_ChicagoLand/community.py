@@ -41,8 +41,11 @@ class CommunityManagerCore(object):
         self.p = 1.0
         self.Q = _constants['kalmanQ']['value']
         self.H = _constants['kalmanH']['value']
+        self.lastKalmanUpdateTime = None
+        self.cumPop = 0
+        self.cumMeanPop = 0.0
 
-    def kalmanUpdate(self, totPop, meanPop, callerAbbrev):
+    def kalmanUpdate(self, totPop, meanPop, totArrivals, callerAbbrev, timeNow):
         """
         Perform a Kalman update of the rate scaling factor.  The nomenclature is
         from Welch & Bishop, "An Introduction to the Kalman Filter" and
@@ -50,7 +53,7 @@ class CommunityManagerCore(object):
 
         x is the scale factor for the rate constant (to be estimated),
           expected to be near 1.0
-        z is the population delta: z = totPop - meanPop
+        z is the population delta: z = (totPop - meanPop)/meanPop
         H is dz/dx, an input constant
         So our model equation is z = H(x - 1.0)
         p is the estimate error covariance- to be estimated
@@ -60,23 +63,36 @@ class CommunityManagerCore(object):
           since the standard deviation scales as 1/sqrt(N)
         W and V are 1.0
         """
+        #print 'kalmanUpdate', callerAbbrev, totPop, meanPop
+        if timeNow != self.lastKalmanUpdateTime:
+            assert (self.lastKalmanUpdateTime is None
+                    or self.cumMeanPop != 0.0), 'No community has any population?'
+            if self.cumPop == 0:
+                pass  # No update; rates remain unchanged
+            else:
+                x = self.rateScale
+                P = self.p
+                z = (self.cumPop - self.cumMeanPop)/self.cumMeanPop
+                Q = self.Q
+                A = 1.0
+                H = self.H
+                R = 1.0/self.cumPop
+                xHatMinus = x
+                PMinus = A*P*A + Q
+                K = (PMinus * H) / (H * PMinus * H + R)
+                xHat = xHatMinus + (K * (z - H*(xHatMinus - 1.0)))
+                P = (1.0 - K * H) * PMinus
+                print (('Kalman update triggered by %s: cumPop= %s, cumMeanPop= %s,'
+                        ' x= %s P=%s z=%s R=%s -> K=%s -> x=%s P=%s') %
+                       (callerAbbrev, self.cumPop, self.cumMeanPop, x, self.p, z, R, K, xHat, P))
+                self.rateScale = max(xHat, 0.0)  # outlier cases can put us outside sensible range
+                self.p = P
+                self.lastKalmanUpdateTime = timeNow
+            self.cumPop = 0
+            self.cumMeanPop = 0.0
+        self.cumPop += totPop
+        self.cumMeanPop += meanPop
 
-        x = self.rateScale
-        P = self.p
-        z = totPop - meanPop
-        Q = self.Q
-        A = 1.0
-        H = self.H
-        R = 1.0/totPop
-        xHatMinus = x
-        PMinus = A*P*A + Q
-        K = (PMinus * H) / (H * PMinus * H + R)
-        xHat = xHatMinus + (K * (z - H*(xHatMinus - 1.0)))
-        P = (1.0 - K * H) * PMinus
-#         print ('Kalman update for %s: x= %s P=%s z=%s R=%s -> x=%s P=%s' %
-#                (callerAbbrev, x, self.p, z, R, xHat, P))
-        self.rateScale = xHat
-        self.p = P
 
 
 class CommunityManager(genericCommunity.CommunityManager):
@@ -87,18 +103,38 @@ class CommunityManager(genericCommunity.CommunityManager):
         self.lastKalmanUpdateTime = 0
 
     def getProbThaw(self, patientCategory, dT):
-        return self.core.rateScale * self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
+        rslt = self.core.rateScale * self.fac.cachedCDFs[patientCategory].intervalProb(0, dT)
+#         print 'probThaw %s %s -> %s' % (self.core.rateScale,
+#                                         self.fac.cachedCDFs[patientCategory].intervalProb(0, dT),
+#                                         rslt)
+        return rslt
 
     def perTickActions(self, timeNow):
         super(CommunityManager, self).perTickActions(timeNow)
         if timeNow != self.lastKalmanUpdateTime:
-            totPop = sum([sum([len(frz.frozenAgentList) for frz in ward.freezers.values()])
-                          for ward in self.fac.getWards()])
-            self.core.kalmanUpdate(totPop, self.meanPop, self.fac.name)
+            totPop = 0
+            totArrivals = 0
+            for ward in self.fac.getWards():
+                totPop += sum([len(frz.frozenAgentList) for frz in ward.freezers.values()])
+                totPop += len(ward.getLiveLockedAgents())  # This will catch stragglers
+                totArrivals += ward.arrivalCounter
+                ward.resetArrivalCount()
+            self.core.kalmanUpdate(totPop, self.meanPop, totArrivals, self.fac.name, timeNow)
             self.lastKalmanUpdateTime = timeNow
 
 
 class CommunityWard(genericCommunity.CommunityWard):
+    def __init__(self, abbrev, name, patch, nBeds):
+        super(CommunityWard, self).__init__(abbrev, name, patch, nBeds)
+        self.arrivalCounter = 0
+
+    def resetArrivalCount(self):
+        self.arrivalCounter = 0
+
+    def handlePatientArrival(self, patientAgent, timeNow):
+        super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
+        self.arrivalCounter += 1
+
     def classify(self, agent, timeNow):
         """Return the PatientCategory appropriate for this agent"""
         health = PatientOverallHealth.names[agent.getStatus().overall]
@@ -184,6 +220,7 @@ class CommunityCore(object):
 class Community(genericCommunity.Community):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         self.meanPop = descr['meanPop']['value']
+        self.meanPop *= _constants['populationScale']['value']
         self.bypassFrac = _constants['fracBypassIndirect']['value']
         super(Community, self).__init__(descr, patch, policyClasses=policyClasses,
                                         categoryNameMapper=categoryNameMapper,

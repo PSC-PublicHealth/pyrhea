@@ -86,17 +86,14 @@ class DoubleExpon(rv_continuous):
     def _logpdf(self, x, k, lmda1, lmda2):
         # pdf = k lmda1 exp(-lmda1 x) + (1-k)lmda2 exp(-lmda2 x)
         #     = k lmda1 exp(-lmda1 x)(1 + ((1-k)/k)(lmda2/lmda1)exp(lmda1-lmda2 x))
-        if k < 0.5:
-            return self._logpdf(x, 1.0-k, lmda2, lmda1)
-        else:
-            rslt = (np.log(k) + np.log(lmda1) - (lmda1 * x)
-                    + np.log(1.0 + (((1.0-k)/k)*(lmda2/lmda1)*np.exp((lmda1 - lmda2) * x))))
-            return rslt
+        return np.choose(k > 0.5,
+                         [(np.log(1.0-k) + np.log(lmda2) - (lmda2 * x)
+                           + np.log(1.0 + (((k/(1.0-k))*(lmda2/lmda2)*np.exp((lmda2 - lmda2) * x))))),
+                          (np.log(k) + np.log(lmda1) - (lmda1 * x)
+                           + np.log(1.0 + (((1.0-k)/k)*(lmda2/lmda1)*np.exp((lmda1 - lmda2) * x))))])
 
     def _rvs(self, k, lmda1, lmda2):
         size = self._size
-        print self
-        print dir(self)
         submodels = [expon(scale=1.0/lmda1), expon(scale=1.0/lmda2)]
         submodel_choices = np.random.choice(2, size, p=[k, 1.0-k])
         submodel_samples = [submodel.rvs(size=size)
@@ -104,6 +101,38 @@ class DoubleExpon(rv_continuous):
         return np.choose(submodel_choices, submodel_samples)
 
 doubleexpon = DoubleExpon(name='doubleexpon', a=0.0)
+
+
+class AlwaysZeroCRV(rv_continuous):
+    """
+    The pdf and cdf of this distribution are 0.0 for all finite x.  Useful when we want to
+    turn off some feature which is driven by a pdf.
+    """
+    def _argcheck(self):
+        return True
+
+    def _pdf(self, x):
+        return np.zeros_like(x)
+
+    def _cdf(self, x):
+        return np.zeros_like(x)
+
+    def _logpdf(self, x):
+        return np.full(x.shape, np.NINF)
+
+    def _ppf(self, x):
+        rslt = np.choose(np.greater(x, 0.0),
+                         [np.full(x.shape, np.inf),
+                          np.full(x.shape, 0.0)])
+        return rslt
+
+    def _rvs(self, k, lmda1, lmda2):
+        size = self._size
+        if size > 0:
+            raise RuntimeError('Tried to take samples from the AlwaysZero distribution!')
+
+alwayszerocrv = AlwaysZeroCRV(name='alwayszerocrv', a=0.0)
+
 
 class CachedCDFGenerator:
     """
@@ -252,7 +281,8 @@ class BayesTree(object):
                 if isinstance(tree[0], (types.FunctionType, types.MethodType)):
 #                     import pdb
 #                     pdb.set_trace()
-                    raise RuntimeError('Cannot traverse BayesTree; encountered unevaluated %s' % repr(tree[0]))
+                    raise RuntimeError('Cannot traverse BayesTree; encountered unevaluated %s'
+                                       % repr(tree[0]))
                 elif rng() <= tree[0]:
                     tree = tree[1]
                 else:
@@ -277,7 +307,8 @@ class BayesTree(object):
     @staticmethod
     def _innerFindTag(tree, tagTree, target):
         if isinstance(tree, types.TupleType):
-            assert isinstance(tagTree, types.TupleType), 'Ran out of tree looking for tag %s' % target
+            assert isinstance(tagTree, types.TupleType), ('Ran out of tree looking for tag %s'
+                                                          % target)
             prob, lTree, rTree = tree  # @UnusedVariable
             topTag, lTag, rTag = tagTree
             if topTag == target:
@@ -290,7 +321,8 @@ class BayesTree(object):
                     return BayesTree._innerFindTag(rTree, rTag, target)
 
         else:
-            assert not isinstance(tagTree, types.TupleType), 'Ran out of tags looking for tag %s' % target
+            assert not isinstance(tagTree, types.TupleType), ('Ran out of tags looking for tag %s'
+                                                              % target)
             if tagTree == target:
                 return BayesTree.fromTuple(tree, tag=tagTree)
             else:
@@ -368,6 +400,11 @@ def fullCRVFromPDFModel(pdfModel):
     elif modelStr == '$0*weibull(k=$1, lmda=$2)+(1-$0)*weibull(k=$3, lmda=$4)':
         k, shape1, scale1, shape2, scale2 = pdfModel['parms']
         return doubleweibull(k, shape1, scale1, shape2, scale2)
+    elif modelStr == '$0*expon(lambda=$1)+(1-$0)*expon(lambda=$2)':
+        k, lmda1, lmda2 = pdfModel['parms']
+        return doubleexpon(k, lmda1, lmda2)
+    elif modelStr == 'alwayszero()':
+        return alwayszerocrv()
     else:
         raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 

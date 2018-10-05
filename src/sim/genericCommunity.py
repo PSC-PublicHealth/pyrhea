@@ -31,6 +31,7 @@ from scipy.stats import expon, binom
 import pyrheabase
 import pyrheautils
 from typebase import DiagClassA, CareTier, PatientOverallHealth
+from freezerbase import FreezerError
 from facilitybase import TreatmentProtocol, BirthQueue, HOMEQueue  # @UnusedImport
 from facilitybase import Facility, Ward, PatientAgent, PatientStatusSetter, PatientRecord
 from facilitybase import ClassASetter, PatientStatus, PatientDiagnosis, FacilityManager
@@ -156,9 +157,6 @@ def ldecode(typeTpl, valL):
 
 cacheVer = 8
 LastMemCheck = time.time()
-
-class FreezerError(RuntimeError):
-    pass
 
 class Freezer(object):
     def __init__(self, ward):
@@ -480,7 +478,6 @@ class CommunityWard(Ward):
         """Return the PatientCategory appropriate for this agent for freeze drying"""
         return "base"
 
-
     def flushNewArrivals(self):
         """
         Forget any new arrivals- this prevents them from being freezedried (possibly redundantly).
@@ -589,7 +586,7 @@ class Community(Facility):
         meanPop = descr['meanPop']['value']
         popScale = _constants['populationScale']['value']
         meanPop *= popScale
-        nBeds = int(round(3.0*popScale*meanPop))
+        nBeds = int(round(3.0*meanPop/popScale))
         self.setCDFs(_constants['losModelMap'])
         self.addWard(wardClass(descr['abbrev'], '%s_%s_%s' % (category, patch.name,
                                                               descr['abbrev']),

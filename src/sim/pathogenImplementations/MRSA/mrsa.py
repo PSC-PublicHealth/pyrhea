@@ -17,9 +17,11 @@
 
 import logging
 import math
+from random import random
 import types
 from collections import defaultdict
 import pyrheautils
+import pathogenutils as pthu
 from phacsl.utils.collections.phacollections import SingletonMetaClass
 from stats import CachedCDFGenerator, BayesTree, fullCRVFromPDFModel
 from facilitybase import CareTier
@@ -35,104 +37,37 @@ _constants = None
 logger = logging.getLogger(__name__)
 
 
-def _valFromCategoryEntry(key, ctg, constantsJSON):
-    if key not in constantsJSON:
-        raise RuntimeError('Constant list for %s was not found' % key)
-    for val in constantsJSON[key]:
-        if val['category'] == ctg:
-            return val['frac']['value']
-    raise RuntimeError('Constant entry for category %s was not found' % ctg)
-
 def _parseValByTier(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        topD[elt['tier']] = elt['value']
-    return topD
+    return pthu.parseValByTier(fieldStr, _constants)
 
 def _parseFracByTierByFacilityByCategory(fieldStr):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        facilities = elt['facilities']
-        if cat not in topD:
-            topD[cat] = {}
-        for facElt in facilities:
-            abbrev = facElt['abbrev']
-            tiers = facElt['tiers']
-            if abbrev not in topD[cat]:
-                topD[cat][abbrev] = {}
-            for tierElt in tiers:
-                tier = tierElt['tier']
-                val = tierElt['frac']['value']
-                assert tier not in topD[cat][abbrev], ('Redundant %s for %s %s' %
-                                                      (fieldStr, abbrev, CareTier.names[tier]))
-                topD[cat][abbrev][tier] = val
-    return topD
-
+    return pthu.parseFracByTierByFacilityByCategory(fieldStr, _constants)
 
 def _parseFracByTierByCategory(fieldStr, eltKey='frac'):
-    topD = {}
-    for elt in _constants[fieldStr]:
-        cat = elt['category']
-        tiers = elt['tiers']
-        if cat not in topD:
-            topD[cat] = {}
-        for tierElt in tiers:
-            tier = tierElt['tier']
-            val = tierElt[eltKey]['value']
-            assert tier not in topD[cat], ('Redundant %s for %s %s' %
-                                           (fieldStr, cat, CareTier.names[tier]))
-            topD[cat][tier] = val
-    return topD
+    return pthu.parseFracByTierByCategory(fieldStr, _constants, eltKey='frac')
 
 def _parseScaleByTierByCategory(fieldStr):
-    return _parseFracByTierByCategory(fieldStr, eltKey='scale')
+    return pthu.parseFracByTierByCategory(fieldStr, _constants, eltKey='scale')
 
 def _parseValByTierByCategory(fieldStr):
-    return _parseFracByTierByCategory(fieldStr, eltKey='value')
+    return pthu.parseFracByTierByCategory(fieldStr, _constants, eltKey='value')
 
 def _parseTierTierScaleList(fieldStr):
-    result = {}
-    for elt in _constants[fieldStr]:
-        fmTier = CareTier.__dict__[elt['tierFrom']]
-        toTier = CareTier.__dict__[elt['tierTo']]
-        value = elt['scale']['value']
-        result[(fmTier, toTier)] = value
-    return result
-
-def _getValByTierByCategory(tbl, tblNameForErr, ward, wardCategory, overrideTbl=None,
-                            default=None):
-    tierStr = CareTier.names[ward.tier]
-    if overrideTbl:
-        # Potential override values are stored by [category][abbrev][tierName]
-        abbrev = ward.fac.abbrev
-        if (wardCategory in overrideTbl
-            and abbrev in overrideTbl[wardCategory]
-            and tierStr in overrideTbl[wardCategory][abbrev]):
-            return overrideTbl[wardCategory][abbrev][tierStr]
-    if wardCategory in tbl and tierStr in tbl[wardCategory]:
-        return tbl[wardCategory][tierStr]
-    else:
-        if default is not None:
-            return default
-        else:
-            raise RuntimeError('No way to set %s for %s tier %s' %
-                               (tblNameForErr, ward.fac.abbrev, CareTier.names[ward.tier]))
-
+    return pthu.parseTierTierScaleList(fieldStr, _constants)
 
 class MRSACore(object):
     """This is where we put things that are best shared across all MRSA instances"""
     __metaclass__ = SingletonMetaClass
 
     def __init__(self):
-        colCRV = fullCRVFromPDFModel(_constants['colonizationDurationPDF'])
-        self.colCachedCDF = CachedCDFGenerator(colCRV)
         infCRV = fullCRVFromPDFModel(_constants['infectionDurationPDF'])
         self.infCachedCDF = CachedCDFGenerator(infCRV)
         reboundCRV = fullCRVFromPDFModel(_constants['reboundPDF'])
         self.reboundCachedCDF = CachedCDFGenerator(reboundCRV)
         sponLossCRV = fullCRVFromPDFModel(_constants['spontaneousLossPDF'])
         self.sponLossCachedCDF = CachedCDFGenerator(sponLossCRV)
+        colToInfectCRV = fullCRVFromPDFModel(_constants['colonizationToInfectionPDF'])
+        self.colToInfectCachedCDF = CachedCDFGenerator(colToInfectCRV)
 
         self.exposureProbCache = {}  # so simple we don't need a CachedCDFGenerator
 
@@ -160,6 +95,7 @@ class MRSACore(object):
         self.infDischDelayTbl = _parseValByTier('infectedDischargeDelayTime')
 
         self.probNewExposuresUndet = _constants['probNewExposuresAreUndetectable']['value']
+        self.fracPermanentlyColonized = _constants['fracPermanentlyColonized']['value']
         self.colTransferProbScaleDict = _parseTierTierScaleList('colonizedTransferProbScale')
         self.infTransferProbScaleDict = _parseTierTierScaleList('infectedTransferProbScale')
 
@@ -203,8 +139,6 @@ class MRSA(Pathogen):
         """
         super(MRSA, self).__init__(ward, implCategory)
         self.core = MRSACore()
-        self.patientPth = self._emptyPatientPth()
-        self.patientPthTime = None
         self.propogationInfo = {}
         self.propogationInfoKey = None
         self.propogationInfoTime = None
@@ -239,17 +173,20 @@ class MRSA(Pathogen):
                                                                  PthStatusSetter(PthStatus.CHRONIC)),
                                                                 (fracClear,
                                                                  PatientStatusSetter())])
-        self.tau = _getValByTierByCategory(self.core.tauTbl, 'tau', ward, ward.fac.category,
-                                           overrideTbl=self.core.tauOverrideTbl)
-        self.exposureCutoff = _getValByTierByCategory(self.core.exposureCutoffTbl,
-                                                      'exposureCutoff',
-                                                      ward, ward.fac.category)
-        self.colDischDelayTime = _getValByTierByCategory(self.core.colDischDelayTbl,
-                                                         'colonizedDischargeDelayTime',
-                                                         ward, ward.fac.category, default=0.0)
-        self.infDischDelayTime = _getValByTierByCategory(self.core.colDischDelayTbl,
-                                                         'infectedDischargeDelayTime',
-                                                         ward, ward.fac.category, default=0.0)
+        self.tau = pthu.getValByTierByCategory(self.core.tauTbl, 'tau', ward, ward.fac.category,
+                                               overrideTbl=self.core.tauOverrideTbl)
+        self.exposureCutoff = pthu.getValByTierByCategory(self.core.exposureCutoffTbl,
+                                                          'exposureCutoff',
+                                                          ward, ward.fac.category)
+        self.colDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
+                                                   'colonizedDischargeDelayTime',
+                                                   ward, default=0.0)
+        self.infDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
+                                                   'infectedDischargeDelayTime',
+                                                   ward, default=0.0)
+
+    def __str__(self):
+        return '<%s>' % pathogenName
 
     def flushCaches(self):
         """
@@ -311,33 +248,15 @@ class MRSA(Pathogen):
         else:
             return 0.0
 
-    def _emptyPatientPth(self):
-        return {k:0 for k in PthStatus.names.keys()}
-
-    def __str__(self):
-        return '<%s>' % pathogenName
-
     def initializePatientState(self, patient):
         """
         This method assigns the patient a Status appropriate to time 0- that is,
         it implements the initial seeding of the patient population with pathogen.
         """
-        patient._status = self.initializationBayesTree.traverse().set(patient._status, 0)
-
-    def getPatientPthCounts(self, timeNow):
-        """
-        Returns a dict of the form {PthStatus.CLEAR : nClearPatients, ...}
-        """
-        if self.patientPthTime != timeNow:
-            dct = self._emptyPatientPth()
-            try:
-                for pt in self.ward.getPatientList():
-                    dct[pt._status.pthStatus] += 1
-            except FreezerError:
-                pass  # We're going to have to ignore freeze-dried patients
-            self.patientPth = dct
-            self.patientPthTime = timeNow
-        return self.patientPth
+        patient._status = self.initializationBayesTree.traverse().set(patient.getStatus(), 0)
+        canClear = (random() > self.core.fracPermanentlyColonized)
+        patient._status = patient.getStatus()._replace(canClear=canClear)
+        
 
     def getPatientStateKey(self, status, treatment):
         """ treatment is the patient's current treatment status """
@@ -429,14 +348,21 @@ class MRSA(Pathogen):
                 pRebound = self.core.reboundCachedCDF.intervalProb(*timeKey)
                 pSponLoss = self.core.sponLossCachedCDF.intervalProb(*timeKey)
                 pNotExposed = self.core.exposureProbCache[key]
-                return BayesTree(PthStatusSetter(PthStatus.COLONIZED),
-                                 BayesTree(BayesTree(PthStatusSetter(PthStatus.CLEAR),
-                                                     PatientStatusSetter(),
-                                                     pSponLoss),
+                pTransition = pSponLoss + pRebound - (pSponLoss * pRebound)
+                # The following works if intervals are short enough to consider the pdfs constant
+                pRatio = pSponLoss/(pSponLoss + pRebound)
+                innerTree = BayesTree(BayesTree(PthStatusSetter(PthStatus.CLEAR),
+                                                PthStatusSetter(PthStatus.COLONIZED),
+                                                pRatio),
+                                      PatientStatusSetter(),
+                                      pTransition)
+                return BayesTree(innerTree,
+                                 BayesTree(PthStatusSetter(PthStatus.UNDETCOLONIZED),
                                            PthStatusSetter(PthStatus.COLONIZED),
-                                           pNotExposed),
-                                 pRebound)
+                                           self.core.probNewExposuresUndet),
+                                 pNotExposed)
         elif patientStatus.pthStatus == PthStatus.COLONIZED:
+            # Infection has not been fully implemented- TODO add the colonized-to-infected transition
             timeKey = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
             if patientStatus.canClear:
                 pSponLoss = self.core.sponLossCachedCDF.intervalProb(*timeKey)

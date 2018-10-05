@@ -40,7 +40,8 @@ from facilitybase import CareTier as CareTierEnum
 from facilitybase import PatientOverallHealth as OverallHealthEnum
 import schemautils
 from phacsl.utils.notes.statval import HistoVal
-from stats import lognormplusexp, doubleweibull, fullCRVFromPDFModel, fullLogNormCRVFromMean
+from stats import lognormplusexp, doubleweibull, doubleexpon
+from stats import fullCRVFromPDFModel, fullLogNormCRVFromMean
 import pathogenbase as pth
 import map_transfer_matrix as mtm
 import tools_util as tu
@@ -121,6 +122,18 @@ class LOSPlotter(object):
         elif facToImplDict[descr['category']] == 'COMMUNITY':
             if 'communityLOSModel' in constants:
                 self.fullCRVs['HOME'] = fullCRVFromLOSModel(constants['communityLOSModel'])
+            elif 'losModelMap' in constants and 'initialUnhealthyFrac' in constants:
+                # This is a hack based on a specific 'classifier' in the community implementation
+                assert ('HEALTHY_base' in constants['losModelMap']
+                        and constants['losModelMap']['HEALTHY_base']['pdf'] == 'expon(lambda=$0)'
+                        and 'UNHEALTHY_base' in constants['losModelMap']
+                        and constants['losModelMap']['HEALTHY_base']['pdf'] == 'expon(lambda=$0)'
+                        ), 'Unexpected losModelMap format for community'
+                lmda1 = constants['losModelMap']['HEALTHY_base']['parms'][0]
+                lmda2 = constants['losModelMap']['UNHEALTHY_base']['parms'][0]
+                k = constants['initialUnhealthyFrac']
+                print 'creating doubleexpon(%s, %s, %s)' % (k, lmda1, lmda2)
+                self.fullCRVs['HOME'] = doubleexpon(k, lmda1, lmda2)
             else:
                 self.fullCRVs['HOME'] = None
         else:

@@ -16,6 +16,7 @@
 ###################################################################################
 
 from phacsl.utils.collections.phacollections import enum, namedtuple
+from freezerbase import FreezerError
 
 PthStatus = enum('CLEAR', 'COLONIZED', 'CHRONIC', 'INFECTED', 'RECOVERED', 'UNDETCOLONIZED')
 defaultPthStatus = PthStatus.CLEAR
@@ -31,6 +32,8 @@ class Pathogen(object):
         between facility descriptions and implementations.
         """
         self.ward = ward
+        self.patientPth = self._emptyPatientPth()
+        self.patientPthTime = None
 
     def flushCaches(self):
         """
@@ -40,6 +43,9 @@ class Pathogen(object):
         flush.
         """
         pass
+
+    def _emptyPatientPth(self):
+        return {k:0 for k in PthStatus.names.keys()}
 
     def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
         raise RuntimeError('Pathogen base class getStatusChangeTree was called.')
@@ -58,4 +64,13 @@ class Pathogen(object):
         """
         Returns a dict of the form {PthStatus.CLEAR : nClearPatients, ...}
         """
-        raise RuntimeError('Pathogen base class getPatientPthCounts was called')
+        if self.patientPthTime != timeNow:
+            dct = self._emptyPatientPth()
+            try:
+                for pt in self.ward.getPatientList():
+                    dct[pt._status.pthStatus] += 1
+            except FreezerError:
+                pass  # We're going to have to ignore freeze-dried patients
+            self.patientPth = dct
+            self.patientPthTime = timeNow
+        return self.patientPth

@@ -68,11 +68,13 @@
       'probNewExposuresAreUndetectable': 
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'When a patient is newly colonized, this is the probability that the colonization is undetectable'
-      'colonizationDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'reboundPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'fracPermanentlyColonized':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
       'spontaneousLossPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
-      'colonizationToInfectionFrac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
+      'colonizationToInfectionPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
@@ -90,9 +92,9 @@
       - 'colonizedTransferProbScale'
       - 'infectedTransferProbScale'
       - 'probNewExposuresAreUndetectable'
-      - 'colonizationDurationPDF'
       - 'infectionDurationPDF'
-      - 'colonizationToInfectionFrac'
-      - 'fractionColonizedChronic'
+      - 'colonizationToInfectionPDF'
+      - 'spontaneousLossPDF'
+      - 'fracPermanentlyColonized'
       
       

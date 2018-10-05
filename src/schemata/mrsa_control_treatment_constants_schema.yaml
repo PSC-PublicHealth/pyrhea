@@ -1,0 +1,46 @@
+'$schema': 'http://json-schema.org/schema#'
+'$id': 'http://rhea.psc.edu/mrsa_control_treatment_constants_schema.yaml'
+'title': 'mrsa control treatment constants schema'
+'description': 'mrsa control treatment constants schema'
+
+'$ref': '#/definitions/mrsa_control_treatment_constants'
+
+'definitions':
+  'nonNegIntByTier':
+    'type': 'array'
+    'items':
+      'type': 'object'
+      'properties':
+        'tier': {'$ref': 'facility_schema.yaml#/definitions/caretier', 'description': 'Tier of care (ICU, NURSING, etc)'}
+        'num': {'$ref': 'basics_schema.yaml#/definitions/nonneginteger'}
+      'required':
+        - 'tier'
+        - 'num'
+
+  'mrsa_control_treatment_constants':
+    'type': 'object'
+    'properties':
+      'transmissibilityMultiplier':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place' 
+      'swabDiagnosticSensitivity':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'sensitivity of a swab (screening test) to detect MRSA colonization' 
+      'swabDiagnosticSpecificity':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': '1.0 minus false positive rate for a single rectal swab.'
+      'swabDelayDaysByTierMin':
+        '$ref': '#/definitions/nonNegIntByTier'
+        'description': 'Minimum number of days delay before the results of a rectal swab test are returned'
+      'swabDelayDaysByTierMax':
+        '$ref': '#/definitions/nonNegIntByTier'
+        'description': 'Maximum number of days delay before the results of a rectal swab test are returned'
+                 
+    'required':
+    - 'transmissibilityMultiplier'
+    - 'swabDiagnosticSensitivity'
+    - 'swabDiagnosticSpecificity'
+    - 'swabDelayDaysByTierMin'
+    - 'swabDelayDaysByTierMax'
+      
+     

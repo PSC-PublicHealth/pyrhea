@@ -60,7 +60,7 @@
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
       'kalmanH':
-        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
+        '$ref': 'basics_schema.yaml#/definitions/float'
         'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
     'required':
       - 'losModelMap'

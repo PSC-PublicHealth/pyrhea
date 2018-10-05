@@ -65,4 +65,3 @@ PatientDiagnosis = namedtuple('PatientDiagnosis',
                                ],
                               field_types=[PatientOverallHealth, DiagClassA, None, PthStatus, bool])
 
-

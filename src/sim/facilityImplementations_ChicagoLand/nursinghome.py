@@ -89,9 +89,19 @@ class NursingHome(Facility):
                                                              scale=math.exp(lMP[1])))
             self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
         elif losModel['pdf'] == '$0*weibull(k=$1, lmda=$2)+(1-$0)*weibull(k=$3, lmda=$4)':
-            self.initialResidentFrac = (1.0 - losModel['parms'][0])
-            self.rehabCachedCDF = CachedCDFGenerator(weibull_min(lMP[1], scale=lMP[2]))
-            self.frailCachedCDF = CachedCDFGenerator(weibull_min(lMP[3], scale=lMP[4]))
+            weibull1 = weibull_min(lMP[1], scale=lMP[2])
+            weibull2 = weibull_min(lMP[3], scale=lMP[4])
+            if weibull1.mean() <= weibull2.mean():
+                # Second block is the resident frails
+                self.initialResidentFrac = (1.0 - losModel['parms'][0])
+                self.rehabCachedCDF = CachedCDFGenerator(weibull1)
+                self.frailCachedCDF = CachedCDFGenerator(weibull2)
+            else:
+                # first block is the residents
+                self.initialResidentFrac = losModel['parms'][0]
+                self.rehabCachedCDF = CachedCDFGenerator(weibull2)
+                self.frailCachedCDF = CachedCDFGenerator(weibull1)
+
         else:
             raise RuntimeError("Unexpected losModel form %s for %s!" % (losModel['pdf'],
                                                                         descr['abbrev']))
