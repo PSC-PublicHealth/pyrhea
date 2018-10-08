@@ -38,6 +38,7 @@ class CommunityManagerCore(object):
 
     def __init__(self):
         self.rateScale = 1.0
+        self.x = 0.0
         self.p = 1.0
         self.Q = _constants['kalmanQ']['value']
         self.H = _constants['kalmanH']['value']
@@ -70,7 +71,7 @@ class CommunityManagerCore(object):
             if self.cumPop == 0:
                 pass  # No update; rates remain unchanged
             else:
-                x = self.rateScale
+                x = self.x
                 P = self.p
                 z = (self.cumPop - self.cumMeanPop)/self.cumMeanPop
                 Q = self.Q
@@ -85,8 +86,14 @@ class CommunityManagerCore(object):
                 print (('Kalman update triggered by %s: cumPop= %s, cumMeanPop= %s,'
                         ' x= %s P=%s z=%s R=%s -> K=%s -> x=%s P=%s') %
                        (callerAbbrev, self.cumPop, self.cumMeanPop, x, self.p, z, R, K, xHat, P))
-                self.rateScale = max(xHat, 0.0)  # outlier cases can put us outside sensible range
+                self.x = xHat
                 self.p = P
+                if self.x > 0.0:
+                    self.rateScale = 0.9
+                elif self.x < 0.0:
+                    self.rateScale = 1.1
+                else:
+                    self.rateScale = 1.0
                 self.lastKalmanUpdateTime = timeNow
             self.cumPop = 0
             self.cumMeanPop = 0.0
