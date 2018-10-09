@@ -62,6 +62,9 @@
       'kalmanH':
         '$ref': 'basics_schema.yaml#/definitions/float'
         'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
+      'rateScaleDelta':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'Change community hospitalization rates by this fraction to control population drift'
     'required':
       - 'losModelMap'
       - 'communityDeathRate'
@@ -75,5 +78,9 @@
       - 'bypassCategoryMapFilePaths'
       - 'fracBypassIndirect'
       - 'populationScale'
+      - 'rateScaleDelta'
+      - 'kalmanQ'
+      - 'kalmanH'
+ 
      
       

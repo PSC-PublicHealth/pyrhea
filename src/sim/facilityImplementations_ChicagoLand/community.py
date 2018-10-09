@@ -42,6 +42,7 @@ class CommunityManagerCore(object):
         self.p = 1.0
         self.Q = _constants['kalmanQ']['value']
         self.H = _constants['kalmanH']['value']
+        self.rateScaleDelta = _constants['rateScaleDelta']['value']
         self.lastKalmanUpdateTime = None
         self.cumPop = 0
         self.cumMeanPop = 0.0
@@ -64,7 +65,6 @@ class CommunityManagerCore(object):
           since the standard deviation scales as 1/sqrt(N)
         W and V are 1.0
         """
-        #print 'kalmanUpdate', callerAbbrev, totPop, meanPop
         if timeNow != self.lastKalmanUpdateTime:
             assert (self.lastKalmanUpdateTime is None
                     or self.cumMeanPop != 0.0), 'No community has any population?'
@@ -83,15 +83,15 @@ class CommunityManagerCore(object):
                 K = (PMinus * H) / (H * PMinus * H + R)
                 xHat = xHatMinus + (K * (z - H*(xHatMinus - 1.0)))
                 P = (1.0 - K * H) * PMinus
-                print (('Kalman update triggered by %s: cumPop= %s, cumMeanPop= %s,'
-                        ' x= %s P=%s z=%s R=%s -> K=%s -> x=%s P=%s') %
-                       (callerAbbrev, self.cumPop, self.cumMeanPop, x, self.p, z, R, K, xHat, P))
+                logger.info(('Kalman update triggered by %s: cumPop= %s, cumMeanPop= %s,'
+                              ' x= %s P=%s z=%s R=%s -> K=%s -> x=%s P=%s'),
+                              callerAbbrev, self.cumPop, self.cumMeanPop, x, self.p, z, R, K, xHat, P)
                 self.x = xHat
                 self.p = P
                 if self.x > 0.0:
-                    self.rateScale = 0.9
+                    self.rateScale = 1.0 - self.rateScaleDelta
                 elif self.x < 0.0:
-                    self.rateScale = 1.1
+                    self.rateScale = 1.0 + self.rateScaleDelta
                 else:
                     self.rateScale = 1.0
                 self.lastKalmanUpdateTime = timeNow
