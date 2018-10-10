@@ -156,6 +156,9 @@
       'colonizedTransferProbScale':
         '$ref': '#/definitions/scaleByTierPair'
         'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
+      'homeClearColonizedStatusProb':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
                 
     'required':
       - 'initialFractionColonized'
@@ -167,6 +170,7 @@
       - 'colonizedDischargeDelayTime'
       - 'colonizedTransferProbScale'
       - 'exposureCutoff'
+      - 'homeClearColonizedStatusProb'
       
       
      

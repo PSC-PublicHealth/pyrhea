@@ -106,6 +106,7 @@ class CRE(Pathogen):
         self.propogationInfoTime = None
         self.treatmentProbModifierDict = None
 
+        self.homeClearColonizedStatusProb = _constants['homeClearColonizedStatusProb']['value']
         self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
                                                                   ward.fac.category,
                                                                   ward.tier)
@@ -276,13 +277,14 @@ class CRE(Pathogen):
 #                                                  selfProt, self.tau)
                 pSafe = math.exp(dT * expScale * logPSafe)
                 tree = BayesTree(PatientStatusSetter(),
-                                 PthStatusSetter(PthStatus.COLONIZED),                                 
+                                 PthStatusSetter(PthStatus.COLONIZED),
                                  pSafe)
                 self.core.exposureTreeCache[key] = tree
             return self.core.exposureTreeCache[key]
         else:
             assert patientStatus.pthStatus == PthStatus.COLONIZED, ('patient has unexpected PthStatus %s' %
                                                                     PthStatus.names[patientStatus.pthStatus])
+            
             key = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
             if patientStatus.canClear:
                 if key not in self.core.spontaneousLossTreeCache:
@@ -291,9 +293,12 @@ class CRE(Pathogen):
                                      PatientStatusSetter(),
                                      changeProb)
                     self.core.spontaneousLossTreeCache[key] = tree
-                return self.core.spontaneousLossTreeCache[key]
+                innerTree = self.core.spontaneousLossTreeCache[key]
             else:
-                return BayesTree(PatientStatusSetter())
+                innerTree = BayesTree(PatientStatusSetter())
+            return BayesTree(PthStatusSetter(PthStatus.CLEAR),
+                             innerTree,
+                             self.homeClearColonizedStatusProb)
 
     def filterStatusChangeTrees(self, treeList, patientAgent, startTime, timeNow):
         # Find and edit any trees containing the 'LOS' tag
