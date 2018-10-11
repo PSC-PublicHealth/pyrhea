@@ -106,7 +106,10 @@ class CRE(Pathogen):
         self.propogationInfoTime = None
         self.treatmentProbModifierDict = None
 
-        self.homeClearColonizedStatusProb = _constants['homeClearColonizedStatusProb']['value']
+        if ward.tier == CareTier.HOME:
+            self.clearColonizedStatusProb = _constants['homeClearColonizedStatusProb']['value']
+        else:
+            self.clearColonizedStatusProb = 0.0
         self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
                                                                   ward.fac.category,
                                                                   ward.tier)
@@ -298,7 +301,7 @@ class CRE(Pathogen):
                 innerTree = BayesTree(PatientStatusSetter())
             return BayesTree(PthStatusSetter(PthStatus.CLEAR),
                              innerTree,
-                             self.homeClearColonizedStatusProb)
+                             self.clearColonizedStatusProb)
 
     def filterStatusChangeTrees(self, treeList, patientAgent, startTime, timeNow):
         # Find and edit any trees containing the 'LOS' tag
