@@ -112,6 +112,7 @@ class TauMod(object):
             self.workerCount = Config()['WorkerCount']
         else:
             self.workerCount = workerCount
+        self.minWorkerReporting = int(self.workerCount * 0.8)
 
         # how frequently we want data from those processes
         self.updatePeriod=Config()['UpdatePeriod']
@@ -161,10 +162,26 @@ class TauMod(object):
         writeDateFile(s)
 
     def waitForWorkers(self):
+        minReporting = max(int(self.workerCount * 0.9), self.minWorkerReporting)
+        stragglerWait = 15 * 60
+        stragglerTimer = None
+
         while True:
             lines = readDateFile()
-            if len(lines) - 2 == self.workerCount:
+            numComplete = len(lines) - 2
+
+            if numComplete == self.workerCount:
                 return
+
+            if stragglerTimer is not None:
+                stragglerTimer -= 1
+                if stragglerTimer <= 0:
+                    self.workerCount = numComplete # abandon the other workers
+                    return
+
+            if numComplete >= minReporting:
+                stragglerTimer = stragglerWait
+
             time.sleep(1)
 
     def getWorkerStats(self):
@@ -175,14 +192,15 @@ class TauMod(object):
         days = [self.nextDay - d for d in self.dayList]
         minDay = min(days)
         if minDay < 0: minDay = 0
-        
+
         for line in lines[2:]:
             uid, prevStatsFileName, tauFileName, expectedFileName = line.strip().split(" ") # @UnusedVariable
 
             data = bz.ctable(rootdir=prevStatsFileName, mode='r')
-            pS = data.fetchwhere("day >= %d"%minDay, out_flavor='bcolz', outcols=['fac', 'tier', 'ward', 'day', 'COLONIZED', 'TOTAL'])
+            pS = data.fetchwhere("day >= %d"%minDay, out_flavor='bcolz',
+                                 outcols=['fac', 'tier', 'ward', 'day', 'COLONIZED', 'TOTAL'])
             pS = pS.todataframe()
-            
+
             prevStats.append(pS[pS.day.isin(days)])
             #with SharedLock(tauFileName):
             with open(tauFileName, "rb") as f:
