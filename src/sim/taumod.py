@@ -173,14 +173,14 @@ class TauMod(object):
             if numComplete == self.workerCount:
                 return
 
-            if stragglerTimer is not None:
+            if stragglerTimer is None:
+                if numComplete >= minReporting:
+                    stragglerTimer = stragglerWait
+            else:
                 stragglerTimer -= 1
                 if stragglerTimer <= 0:
                     self.workerCount = numComplete # abandon the other workers
                     return
-
-            if numComplete >= minReporting:
-                stragglerTimer = stragglerWait
 
             time.sleep(1)
 
