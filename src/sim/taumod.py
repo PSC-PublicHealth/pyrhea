@@ -253,8 +253,10 @@ class TauMod(object):
         facSampQ1 = facSampGrps.quantile(q=0.25)['prev_sample']
         facSampQ3 = facSampGrps.quantile(q=0.75)['prev_sample']
 
-        #algorithm = 'gr_independent'
-        algorithm = 'running_average'
+        if 'algorithm' in Config():
+            algorithm = Config()['algorithm']
+        else:
+            algorithm = 'running_average'
 
         if algorithm == 'gr_independent':
             if self.current_best_tau is None:
