@@ -253,8 +253,8 @@ class TauMod(object):
         facSampQ1 = facSampGrps.quantile(q=0.25)['prev_sample']
         facSampQ3 = facSampGrps.quantile(q=0.75)['prev_sample']
 
-        if 'algorithm' in Config():
-            algorithm = Config()['algorithm']
+        if 'Algorithm' in Config():
+            algorithm = Config()['Algorithm']
         else:
             algorithm = 'running_average'
 
