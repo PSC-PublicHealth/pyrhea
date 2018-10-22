@@ -49,6 +49,9 @@ class Config(object):
 
     def __getitem__(self, key):
         return self.config[key]
+    
+    def __contains__(self, key):
+        return key in self.config
 
 
 def writeDateFile(s):
