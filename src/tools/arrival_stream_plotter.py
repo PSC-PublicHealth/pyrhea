@@ -52,6 +52,7 @@ DIAG_TIER_MAP = {DiagClassA.WELL: CareTier.HOME, DiagClassA.NEEDSREHAB: CareTier
                  DiagClassA.NEEDSLTAC: CareTier.LTAC, DiagClassA.SICK: CareTier.HOSP,
                  DiagClassA.VERYSICK: CareTier.ICU, DiagClassA.NEEDSVENT: CareTier.VENT,
                  DiagClassA.NEEDSSKILNRS: CareTier.SKILNRS}
+TIER_DIAG_MAP = {v: k for k, v in DIAG_TIER_MAP.items()}
 
 LOGGER = None
 
@@ -117,58 +118,94 @@ def countVisits(tplL, rangeLow, rangeHigh, facDict, accumCountsDct, accumStayDct
         return {}, rangeLow, rangeHigh
 
 
-class ParseLineError(RuntimeError):
-    pass
-
-def parseArrivalLine(line):
-    if 'birth' in line: print line
-    words =  line.split()
-    if len(words) == 6:
-        assert words[3] == 'arrives', 'Bad line format: %s' % line
-        patName = words[2]
-        dstName = words[4]
-        date = int(words[5])
-    elif len(words) == 7:
-        assert words[4] == 'arrives', 'Bad line format: %s' % line
-        assert words[2] == '-', 'Bad line format: %s' % line
-        patName = words[3]
-        dstName = words[5]
-        date = int(words[6])
-    else:
-        raise ParseLineError('Bad line format: %s' % line)
-    return patName, dstName, date
-
-def parseStatusLine(line, patName):
-    words = line.split()
-    assert words[3] == patName, 'Bad line format: %s' % line
-    assert words[6].startswith('PatientStatus('), 'Bad line format: %s' % line
-    statS = ' '.join(words[6:])
-    statS = statS.strip()[14:-1]
-    terms = statS.split(',')
-    kwargs = {'homeAddr': None}
-    for term in terms:
-        term = term.strip()
-        if term.startswith('homeAddr'):
-            continue  # we cannot reconstruct these
-        try:
-            key, val = term.split('=')
-        except ValueError:
-            continue  # fragments
-        key = key.strip()
-        if key == 'overall':
-            val = _PATIENT_OVERALL_HEALTH_MAP[val]
-        elif key == 'diagClassA':
-            val = _DIAG_CLASS_A_MAP[val]
-        elif key == 'pthStatus':
-            val = _PTH_STATUS_MAP[val]
-        elif key in ['startDateA', 'startDatePth']:
-            val = int(val)
-        elif key in ['relocateFlag', 'justArrived', 'canClear']:
-            val = bool(val)
+class State(object):
+    def __init__(self):
+        self.patientD = {}
+    def copy(self):
+        state = State()
+        state.patientD = self.patientD.copy()
+        return state
+    def add(self, patNm, pthStatus, origin, date):
+        if patNm in self.patientD:
+            oldPthStatus, oldOrigin, oldDate = self.patientD[patNm]
+            if pthStatus != oldPthStatus or oldOrigin != origin:
+                self.patientD[patNm] = (pthStatus, origin, date)
+            else:
+                pass
         else:
-            continue  # fragments
-        kwargs[key] = val
-    return PatientStatus(**kwargs)
+            self.patientD[patNm] = (pthStatus, origin, date)
+    def rm(self, patNm):
+        if patNm in self.patientD:
+            del self.patientD[patNm]
+    def originStr(self, origin):
+        if origin < 0:
+            return 'local'
+        else:
+            return CareTier.names[origin]
+    def getCounts(self, reqPthStatus = None):
+        rslt = defaultdict(int)
+        if reqPthStatus is None:
+            for patNm, (pthStatus, origin, date) in self.patientD.items():
+                rslt[self.originStr(origin)] += 1
+        else:
+            for patNm, (pthStatus, origin, date) in self.patientD.items():
+                if pthStatus == reqPthStatus:
+                    rslt[self.originStr(origin)] += 1
+        return {key: val for key, val in rslt.items()}  # turn it into a regular dict
+    def getTuple(self, patNm):
+        pthStatus, origin, date = self.patientD[patNm]
+        return pthStatus, origin, date
+    def __str__(self):
+        dctS = ', '.join(['%s: (%s, %s, %s)' % (patNm, PthStatus.names[pthS], CareTier.names[orig],
+                                                date)
+                         for patNm, (pthS, orig, date) in self.patientD.items()])
+        return 'State(%s)' % dctS
+    def __add__(self, other):
+        rslt = self.copy()
+        for patNm, (pthStatus, origin, date) in other.patientD.items():
+            rslt.add(patNm, pthStatus, origin, date)
+        return rslt
+    def __iadd__(self, other):
+        for patNm, (pthStatus, origin, date) in other.patientD.items():
+            self.add(patNm, pthStatus, origin, date)
+        return self
+
+
+def buildStateChain(placeEvtD, targetLoc, targetTier):
+    eventL = placeEvtD[(targetLoc, targetTier)]
+    day = 0
+    stateD = {day: State()}
+    while eventL:
+        nextEvent = eventL.pop(0)
+        nextEDay = nextEvent[0]
+        assert day <= nextEDay, 'Events out of order; day %d vs expected %d' % (day, nextEDay)
+        while day < nextEDay:
+            stateD[day + 1] = stateD[day].copy()
+            day += 1
+        stateNow = stateD[day]
+        if len(nextEvent) == 4:
+            # update, possible departure
+            patNm, loc, patStatus = nextEvent[1:]
+            if loc != targetLoc or DIAG_TIER_MAP[patStatus.diagClassA] != targetTier:
+                # departure
+                oldPS, oldOrigin, oldDate = stateNow.getTuple(patNm)
+                if oldPS != patStatus.pthStatus:
+                    newPthStatus = patStatus.pthStatus
+                    backD = (day + oldDate)/2
+                    for tD in range(backD, day):
+                        stateD[tD].add(patNm, newPthStatus, -1, backD)  # -1 being the code for local
+                stateNow.rm(patNm)
+            else:
+                stateNow.add(patNm, patStatus.pthStatus, targetTier, day)
+        elif len(nextEvent) == 5:
+            # arrival
+            patNm, loc, patStatus, srcAddr = nextEvent[1:]
+            srcLoc, srcTier = srcAddr
+            stateNow.add(patNm, patStatus.pthStatus, srcTier, day)
+        else:
+            raise RuntimeError('Unexpected event format %s' % nextEvent)
+    return stateD, day
+
 
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
@@ -200,98 +237,22 @@ def main():
     lowDate = opts.low
     highDate = opts.high
 
-    #inputDict = tu.readModelInputs(args[0])
-    #facDict = tu.getFacDict(inputDict)
+    inputDict = tu.readModelInputs(args[0])
+    facDict = tu.getFacDict(inputDict)
 
-    patientLocs = {}
-
-    lastArriving = None
-    for line in sys.stdin.readlines():
-        if 'DEBUG' in line and 'arrives' in line:
-            try:
-                patName, dstName, date = parseArrivalLine(line)
-                bits = dstName.split('_')
-                try:
-                    int(bits[-1])
-                    bits = bits[:-2]  # Some place names end in a ward tier and number
-                except:
-                    pass
-                newLoc = '_'.join(bits[4:7])
-                if patName not in patientLocs:
-                    bits = patName.split('_')
-                    if len(bits) == 8:
-                        startLoc = bits[6]
-                    else:
-                        startLoc = '_'.join(bits[:-1])
-                    patientLocs[patName] = [(startLoc, 0)]
-                patientLocs[patName].append((newLoc, date))
-                lastArriving = patName
-            except ParseLineError, e:
-                print e
-        elif 'DEBUG' in line and 'status is' in line:
-            try:
-                patientStatus = parseStatusLine(line, lastArriving)
-                oldEnt = patientLocs[lastArriving].pop()
-                assert len(oldEnt) == 2, 'Two status lines for %s %s?' % (lastArriving, oldEnt)
-                newLoc, date = oldEnt
-                patientLocs[lastArriving].append((newLoc, date, patientStatus))
-            except ParseLineError, e:
-                print e
-        else:
-            pass
+    with open('work9_ofile.pkl', 'rU') as f:
+        placeEvtD = pickle.load(f)
 
     targetLoc = 'NORT_660_H'
-    targetDiagClA = DiagClassA.SICK
-    relEventL = []
-    placeEvtD = defaultdict(list)
-    for patName, eventL in patientLocs.items():
-        #print patName, 'eventL: ', eventL
-        oldLoc, oldDate = eventL[0]
-        if len(eventL[1]) >= 3:
-            oldPS = eventL[1][2]
-        else:
-            oldPS = None
-        eventL = eventL[1:]
-        inFlag = (oldLoc == targetLoc and oldPS.diagClassA == targetDiagClA)
-        if inFlag:
-            relEventL.append((oldDate, patName, oldLoc, oldPS))
-        oldTier = DIAG_TIER_MAP[oldPS.diagClassA] if oldPS is not None else None
-        oldAddr = (oldLoc, oldTier)
-        placeEvtD[oldAddr].append((oldDate, patName, oldLoc, oldPS))
-        for evt in eventL:
-            if len(evt) >= 3:
-                newLoc, newDate, newPS = evt
-            else:
-                newLoc, newDate = evt
-                newPS = None
-            if inFlag or (newLoc == targetLoc and newPS.diagClassA == targetDiagClA):
-                relEventL.append((newDate, patName, newLoc, newPS))
-            newTier = DIAG_TIER_MAP[newPS.diagClassA] if newPS is not None else None
-            newAddr = (newLoc, newTier)
-            if newAddr != oldAddr:
-                # capture departure event
-                placeEvtD[oldAddr].append((newDate, patName, newLoc, newPS))
-                placeEvtD[newAddr].append((newDate, patName, newLoc, newPS, oldAddr))
-            else:
-                placeEvtD[newAddr].append((newDate, patName, newLoc, newPS))
-            oldLoc, oldDate, oldPS, oldTier, oldAddr = newLoc, newDate, newPS, newTier, newAddr
-            inFlag = (oldLoc == targetLoc and oldPS.diagClassA == targetDiagClA)
-    relEventL.sort()
-    newPlaceEvtD = {}
-    for key, lst in placeEvtD.items():
-        lst.sort()
-        newPlaceEvtD[key] = lst
-    placeEvtD = newPlaceEvtD
-#     for a, b in zip(enumerate(relEventL),
-#                     enumerate(placeEvtD[(targetLoc, DIAG_TIER_MAP[targetDiagClA])])):
-#         aInd, (aDate, aPat, aLoc, aPS) = a
-#         bInd, (bDate, bPat, bLoc, bPS) = b
-#         aDCA = aPS.diagClassA if aPS is not None else None
-#         bDCA = bPS.diagClassA if bPS is not None else None
-#         print '%3d %3d %15s %10s %3d %3d %15s %10s' % (aInd, aDate, aPat, aDCA, bInd, bDate, bPat, bDCA)
+    targetTier = CareTier.ICU
 
-    with open('ofile.pkl', 'w') as f:
-        pickle.dump(placeEvtD, f, 2)
+    stateD, maxDay = buildStateChain(placeEvtD, targetLoc, targetTier)
+
+    for day in xrange(maxDay+1):
+        print 'Day %s: %s %s' % (day, stateD[day].getCounts(), stateD[day].getCounts(PthStatus.COLONIZED))
+        print '-----------'
+
+
 
 if __name__ == "__main__":
     main()
