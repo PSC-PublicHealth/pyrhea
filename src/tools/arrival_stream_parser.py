@@ -123,6 +123,8 @@ class ParseLineError(RuntimeError):
 def parseArrivalLine(line):
     if 'birth' in line: print line
     words =  line.split()
+    while words[0].strip() == '(Pdb)':
+        words = words[1:]
     if len(words) == 6:
         assert words[3] == 'arrives', 'Bad line format: %s' % line
         patName = words[2]
@@ -140,7 +142,9 @@ def parseArrivalLine(line):
 
 def parseStatusLine(line, patName):
     words = line.split()
-    assert words[3] == patName, 'Bad line format: %s' % line
+    while words[0].strip() == '(Pdb)':
+        words = words[1:]
+    assert words[3] == patName, 'Bad line format for patient %s: %s' % (patName, line)
     assert words[6].startswith('PatientStatus('), 'Bad line format: %s' % line
     statS = ' '.join(words[6:])
     statS = statS.strip()[14:-1]
@@ -282,13 +286,13 @@ def main():
         lst.sort()
         newPlaceEvtD[key] = lst
     placeEvtD = newPlaceEvtD
-#     for a, b in zip(enumerate(relEventL),
-#                     enumerate(placeEvtD[(targetLoc, DIAG_TIER_MAP[targetDiagClA])])):
-#         aInd, (aDate, aPat, aLoc, aPS) = a
-#         bInd, (bDate, bPat, bLoc, bPS) = b
-#         aDCA = aPS.diagClassA if aPS is not None else None
-#         bDCA = bPS.diagClassA if bPS is not None else None
-#         print '%3d %3d %15s %10s %3d %3d %15s %10s' % (aInd, aDate, aPat, aDCA, bInd, bDate, bPat, bDCA)
+    for a, b in zip(enumerate(relEventL),
+                    enumerate(placeEvtD[(targetLoc, DIAG_TIER_MAP[targetDiagClA])])):
+        aInd, (aDate, aPat, aLoc, aPS) = a
+        bInd, (bDate, bPat, bLoc, bPS) = b
+        aDCA = aPS.diagClassA if aPS is not None else None
+        bDCA = bPS.diagClassA if bPS is not None else None
+        print '%3d %3d %15s %10s %3d %3d %15s %10s' % (aInd, aDate, aPat, aDCA, bInd, bDate, bPat, bDCA)
 
     with open('ofile.pkl', 'w') as f:
         pickle.dump(placeEvtD, f, 2)
