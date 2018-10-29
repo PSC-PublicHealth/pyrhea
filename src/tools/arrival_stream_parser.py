@@ -174,6 +174,17 @@ def parseStatusLine(line, patName):
         kwargs[key] = val
     return PatientStatus(**kwargs)
 
+
+def tierFromPatientStatus(patientStatus):
+    if patientStatus is not None:
+        tier = DIAG_TIER_MAP[patientStatus.diagClassA]
+        if patientStatus.overall == PatientOverallHealth.FRAIL and tier == CareTier.HOME:
+            tier = CareTier.NURSING
+    else:
+        tier = None
+    return tier
+
+
 def main():
     # Thanks to http://stackoverflow.com/questions/25308847/attaching-a-process-with-pdb for this
     # handy trick to enable attachment of pdb to a running program
@@ -209,7 +220,6 @@ def main():
 
     patientLocs = {}
 
-    lastArriving = None
     for line in sys.stdin.readlines():
         if 'DEBUG' in line and 'arrives' in line:
             try:
@@ -221,56 +231,42 @@ def main():
                 except:
                     pass
                 newLoc = '_'.join(bits[4:7])
-                if patName not in patientLocs:
-                    bits = patName.split('_')
-                    if len(bits) == 8:
-                        startLoc = bits[6]
-                    else:
-                        startLoc = '_'.join(bits[:-1])
-                    patientLocs[patName] = [(startLoc, 0)]
-                patientLocs[patName].append((newLoc, date))
-                lastArriving = patName
+                bits = patName.split('_')
+                if len(bits) == 8:
+                    startLoc = bits[6]
+                else:
+                    startLoc = '_'.join(bits[:-1])
             except ParseLineError, e:
                 print e
         elif 'DEBUG' in line and 'status is' in line:
             try:
-                patientStatus = parseStatusLine(line, lastArriving)
-                oldEnt = patientLocs[lastArriving].pop()
-                assert len(oldEnt) == 2, 'Two status lines for %s %s?' % (lastArriving, oldEnt)
-                newLoc, date = oldEnt
-                patientLocs[lastArriving].append((newLoc, date, patientStatus))
+                patientStatus = parseStatusLine(line, patName)
+                if patName not in patientLocs:
+                    # add a creation event at time 0
+                    patientLocs[patName] = [(startLoc, 0, None)]
+                patientLocs[patName].append((newLoc, date, patientStatus))
             except ParseLineError, e:
                 print e
         else:
             pass
 
-    targetLoc = 'NORT_660_H'
-    targetDiagClA = DiagClassA.SICK
-    relEventL = []
     placeEvtD = defaultdict(list)
     for patName, eventL in patientLocs.items():
         #print patName, 'eventL: ', eventL
-        oldLoc, oldDate = eventL[0]
-        if len(eventL[1]) >= 3:
-            oldPS = eventL[1][2]
-        else:
-            oldPS = None
+        oldLoc, oldDate, oldPS = eventL[0]
+        if patName == 'C927_152': print 'point 1', eventL
         eventL = eventL[1:]
-        inFlag = (oldLoc == targetLoc and oldPS.diagClassA == targetDiagClA)
-        if inFlag:
-            relEventL.append((oldDate, patName, oldLoc, oldPS))
-        oldTier = DIAG_TIER_MAP[oldPS.diagClassA] if oldPS is not None else None
+        oldTier = tierFromPatientStatus(oldPS)
         oldAddr = (oldLoc, oldTier)
         placeEvtD[oldAddr].append((oldDate, patName, oldLoc, oldPS))
+        if patName == 'C927_152': print 'point 1b: %s %s' % (oldAddr, placeEvtD[oldAddr][-1])
         for evt in eventL:
             if len(evt) >= 3:
                 newLoc, newDate, newPS = evt
             else:
                 newLoc, newDate = evt
                 newPS = None
-            if inFlag or (newLoc == targetLoc and newPS.diagClassA == targetDiagClA):
-                relEventL.append((newDate, patName, newLoc, newPS))
-            newTier = DIAG_TIER_MAP[newPS.diagClassA] if newPS is not None else None
+            newTier = tierFromPatientStatus(newPS)
             newAddr = (newLoc, newTier)
             if newAddr != oldAddr:
                 # capture departure event
@@ -278,21 +274,13 @@ def main():
                 placeEvtD[newAddr].append((newDate, patName, newLoc, newPS, oldAddr))
             else:
                 placeEvtD[newAddr].append((newDate, patName, newLoc, newPS))
+            if patName == 'C927_152': print 'point 2', newLoc, newDate, newPS, newTier, newAddr
             oldLoc, oldDate, oldPS, oldTier, oldAddr = newLoc, newDate, newPS, newTier, newAddr
-            inFlag = (oldLoc == targetLoc and oldPS.diagClassA == targetDiagClA)
-    relEventL.sort()
     newPlaceEvtD = {}
     for key, lst in placeEvtD.items():
         lst.sort()
         newPlaceEvtD[key] = lst
     placeEvtD = newPlaceEvtD
-    for a, b in zip(enumerate(relEventL),
-                    enumerate(placeEvtD[(targetLoc, DIAG_TIER_MAP[targetDiagClA])])):
-        aInd, (aDate, aPat, aLoc, aPS) = a
-        bInd, (bDate, bPat, bLoc, bPS) = b
-        aDCA = aPS.diagClassA if aPS is not None else None
-        bDCA = bPS.diagClassA if bPS is not None else None
-        print '%3d %3d %15s %10s %3d %3d %15s %10s' % (aInd, aDate, aPat, aDCA, bInd, bDate, bPat, bDCA)
 
     with open('ofile.pkl', 'w') as f:
         pickle.dump(placeEvtD, f, 2)

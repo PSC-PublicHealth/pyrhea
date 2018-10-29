@@ -29,6 +29,7 @@ import signal
 import optparse
 import yaml
 from collections import defaultdict
+import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import logging
@@ -58,10 +59,16 @@ LOGGER = None
 
 DEFAULT_LOW_DATE = 0
 DEFAULT_HIGH_DATE = -1  # meaning include all records
+DEFAULT_INPUT = 'ofile.pkl'
 
 _DIAG_CLASS_A_MAP = {v: k for k, v in DiagClassA.names.items()}
 _PATIENT_OVERALL_HEALTH_MAP = {v: k for k, v in PatientOverallHealth.names.items()}
 _PTH_STATUS_MAP = {v: k for k, v in PthStatus.names.items()}
+
+
+def tierFromCat(cat):
+    return {'COMMUNITY': CareTier.HOME, 'SNF': None, 'LTACH': CareTier.LTAC,
+            'VSNF': None, 'HOSPITAL': CareTier.HOSP}[cat]
 
 
 def mergeSelfTransfers(tupleL):
@@ -156,9 +163,18 @@ class State(object):
         pthStatus, origin, date = self.patientD[patNm]
         return pthStatus, origin, date
     def __str__(self):
-        dctS = ', '.join(['%s: (%s, %s, %s)' % (patNm, PthStatus.names[pthS], CareTier.names[orig],
-                                                date)
-                         for patNm, (pthS, orig, date) in self.patientD.items()])
+        terms = []
+        for patNm, (pthS, orig, date) in self.patientD.items():
+            pthStatusName = 'None' if (pthS is None) else PthStatus.names[pthS]
+            if orig is None:
+                careTierName = 'tier_None'
+            elif orig == -1:
+                careTierName = 'local'
+            else:
+                careTierName = CareTier.names[orig]
+            terms.append('%s: (%s, %s, %s)' % (patNm, pthStatusName, careTierName,
+                                               date))
+        dctS = ', '.join(terms)
         return 'State(%s)' % dctS
     def __add__(self, other):
         rslt = self.copy()
@@ -171,13 +187,18 @@ class State(object):
         return self
 
 
-def buildStateChain(placeEvtD, targetLoc, targetTier):
-    eventL = placeEvtD[(targetLoc, targetTier)]
+def buildStateChain(placeEvtD, targetLoc, targetTier, facDict):
+    try:
+        eventL = placeEvtD[(targetLoc, targetTier)] + placeEvtD[(targetLoc, None)]
+        eventL.sort()
+    except KeyError:
+        eventL = []
     day = 0
     stateD = {day: State()}
     while eventL:
         nextEvent = eventL.pop(0)
         nextEDay = nextEvent[0]
+        #print 'nextEvent: %s' % str(nextEvent)
         assert day <= nextEDay, 'Events out of order; day %d vs expected %d' % (day, nextEDay)
         while day < nextEDay:
             stateD[day + 1] = stateD[day].copy()
@@ -186,24 +207,32 @@ def buildStateChain(placeEvtD, targetLoc, targetTier):
         if len(nextEvent) == 4:
             # update, possible departure
             patNm, loc, patStatus = nextEvent[1:]
-            if loc != targetLoc or DIAG_TIER_MAP[patStatus.diagClassA] != targetTier:
+            pthStatus = None if patStatus is None else patStatus.pthStatus
+            if (day != 0 and patStatus not in [None, targetTier]) or loc != targetLoc:
                 # departure
                 oldPS, oldOrigin, oldDate = stateNow.getTuple(patNm)
-                if oldPS != patStatus.pthStatus:
-                    newPthStatus = patStatus.pthStatus
+                if oldPS != pthStatus:
+                    newPthStatus = pthStatus
                     backD = (day + oldDate)/2
                     for tD in range(backD, day):
                         stateD[tD].add(patNm, newPthStatus, -1, backD)  # -1 being the code for local
                 stateNow.rm(patNm)
             else:
-                stateNow.add(patNm, patStatus.pthStatus, targetTier, day)
+                # time=0 creation events
+                stateNow.add(patNm, pthStatus, targetTier, day)
         elif len(nextEvent) == 5:
             # arrival
             patNm, loc, patStatus, srcAddr = nextEvent[1:]
+            pthStatus = None if patStatus is None else patStatus.pthStatus
             srcLoc, srcTier = srcAddr
-            stateNow.add(patNm, patStatus.pthStatus, srcTier, day)
+            if srcTier is None:
+                srcTier = tierFromCat(facDict[srcLoc]['category'])
+            stateNow.add(patNm, pthStatus, srcTier, day)
         else:
             raise RuntimeError('Unexpected event format %s' % nextEvent)
+        #print nextEvent
+        #print day
+        #print sum(stateD[day].getCounts().values()), stateD[day].getCounts()
     return stateD, day
 
 
@@ -220,7 +249,7 @@ def main():
     LOGGER = logging.getLogger(__name__)
 
     parser = optparse.OptionParser(usage="""
-    cat arrivalTxt | %prog [-L low_date] [-H high_date] run_descr.yaml
+    %prog [-L low_date] [-H high_date] -i infile.pkl run_descr.yaml
     """)
     parser.add_option('-L', '--low', action='store', type='int',
                       help='minimum date to include',
@@ -228,6 +257,9 @@ def main():
     parser.add_option('-H', '--high', action='store', type='int',
                       help='maximum date to include',
                       default=DEFAULT_HIGH_DATE)
+    parser.add_option('-i', '--input', action='store', type='string',
+                      help='file containing output of arrival_stream_parser',
+                      default=DEFAULT_INPUT)
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -240,19 +272,83 @@ def main():
     inputDict = tu.readModelInputs(args[0])
     facDict = tu.getFacDict(inputDict)
 
-    with open('work9_ofile.pkl', 'rU') as f:
+    infile = opts.input 
+    with open(infile, 'rU') as f:
         placeEvtD = pickle.load(f)
 
-    targetLoc = 'NORT_660_H'
-    targetTier = CareTier.ICU
+    cat, tier = 'SNF', CareTier.NURSING
+    #targetFac = None
+    #targetFac = 'PLUM_24_S'
+    #targetFac = 'ALDE_6120_S'
+    targetFac = 'EVAN_1300_S'    
 
-    stateD, maxDay = buildStateChain(placeEvtD, targetLoc, targetTier)
+    allMergeD = defaultdict(lambda: defaultdict(int))
+    pthMergeD = defaultdict(lambda: defaultdict(int))
+    maxMaxDay = 0
+    if targetFac is None:
+        for fac, rec in facDict.items():
+            if rec['category'] == cat:
+                stateD, maxDay = buildStateChain(placeEvtD, fac, tier, facDict)
+                #print fac,stateD[0]
+                for day in xrange(maxDay+1):
+                    allCounts = stateD[day].getCounts()
+                    pthCounts = stateD[day].getCounts(PthStatus.COLONIZED)
+                    for key, val in allCounts.items():
+                        allMergeD[day][key] += val
+                    for key, val in pthCounts.items():
+                        pthMergeD[day][key] += val
+                maxMaxDay = max(maxMaxDay, maxDay)
+            #print fac
+            #break
+    else:
+        fac = targetFac
+        rec = facDict[fac]
+        assert rec['category'] == cat, 'Target facility %s is not in category %s' % (targetFac, cat)
+        stateD, maxDay = buildStateChain(placeEvtD, fac, tier, facDict)
+        #print fac,stateD[0]
+        for day in xrange(maxDay+1):
+            allCounts = stateD[day].getCounts()
+            pthCounts = stateD[day].getCounts(PthStatus.COLONIZED)
+            for key, val in allCounts.items():
+                allMergeD[day][key] += val
+            for key, val in pthCounts.items():
+                pthMergeD[day][key] += val
+        maxMaxDay = maxDay
 
-    for day in xrange(maxDay+1):
-        print 'Day %s: %s %s' % (day, stateD[day].getCounts(), stateD[day].getCounts(PthStatus.COLONIZED))
+    for day in xrange(maxMaxDay+1):
+        allD = {key: val for key, val in allMergeD[day].items()}
+        pthD = {key: val for key, val in pthMergeD[day].items()}
+        print 'Day %s: %s %s: %s %s' % (day, sum(allD.values()), float(sum(pthD.values()))/float(1+sum(allD.values())),
+                                        allD, pthD)
         print '-----------'
 
-
+    keys = CareTier.names.values() + ['local']
+    xV = np.linspace(0.0, maxMaxDay, num=maxMaxDay+1)
+    yPthA = np.zeros((len(keys), maxMaxDay+1))
+    yAllA = np.zeros((len(keys), maxMaxDay+1))
+    for col in xrange(maxMaxDay+1):
+        for row, key in enumerate(keys):
+            yPthA[row, col] = pthMergeD[col][key]
+            yAllA[row, col] = allMergeD[col][key]
+    fig, axes = plt.subplots(2, 2)
+    axes[0,0].stackplot(xV, yAllA, labels = keys)
+    #axes[0,0].legend()
+    axes[0,0].set_title('Sources of All Patients')
+    axes[0,1].stackplot(xV, yPthA, labels = keys)
+    handles, labels = axes[0, 1].get_legend_handles_labels()
+    #axes[0,1].legend()
+    axes[0,1].set_title('Sources of Colonization')
+    ratioA = yPthA / yAllA
+    for row, key in enumerate(keys):
+        axes[1,0].plot(xV, ratioA[row, :], '-', label=key)
+    axes[1,0].set_title('Relative Fractions')
+    axes[1,1].remove()
+    fig.legend(handles, labels, 'lower right')
+    if targetFac is None:
+        fig.suptitle('%s %s %s' % (infile, cat, CareTier.names[tier]))
+    else:
+        fig.suptitle('%s %s %s' % (infile, targetFac, CareTier.names[tier]))
+    plt.show()
 
 if __name__ == "__main__":
     main()
