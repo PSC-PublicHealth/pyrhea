@@ -370,6 +370,16 @@ class BayesTree(object):
                     None,
                     1.0, None)
 
+    def copy(self):
+        """
+        Returns a shallow copy of the BayesTree
+        """
+        lTree, rTree, prob, topTag = self.getParts()
+        if rTree is None:
+            return lTree
+        else:
+            return BayesTree(lTree.copy(), rTree.copy(), prob, tag=topTag)
+
 def fullLogNormCRVFromMean(mean, sigma):
     """
     Returns a scipy.stats.distributions frozen lognorm continuous random variable from a mean

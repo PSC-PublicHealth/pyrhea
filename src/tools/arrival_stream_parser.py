@@ -175,6 +175,33 @@ def parseStatusLine(line, patName):
     return PatientStatus(**kwargs)
 
 
+def parseDeathLine(line):
+    words = line.split()
+    while words[0].strip() == '(Pdb)':
+        words = words[1:]
+    assert words[4:6] == ['died', 'at'], 'Bad line format: %s' % line
+    if len(words) == 8:
+        patName = words[3]
+        locName = None
+        date = int(words[-1])
+    elif len(words) == 10:
+        patName = words[3]
+        locName = words[6]
+        date = int(words[-1])
+    else:
+        raise RuntimeError('death line format error on %s' % line)
+#     words = patName.split('_')
+#     while words:
+#         lW = words.pop()
+#         try:
+#             idx = int(lW)
+#             break
+#         except:
+#             pass
+#     patName = '_'.join([birthLocFromPatientName(patName), str(idx)])
+    return patName, locName, date
+
+
 def tierFromPatientStatus(patientStatus):
     if patientStatus is not None:
         tier = DIAG_TIER_MAP[patientStatus.diagClassA]
@@ -183,6 +210,30 @@ def tierFromPatientStatus(patientStatus):
     else:
         tier = None
     return tier
+
+
+def birthLocFromPatientName(patName):
+    words = patName.split('_')
+    if 'Patch' in words:
+        offset = words.index('Patch')
+        if offset < 0:
+            raise RuntimeError('name format parsing error 1 on %s' % patName)
+        words = words[offset+3:]
+    if 'birth' in words:
+        words.remove('birth')
+    try:
+        int(words[-1])
+    except Exception, e:
+        raise RuntimeError('name format parsing error 2 on %s' % patName)
+    words = words[:-1]
+    try:
+        int(words[-1])
+        words = words[:-2]  # Some place names end in a ward tier and number
+    except:
+        pass
+    rslt = '_'.join(words)
+    #print '%s -> %s' % (patName, rslt)
+    return rslt
 
 
 def main():
@@ -239,43 +290,70 @@ def main():
             except ParseLineError, e:
                 print e
         elif 'DEBUG' in line and 'status is' in line:
+            # Always immediately follows the associated 'arrives' line
             try:
                 patientStatus = parseStatusLine(line, patName)
                 if patName not in patientLocs:
                     # add a creation event at time 0
-                    patientLocs[patName] = [(startLoc, 0, None)]
-                patientLocs[patName].append((newLoc, date, patientStatus))
+                    patientLocs[patName] = [(startLoc, 0, None, True)]
+                patientLocs[patName].append((newLoc, date, patientStatus, True))
+            except ParseLineError, e:
+                print e
+        elif 'DEBUG' in line and 'died at' in line:
+            try:
+                patName, locName, date = parseDeathLine(line)
+                if patName not in patientLocs:
+                    birthLoc = birthLocFromPatientName(patName) if locName is None else locName
+                    patientLocs[patName] = [(birthLoc, 0, None, True)]
+                if locName is None:
+                    oldLoc, oldDate, oldPS, oldAlive = patientLocs[patName][-1]
+                    locName = oldLoc
+                patientLocs[patName].append((locName, date, None, False))
             except ParseLineError, e:
                 print e
         else:
             pass
 
+    sampL = ['BETH_5025_H_54']
+    for patNm in sampL:
+        print '%s: %s' % (patNm, patientLocs[patNm])
+
     placeEvtD = defaultdict(list)
     for patName, eventL in patientLocs.items():
         #print patName, 'eventL: ', eventL
-        oldLoc, oldDate, oldPS = eventL[0]
-        if patName == 'C927_152': print 'point 1', eventL
+        oldLoc, oldDate, oldPS, oldAlive = eventL[0]
+        oldPthStatus = -1 if oldPS is None else oldPS.pthStatus
+        if patName == 'BETH_5025_H_54': print 'point 1', eventL
         eventL = eventL[1:]
         oldTier = tierFromPatientStatus(oldPS)
         oldAddr = (oldLoc, oldTier)
-        placeEvtD[oldAddr].append((oldDate, patName, oldLoc, oldPS))
-        if patName == 'C927_152': print 'point 1b: %s %s' % (oldAddr, placeEvtD[oldAddr][-1])
+        pLPSC = None  # 'place of last pth status change'
+        placeEvtD[oldAddr].append((oldDate, patName, oldLoc, oldPS, pLPSC, oldAlive))
+        if patName == 'BETH_5025_H_54': print 'point 1b: %s %s' % (oldAddr, placeEvtD[oldAddr][-1])
         for evt in eventL:
-            if len(evt) >= 3:
-                newLoc, newDate, newPS = evt
+            if len(evt) >= 4:
+                newLoc, newDate, newPS, newAlive = evt
             else:
-                newLoc, newDate = evt
-                newPS = None
+                raise RuntimeError('Bad event format')
+            if newLoc is None and oldLoc is not None:
+                newLoc = oldLoc
             newTier = tierFromPatientStatus(newPS)
             newAddr = (newLoc, newTier)
+            newPthStatus = -1 if newPS is None else newPS.pthStatus
+            if newPthStatus != oldPthStatus:
+                pLPSC = newLoc
             if newAddr != oldAddr:
                 # capture departure event
-                placeEvtD[oldAddr].append((newDate, patName, newLoc, newPS))
-                placeEvtD[newAddr].append((newDate, patName, newLoc, newPS, oldAddr))
+                placeEvtD[oldAddr].append((newDate, patName, newLoc, newPS, pLPSC, newAlive))
+                if newAlive:
+                    placeEvtD[newAddr].append((newDate, patName, newLoc, newPS,
+                                               oldAddr, pLPSC, newAlive))
             else:
-                placeEvtD[newAddr].append((newDate, patName, newLoc, newPS))
-            if patName == 'C927_152': print 'point 2', newLoc, newDate, newPS, newTier, newAddr
-            oldLoc, oldDate, oldPS, oldTier, oldAddr = newLoc, newDate, newPS, newTier, newAddr
+                placeEvtD[newAddr].append((newDate, patName, newLoc, newPS, pLPSC, newAlive))
+            if patName == 'BETH_5025_H_54':
+                print 'point 2', newLoc, newDate, newPS, newTier, newAddr, pLPSC
+            oldLoc, oldDate, oldPS, oldTier = newLoc, newDate, newPS, newTier
+            oldAddr, oldPthStatus, oldAlive = newAddr, newPthStatus, newAlive
     newPlaceEvtD = {}
     for key, lst in placeEvtD.items():
         lst.sort()

@@ -87,6 +87,8 @@ class MRSACore(object):
             _parseFracByTierByFacilityByCategory('initialFractionChronicallyColonized')
         self.categoryInitialFracChronicTbl = \
             _parseFracByTierByCategory('categoryInitialFractionChronicallyColonized')
+        self.probChlorhexBathSuccessTbl = _parseFracByTierByCategory('probChlorhexBathSuccess')
+        self.probChlorhexBathLeadsToUndet = _parseFracByTierByCategory('probChlorhexBathLeadsToUndetColonization')
 
         self.tauTbl = _parseFracByTierByCategory('tau')
         self.tauOverrideTbl = _parseFracByTierByFacilityByCategory('facilityTau')
@@ -319,6 +321,8 @@ class MRSA(Pathogen):
             key = (self.ward.fac.category, self.ward.tier, treatment, pIKey, dT, self.tau)
             if key not in self.core.exposureProbCache:
 
+                # CLEAR and UNDETCOLONIZED have the same odds of picking up MRSA colonization
+                # by transmission
                 patientKey = self.getPatientStateKey(patientStatus, treatment)
                 tPMD = self.getTreatmentProbModifierDict()
                 selfProt = tPMD[patientKey][1]
@@ -362,15 +366,25 @@ class MRSA(Pathogen):
                                            self.core.probNewExposuresUndet),
                                  pNotExposed)
         elif patientStatus.pthStatus == PthStatus.COLONIZED:
-            # Infection has not been fully implemented- TODO add the colonized-to-infected transition
+            # Infection has not been fully implemented- TODO add the colonized-to-infected
+            # transition
             timeKey = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
             if patientStatus.canClear:
                 pSponLoss = self.core.sponLossCachedCDF.intervalProb(*timeKey)
-                return BayesTree(PthStatusSetter(PthStatus.CLEAR),
-                                 PatientStatusSetter(),
-                                 pSponLoss)
+                sponClearTree = BayesTree(PthStatusSetter(PthStatus.CLEAR),
+                                          PatientStatusSetter(),
+                                          pSponLoss)
             else:
-                return BayesTree(PatientStatusSetter())
+                sponClearTree = BayesTree(PatientStatusSetter())
+            if treatment.chlorhexBath:
+                chxTree = BayesTree(BayesTree(PthStatusSetter(PthStatus.UNDETCOLONIZED),
+                                              PthStatusSetter(PthStatus.CLEAR),
+                                              probChlorhexLeadsToUndetColonization),
+                                    sponClearTree.copy(),
+                                    pChlorhexBathSuccess)
+            else:
+                chxTree = sponClearTree.copy()
+            return chxTree
         elif patientStatus.pthStatus == PthStatus.CHRONIC:
             # Chronic infection is forever
             return BayesTree(PatientStatusSetter())

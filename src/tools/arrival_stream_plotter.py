@@ -132,62 +132,60 @@ class State(object):
         state = State()
         state.patientD = self.patientD.copy()
         return state
-    def add(self, patNm, pthStatus, origin, date):
+    def add(self, patNm, pthStatus, origin, date, pLPSC, alive):
         if patNm in self.patientD:
-            oldPthStatus, oldOrigin, oldDate = self.patientD[patNm]
-            if pthStatus != oldPthStatus or oldOrigin != origin:
-                self.patientD[patNm] = (pthStatus, origin, date)
+            oldPthStatus, oldOrigin, oldDate, oldPLPSC, oldAlive = self.patientD[patNm]
+            if (pthStatus != oldPthStatus or oldOrigin != origin or pLPSC != oldPLPSC
+                or oldAlive != alive):
+                self.patientD[patNm] = (pthStatus, origin, date, pLPSC, alive)
             else:
                 pass
         else:
-            self.patientD[patNm] = (pthStatus, origin, date)
+            self.patientD[patNm] = (pthStatus, origin, date, pLPSC, alive)
     def rm(self, patNm):
         if patNm in self.patientD:
             del self.patientD[patNm]
-    def originStr(self, origin):
-        if origin < 0:
-            return 'local'
-        else:
-            return CareTier.names[origin]
-    def getCounts(self, reqPthStatus = None):
+    def getCounts(self, facDict, reqPthStatus = None):
         rslt = defaultdict(int)
         if reqPthStatus is None:
-            for patNm, (pthStatus, origin, date) in self.patientD.items():
-                rslt[self.originStr(origin)] += 1
+            for patNm, (pthStatus, origin, date, pLPSC, alive) in self.patientD.items():
+                idx = 'None' if pLPSC is None else facDict[pLPSC]['category']
+                rslt[idx] += 1
         else:
-            for patNm, (pthStatus, origin, date) in self.patientD.items():
+            for patNm, (pthStatus, origin, date, pLPSC, alive) in self.patientD.items():
                 if pthStatus == reqPthStatus:
-                    rslt[self.originStr(origin)] += 1
+                    idx = 'None' if pLPSC is None else facDict[pLPSC]['category']
+                    rslt[idx] += 1
         return {key: val for key, val in rslt.items()}  # turn it into a regular dict
     def getTuple(self, patNm):
-        pthStatus, origin, date = self.patientD[patNm]
-        return pthStatus, origin, date
+        pthStatus, origin, date, pLPSC, alive = self.patientD[patNm]
+        return pthStatus, origin, date, pLPSC, alive
     def __str__(self):
         terms = []
-        for patNm, (pthS, orig, date) in self.patientD.items():
+        for patNm, (pthS, orig, date, pLPSC, alive) in self.patientD.items():
             pthStatusName = 'None' if (pthS is None) else PthStatus.names[pthS]
-            if orig is None:
-                careTierName = 'tier_None'
-            elif orig == -1:
-                careTierName = 'local'
-            else:
-                careTierName = CareTier.names[orig]
-            terms.append('%s: (%s, %s, %s)' % (patNm, pthStatusName, careTierName,
-                                               date))
+            terms.append('%s: (%s, %s, %s, %s)' % (patNm, pthStatusName, pLPSC,
+                                                   ('alive' if alive else 'died'),
+                                                   date))
         dctS = ', '.join(terms)
         return 'State(%s)' % dctS
     def __add__(self, other):
         rslt = self.copy()
-        for patNm, (pthStatus, origin, date) in other.patientD.items():
-            rslt.add(patNm, pthStatus, origin, date)
+        for patNm, (pthStatus, origin, date, pLPSC, alive) in other.patientD.items():
+            rslt.add(patNm, pthStatus, origin, date, pLPSC, alive)
         return rslt
     def __iadd__(self, other):
-        for patNm, (pthStatus, origin, date) in other.patientD.items():
-            self.add(patNm, pthStatus, origin, date)
+        for patNm, (pthStatus, origin, date, pLPSC, alive) in other.patientD.items():
+            self.add(patNm, pthStatus, origin, date, pLPSC, alive)
         return self
 
 
+DEAD_LIST = []
+LAST_TOD = -1
+
 def buildStateChain(placeEvtD, targetLoc, targetTier, facDict):
+    global DEAD_LIST
+    global LAST_TOD
     try:
         eventL = placeEvtD[(targetLoc, targetTier)] + placeEvtD[(targetLoc, None)]
         eventL.sort()
@@ -198,41 +196,57 @@ def buildStateChain(placeEvtD, targetLoc, targetTier, facDict):
     while eventL:
         nextEvent = eventL.pop(0)
         nextEDay = nextEvent[0]
-        #print 'nextEvent: %s' % str(nextEvent)
+        if nextEvent[1] == 'BETH_5025_H_54':
+            print 'nextEvent for %s : %s' % (targetLoc, str(nextEvent))
         assert day <= nextEDay, 'Events out of order; day %d vs expected %d' % (day, nextEDay)
         while day < nextEDay:
             stateD[day + 1] = stateD[day].copy()
             day += 1
         stateNow = stateD[day]
-        if len(nextEvent) == 4:
+        if len(nextEvent) == 6:
             # update, possible departure
-            patNm, loc, patStatus = nextEvent[1:]
+            #print nextEvent
+            patNm, loc, patStatus, pLPSC, alive = nextEvent[1:]  # pLPSC is 'place of last pth status change'
+            if patNm in DEAD_LIST:
+                raise RuntimeError('zombie! %s' % str(nextEvent))
             pthStatus = None if patStatus is None else patStatus.pthStatus
-            if (day != 0 and patStatus not in [None, targetTier]) or loc != targetLoc:
+            if not alive:
+                stateNow.rm(patNm)
+                DEAD_LIST.append(patNm)
+                LAST_TOD = max(LAST_TOD, day)
+            elif (day != 0 and patStatus not in [None, targetTier]) or loc != targetLoc:
                 # departure
-                oldPS, oldOrigin, oldDate = stateNow.getTuple(patNm)
+                oldPS, oldOrigin, oldDate, oldPLPSC, oldAlive = stateNow.getTuple(patNm)
+                assert oldAlive, 'found %s dead at day %s' % (patNm, oldAlive)
                 if oldPS != pthStatus:
                     newPthStatus = pthStatus
                     backD = (day + oldDate)/2
                     for tD in range(backD, day):
-                        stateD[tD].add(patNm, newPthStatus, -1, backD)  # -1 being the code for local
+                        stateD[tD].add(patNm, newPthStatus, -1, backD, pLPSC, alive)  # -1 being the code for local
                 stateNow.rm(patNm)
             else:
                 # time=0 creation events
-                stateNow.add(patNm, pthStatus, targetTier, day)
-        elif len(nextEvent) == 5:
+                stateNow.add(patNm, pthStatus, targetTier, day, pLPSC, alive)
+        elif len(nextEvent) == 7:
             # arrival
-            patNm, loc, patStatus, srcAddr = nextEvent[1:]
+            #print 'point 2 ', nextEvent
+            patNm, loc, patStatus, srcAddr, pLPSC, alive = nextEvent[1:]
+            if patNm in DEAD_LIST:
+                raise RuntimeError('zombie! (point 2) %s' % str(nextEvent))
+            assert alive, '%s arrived at %s dead on day %s' % (patNm, loc, day)
             pthStatus = None if patStatus is None else patStatus.pthStatus
             srcLoc, srcTier = srcAddr
             if srcTier is None:
                 srcTier = tierFromCat(facDict[srcLoc]['category'])
-            stateNow.add(patNm, pthStatus, srcTier, day)
+            stateNow.add(patNm, pthStatus, srcTier, day, pLPSC, alive)
         else:
-            raise RuntimeError('Unexpected event format %s' % nextEvent)
-        #print nextEvent
-        #print day
-        #print sum(stateD[day].getCounts().values()), stateD[day].getCounts()
+            raise RuntimeError('Unexpected event format %s' % str(nextEvent))
+#         print nextEvent
+#         print day
+#         print sum(stateD[day].getCounts(facDict).values()), stateD[day].getCounts(facDict)
+    for nm in DEAD_LIST:
+        if nm in stateD:
+            raise RuntimeError('Vampire!')
     return stateD, day
 
 
@@ -243,6 +257,8 @@ def main():
         import pdb
         pdb.Pdb().set_trace(frame)
     signal.signal(signal.SIGUSR1, handle_pdb)
+
+    global DEAD_LIST
 
     global LOGGER
     logging.config.dictConfig(getLoggerConfig())
@@ -277,10 +293,14 @@ def main():
         placeEvtD = pickle.load(f)
 
     cat, tier = 'SNF', CareTier.NURSING
-    #targetFac = None
+    #cat, tier = 'LTACH', CareTier.LTAC
+    targetFac = None
     #targetFac = 'PLUM_24_S'
     #targetFac = 'ALDE_6120_S'
-    targetFac = 'EVAN_1300_S'    
+    #targetFac = 'EVAN_1300_S'
+    #targetFac = 'RML_5601_L'    
+    #targetFac = 'PRES_100_L'    
+    #targetFac = 'THC_365_L'    
 
     allMergeD = defaultdict(lambda: defaultdict(int))
     pthMergeD = defaultdict(lambda: defaultdict(int))
@@ -288,11 +308,12 @@ def main():
     if targetFac is None:
         for fac, rec in facDict.items():
             if rec['category'] == cat:
+                DEAD_LIST = []
                 stateD, maxDay = buildStateChain(placeEvtD, fac, tier, facDict)
                 #print fac,stateD[0]
                 for day in xrange(maxDay+1):
-                    allCounts = stateD[day].getCounts()
-                    pthCounts = stateD[day].getCounts(PthStatus.COLONIZED)
+                    allCounts = stateD[day].getCounts(facDict)
+                    pthCounts = stateD[day].getCounts(facDict, PthStatus.COLONIZED)
                     for key, val in allCounts.items():
                         allMergeD[day][key] += val
                     for key, val in pthCounts.items():
@@ -307,8 +328,8 @@ def main():
         stateD, maxDay = buildStateChain(placeEvtD, fac, tier, facDict)
         #print fac,stateD[0]
         for day in xrange(maxDay+1):
-            allCounts = stateD[day].getCounts()
-            pthCounts = stateD[day].getCounts(PthStatus.COLONIZED)
+            allCounts = stateD[day].getCounts(facDict)
+            pthCounts = stateD[day].getCounts(facDict, PthStatus.COLONIZED)
             for key, val in allCounts.items():
                 allMergeD[day][key] += val
             for key, val in pthCounts.items():
@@ -318,11 +339,14 @@ def main():
     for day in xrange(maxMaxDay+1):
         allD = {key: val for key, val in allMergeD[day].items()}
         pthD = {key: val for key, val in pthMergeD[day].items()}
-        print 'Day %s: %s %s: %s %s' % (day, sum(allD.values()), float(sum(pthD.values()))/float(1+sum(allD.values())),
+        print 'Day %s: %s %s: %s %s' % (day, sum(allD.values()),
+                                        float(sum(pthD.values()))/float(1+sum(allD.values())),
                                         allD, pthD)
         print '-----------'
+    print 'Total dead: %d' % len(DEAD_LIST)
+    print 'Last time of death: %d' % LAST_TOD
 
-    keys = CareTier.names.values() + ['local']
+    keys = ['None', 'COMMUNITY', 'SNF', 'HOSPITAL', 'LTACH', 'VSNF']
     xV = np.linspace(0.0, maxMaxDay, num=maxMaxDay+1)
     yPthA = np.zeros((len(keys), maxMaxDay+1))
     yAllA = np.zeros((len(keys), maxMaxDay+1))

@@ -316,7 +316,8 @@ class CRE(Pathogen):
             delayedE = delayedS + (timeNow - startTime)
             key = (delayedS, delayedE)
         else:
-            raise RuntimeError('patient has unexpected PthStatus %s' % PthStatus.names[patientStatus.pthStatus])
+            raise RuntimeError('patient has unexpected PthStatus %s'
+                               % PthStatus.names[patientStatus.pthStatus])
         for tree in treeList:
             losTree = tree.findTag('LOS')
             if losTree:
