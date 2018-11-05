@@ -32,7 +32,8 @@ loggers:
     level: INFO
     handlers: []
   facilitybase:
-    level: WARNING
+    #level: WARNING
+    level: DEBUG
     handlers: []
   pyrheabase.PatientAgent:
     #level: DEBUG
