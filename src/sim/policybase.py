@@ -37,7 +37,7 @@ class DiagnosticPolicy(Policy):
     def __init__(self, facility, patch, categoryNameMapper):
         """Some derived classes need facility info"""
         super(DiagnosticPolicy, self).__init__(patch, categoryNameMapper)
-    
+
     def handlePatientArrival(self, ward, patient, transferInfoDict, timeNow):
         """
         This is called on patients when they arrive at a ward.

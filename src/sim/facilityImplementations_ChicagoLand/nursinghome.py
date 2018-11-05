@@ -125,6 +125,7 @@ class NursingHome(Facility):
 
         self.lclRates = {}
         self.lclRates['death'] = _c['deathRate']['value']
+        self.lclRates['death'] = min(self.lclRates['death'], fracNotTransferred)
         assert fracNotTransferred >= self.lclRates['death'], '%s has more deaths than non-transfers'
         self.lclRates['home'] = fracNotTransferred - self.lclRates['death']
 

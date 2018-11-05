@@ -22,7 +22,6 @@ import logging
 import logging.config
 from optparse import OptionParser
 import types
-import glob
 from collections import defaultdict
 if 'line_profiler' not in dir():
     def profile(func):
@@ -46,30 +45,12 @@ from facilitybase import CareTier
 from notes_plotter import readFacFiles, scanAllFacilities, checkInputFileSchema
 from notes_plotter import importNotes
 from notes_plotter import SCHEMA_DIR, INPUT_SCHEMA, CARE_TIERS, FAC_TYPE_TO_CATEGORY_MAP
+from notes_plotter import timeSeriesListGenerator
+from notes_plotter import buildEnumNameStr, splitEnumNameStr, buildEnumEnumNameStr
+from notes_plotter import splitEnumEnumNameStr, mergeNotesFiles, getTimeSeriesList
 from pyrhea import getLoggerConfig
 
 logger = None
-
-_CACHED_PARSE_DICT = {}
-_CACHED_PARSE_ID = None   # the id of the info from which the cached dict was generated
-
-def buildEnumNameStr(name, ind):
-    return '%s_%d' % (name, ind)
-
-def splitEnumNameStr(enumName):
-    offset = enumName.rfind('_')
-    patchName = enumName[:offset]
-    ind = int(enumName[offset+1:])
-    return patchName, ind
-
-def buildEnumEnumNameStr(name, ind1, ind2):
-    return '%s_%d_%d' % (name, ind1, ind2)
-
-def splitEnumEnumNameStr(enumName):
-    frontStr, ind2 = splitEnumNameStr(enumName)
-    patchName, ind1 = splitEnumNameStr(frontStr)
-    return patchName, ind1, ind2
-
 
 def occupancyTimeFig(specialDict, opts, meanPopByCat=None):
     dct = defaultdict(lambda: defaultdict(dict))
@@ -98,12 +79,17 @@ def occupancyTimeFig(specialDict, opts, meanPopByCat=None):
                         argD['c'] = clrDict[subKey]
                     baseLine, = axes[patchOffset].plot(dayV, dataV, **argD)
                     clrDict[subKey] = baseLine.get_color()
-                    if (meanPopByCat is not None and subKey in FAC_TYPE_TO_CATEGORY_MAP
-                            and FAC_TYPE_TO_CATEGORY_MAP[subKey] in meanPopByCat):
-                        meanPop = meanPopByCat[FAC_TYPE_TO_CATEGORY_MAP[subKey]]
-                        axes[patchOffset].plot(dayV, [meanPop] * dayV.shape[0],
-                                               color=baseLine.get_color(),
-                                               linestyle='--')
+                    if meanPopByCat is not None and subKey in FAC_TYPE_TO_CATEGORY_MAP:
+                        mappedKeyL = FAC_TYPE_TO_CATEGORY_MAP[subKey]
+                        if not isinstance(mappedKeyL, types.ListType):
+                            mappedKeyL = [mappedKeyL]
+                        for mappedKey in mappedKeyL:
+                            if mappedKey in meanPopByCat:
+                                meanPop = meanPopByCat[mappedKey]
+                                axes[patchOffset].plot(dayV, [meanPop] * dayV.shape[0],
+                                                       color=baseLine.get_color(),
+                                                       linestyle='--')
+                                break
         axes[patchOffset].set_xlabel('Days')
         axes[patchOffset].set_ylabel('Occupancy')
         axes[patchOffset].legend()
@@ -124,7 +110,7 @@ def pathogenTimeFig(specialDict, opts):
             patchList.append(patchName)
         if ind not in indList:
             indList.append(ind)
-        pthDataList = data['pathogen']
+        pthDataList = data['pathogen'] if 'pathogen' in data else []
         assert isinstance(pthDataList, types.ListType), 'Special data %s is not a list' % patchName
         for d in pthDataList:
             for k in d.keys():
@@ -288,163 +274,6 @@ def pathogenTierTimeFig(specialDict, opts):
     if opts.png:
         plt.savefig(os.path.join(opts.odir, 'zzzall_pathogen.png'))
 
-
-@profile
-def mergeNotesFiles(notesPathList, globFlag=False):
-    """
-    Given a list of path strings pointing to notes files, produce a dict containing all the
-    time series info and all 'unusual' info in those notes.
-    """
-    specialDict = {}
-    if globFlag:
-        newNotesPathList = []
-        for notesFName in notesPathList:
-            print '%s yields %s' % (notesFName, glob.glob(notesFName))
-            newNotesPathList += glob.glob(notesFName)
-        newNotesPathList.sort()
-        notesPathList = newNotesPathList
-    if notesPathList:
-        for ind, notesFName in enumerate(notesPathList):
-            notesDict = importNotes(notesFName)
-            for nm, dct in notesDict.items():
-                if '_' not in nm or nm.startswith('Patch'):
-                    specialDict[buildEnumNameStr(nm, ind)] = dct
-    return specialDict
-
-
-def timeSeriesListGenerator(specialDict, specialDictKey):
-    """
-    This generator returns all the time series data in specialDict having the associated
-    top-level key (for example 'occupancy' or 'localtierpathogen'.  For each time series,
-    the data returned is:
-
-    (seqId, (locKey, ind1, ind2), dayVec, valVec)
-
-    where seqId is the sequence number in order of the series of notes.pkl files being
-    parsed, dayVec and valVec are numpy arrays containing date and value vectors,
-    and the tuple has one of the following forms:
-
-    category, None, None         for aggregate info like 'occupancy'
-
-    category, lvl, None          for aggregate info like 'pathogen'
-
-    category, tier, None         for aggregate info like 'localtierarrivals'
-
-    abbrev, lvl, None            for aggregate info like 'localpathogen'
-
-    abbrev, tier, lvl            for aggregate info like 'localtierpathogen'
-
-    where category is for example 'NursingHome', lvl is an integer PthLevel, and tier is
-    an integer CareTier.
-    """
-    patchList = []
-    indList = []
-    for enumPatchName in specialDict:
-        patchName, ind = splitEnumNameStr(enumPatchName)
-        if patchName not in patchList:
-            patchList.append(patchName)
-        if ind not in indList:
-            indList.append(ind)
-    patchList.sort()
-    indList.sort()
-    rsltL = []
-    for ind in indList:
-        for patchName in patchList:
-            enumPatchName = buildEnumNameStr(patchName, ind)
-            if enumPatchName not in specialDict or specialDictKey not in specialDict[enumPatchName]:
-                continue  # No guarantee all patches have all inds, or the field of interest
-            dataList = specialDict[enumPatchName][specialDictKey]
-            assert isinstance(dataList, types.ListType), \
-                'Special data %s is not a list' % enumPatchName
-            fields = defaultdict(list)
-            for d in dataList:
-                for k, v in d.items():
-                    fields[k].append(v)
-            assert 'day' in fields, 'Date field is missing for special data %s' % patchName
-            dayV = np.array(fields['day'])
-            del fields['day']
-            
-            for key, fld in fields.items():
-                fld = np.array(fld)
-                try:
-                    loc, subI1, subI2 = splitEnumEnumNameStr(key)
-                except ValueError:
-                    try:
-                        loc, subI1 = splitEnumNameStr(key)
-                        subI2 = None
-                    except ValueError:
-                        loc = key
-                        subI1 = subI2 = None
-                yield (ind, patchName, (loc, subI1, subI2), dayV, fld)
-
-@profile
-def getTimeSeriesList(locKey, specialDict, specialDictKey):
-    """
-    key specifies the target entity, for example a loc abbrev or a facility category. These are
-        typically in uppercase, but that is not enforced.
-    specialDict is of the form output by mergeNotesFiles().
-    specialDictKey is one of the second-level keys of specialDict, for example 'localpathogen'.
-    Returns a list of tuples, of three possible forms.
-
-    The first form appears if the time series contains
-    entries for multiple different status levels for multiple tiers, for example
-    populations sorted by CareTier at different PthLevel values.
-    That form is:
-
-          [(dayArray, valArrayD), (dayArray, valArrayD), ...]
-
-    where dayArray is a numpy array of dates and valArrayD has the form:
-
-          {(intLvl, intLvl): valArray, (intLvl, intLvl): valArray, ...}
-
-    and the ints in the tuple represent the two indices, for example (tier, pthStatus).
-
-    The second form appears if the time series contains
-    entries for multiple different status levels, for example populations at different PthLevel values.
-    That form is:
-
-          [(dayArray, valArrayD), (dayArray, valArrayD), ...]
-
-    where dayArray is a numpy array of dates and valArrayD has the form:
-
-          {intLvl: valArray, intLvl: valArray, ...}
-
-    with pathLvl being an integer status index (like a PthLevel) and fracArray being a numpy array counts at
-    that level.
-
-    The third form appears if the time series data is not classified by level, for example a simple population
-    count.  That form is:
-
-          [(dayArray, valArray), (dayArray, valArray), ...]
-
-    """
-
-    global _CACHED_PARSE_DICT
-    global _CACHED_PARSE_ID
-
-    if _CACHED_PARSE_ID != id(specialDict) or specialDictKey not in _CACHED_PARSE_DICT:
-        _CACHED_PARSE_ID = id(specialDict)
-        thisCD = _CACHED_PARSE_DICT[specialDictKey] = defaultdict(list)
-        for tpl in timeSeriesListGenerator(specialDict, specialDictKey):
-            notesInd, patchName, (loc, ind1, ind2), dayV, dataV = tpl
-            thisCD[loc].append((notesInd, ind1, ind2, dayV, dataV))
-
-    tplL = _CACHED_PARSE_DICT[specialDictKey][locKey]
-    resultD = {}
-    for tpl in tplL:
-        notesInd, ind1, ind2, dayV, dataV = tpl
-        if ind1 is None:
-            assert notesInd not in resultD, 'Generator returned duplicate notes index?'
-            resultD[notesInd] = (dayV, dataV)
-        else:
-            innerKey = ind1 if ind2 is None else (ind1, ind2)
-            if notesInd not in resultD:
-                resultD[notesInd] = (dayV, {innerKey: dataV})
-            else:
-                oldDayV, innerD = resultD[notesInd]
-                assert dayV is oldDayV, 'Generator provided inconsistent day vectors?'
-                innerD[innerKey] = dataV
-    return resultD.values()
 
 def oneFacArrivalsFig(abbrev, specialDict, opts, meanPop=None):
     print abbrev

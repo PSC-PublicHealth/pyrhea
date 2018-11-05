@@ -538,7 +538,9 @@ class Facility(pyrheabase.Facility):
                 raise RuntimeError('Only arrival messages should happen before execution starts')
             ward = self.manager.allocateAvailableBed(CareTier.HOME)
             assert ward is not None, 'Ran out of beds with birth in %s!' % self.name
-            a = PatientAgent('PatientAgent_%s_birth' % ward._name, self.manager.patch, ward)
+            a = PatientAgent('PatientAgent_%s_%d_birth' % (ward._name, self.idCounter),
+                             self.manager.patch, ward)
+            self.idCounter += 1
             a.setStatus(homeAddr=findQueueForTier(ward.tier, self.reqQueues).getGblAddr())
             a.setStatus(overall=payload)
             ward.handlePatientArrival(a, timeNow)
@@ -893,6 +895,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         if True:
             self.updateDiseaseState(self.getTreatmentProtocol(), self.ward.fac, modifierDct, timeNow)
             if self.getStatus().diagClassA == DiagClassA.DEATH:
+                LOGGER.debug('%s died at %s at time %s', '%s_%s'%self.id, self.ward.fac.name, timeNow)
                 return None
             self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self.getStatus(),
                                                      self.getDiagnosis(), timeNow=timeNow)

@@ -984,37 +984,41 @@ def main():
         traceback.print_exc(file=sys.stderr)
         runFailed = True
     finally:
-        logger.info('%s writing notes and exiting' % patchGroup.name)
+        try:
+            logger.info('%s writing notes and exiting' % patchGroup.name)
+    
+            allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
+            if comm.rank == 0:
+                d = {}
+                for nh in allNotesGroup.getnotes():
+                    d[nh['name']] = nh.getDict()
+        #             if 'occupancy' in nh:
+        #                 recs = nh['occupancy']
+        #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
+        #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
+                if runFailed:
+                    # edit output file name to show failure
+                    baseNm, extNm = os.path.splitext(outputNotesName)
+                    outputNotesName = baseNm + '_FAILED' + extNm
+                if outputNotesName.lower().endswith('.json'):
+                    with open(outputNotesName, 'w') as f:
+                        f.write('{\n')
+                        for k,v in d.items():
+                            f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
+                        f.write("}\n")
+                else:
+                    with open(outputNotesName, 'w') as f:
+                        pickle.dump(d, f)
 
-        allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
-        if comm.rank == 0:
-            d = {}
-            for nh in allNotesGroup.getnotes():
-                d[nh['name']] = nh.getDict()
-    #             if 'occupancy' in nh:
-    #                 recs = nh['occupancy']
-    #                 with open(('occupancy_%s.csv' % nh['name']), 'w') as f:
-    #                     csv_tools.writeCSV(f, recs[1].keys(), recs)
-            if runFailed:
-                # edit output file name to show failure
-                baseNm, extNm = os.path.splitext(outputNotesName)
-                outputNotesName = baseNm + '_FAILED' + extNm
-            if outputNotesName.lower().endswith('.json'):
-                with open(outputNotesName, 'w') as f:
-                    f.write('{\n')
-                    for k,v in d.items():
-                        f.write('"{0}":{1},\n'.format(k,ujson.dumps(v)))
+                if clData['bczmonitor'] is not None:
+                    for m in monitorList:
+                        m.writeData()
 
-                    f.write("}\n")
-            else:
-                with open(outputNotesName, 'w') as f:
-                    pickle.dump(d, f)
+        except Exception as e:
+            logger.error('%s an exception occurred while writing notes: %s'
+                         % (patchGroup.name, e))
 
-            if clData['bczmonitor'] is not None:
-                for m in monitorList:
-                    m.writeData()
-
-        logging.shutdown()
+    logging.shutdown()
 
 ############
 # Main hook

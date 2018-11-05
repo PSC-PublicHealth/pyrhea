@@ -75,6 +75,14 @@
         'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
       'spontaneousLossPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
       'colonizationToInfectionPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'probChlorhexBathSuccess':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': 'Probability that a colonized patient will not be detectably colonized after a single chlorhexidine bath'
+      'probChlorhexBathLeadsToUndetColonization':
+        '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
+        'description': >
+          If a patient is successfully decolonized by a single chlorhexidine bath, probability that an undetectably low but
+          non-zero level of colonization remains so that rebound colonization is possible
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
@@ -96,5 +104,8 @@
       - 'colonizationToInfectionPDF'
       - 'spontaneousLossPDF'
       - 'fracPermanentlyColonized'
+      - 'probChlorhexBathSuccess'
+      - 'probChlorhexBathLeadsToUndetColonization'
+
       
       

@@ -106,6 +106,22 @@ def parseTaumodOut(fname):
             ent['samp'] = counts[(ent['fac'], ent['tier'])]
             counts[(ent['fac'], ent['tier'])] += 1
             parsedRecs.append(ent)
+        elif len(sepL1) == 3:
+            sepL10 = sepL1[0].split(':')
+            sepL100 = sepL10[0].split()
+            assert sepL100[1] == 'Prevalence', 'bad aggregate prevalence line %s' % sepL1
+            tier = sepL100[0]
+            fac = '*'
+            prev = float(sepL10[1])
+            ent = {'fac': fac, 'tier': tier, 'prevalence': prev, 'samp': counts[(fac, tier)]}
+            counts[(fac, tier)] += 1
+            sepTail = (sepL1[1] + sepL1[2]).strip().strip('()')
+            tailWords = sepTail.split()
+            while tailWords:
+                key = tailWords.pop(0)
+                val = int(tailWords.pop(0))
+                ent[key] = val
+            parsedRecs.append(ent)
     if VERBOSITY:
         print '%d useful records' % len(parsedRecs)
     if DEBUG:
@@ -166,7 +182,8 @@ def main(argv=None):
         indent = len(program_name) * " "
         sys.stderr.write(program_name + ": " + repr(e) + "\n")
         sys.stderr.write(indent + "  for help use --help")
-        return 2
+        #return 2
+        raise
 
 
 if __name__ == "__main__":

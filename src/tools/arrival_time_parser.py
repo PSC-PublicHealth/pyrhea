@@ -214,7 +214,7 @@ def mtxFromYaml(filePathL, protoMtx, facIdxTbl, commIdx):
 class ParseLineError(RuntimeError):
     pass
 
-def parseLine(line):
+def parseArrivalLine(line):
     if 'birth' in line: print line
     words =  line.split()
     if len(words) == 6:
@@ -287,7 +287,7 @@ def main():
     with open(os.path.join(os.path.dirname(__file__), inputTxt), 'rU') as f:
         for line in f.readlines():
             try:
-                patName, dstName, date = parseLine(line)
+                patName, dstName, date = parseArrivalLine(line)
                 bits = dstName.split('_')
                 try:
                     int(bits[-1])
