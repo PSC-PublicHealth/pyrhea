@@ -1,0 +1,1 @@
+./ComputeConfidenceIntervals.R --input_directory oc-baseline --output_directory oc-baseline.out --scenario_names baseline_cumulative_counts --column_names 'Prev outside 13,Prev outside Cook,Prev nonTarget,Prev regionWide,Inc outside 13,Inc within Cook,Inc outside Cook,Inc target,Inc nonTarget,Inc regionWide'
