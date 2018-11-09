@@ -59,3 +59,10 @@ scenarioWaitDays: 2
   - 'LAMC'
   - 'SCGL'
   - 'NEWO'
+  
+'trackedValues':
+  - 'arrivals'
+  - 'creCounters'
+  - 'newColonizations'
+
+  

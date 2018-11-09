@@ -18,17 +18,19 @@
 from __future__ import print_function
 import sys
 import os
-import yaml
+import logging
+import logging.config
 from random import seed
 from collections import defaultdict
 import optparse
-import logging
-import logging.config
-import pika
-import six.moves.cPickle as pickle
 import re
 import signal
-import ujson 
+import types
+
+import yaml
+import pika
+import six.moves.cPickle as pickle
+import ujson
 
 import quilt.patches as patches
 import phacsl.utils.formats.yaml_tools as yaml_tools
@@ -41,6 +43,8 @@ from policybase import ScenarioPolicy
 from tauadjuster import TauAdjuster
 import checkpoint
 import bcz_monitor
+from closuretricks import ClosureFixer
+from daydata import DayDataGroup
 
 BASE_DIR = os.path.dirname(__file__)
 SCHEMA_DIR = os.path.join(BASE_DIR, '../schemata')
@@ -49,16 +53,21 @@ PTH_IMPLEMENTATIONS_DIR = os.path.join(BASE_DIR, 'pathogenImplementations/$(PATH
 DEFAULT_OUTPUT_NOTES_NAME = 'notes.json'
 
 _TRACKED_FACILITIES = []
-_TRACKED_FACILITIES_SET = None
 
-logger = None
+LOGGER = None
 
 # make command line data accessible to anyone
-clData = None
+CL_DATA = None
+
+
+def getTrackedFacilitiesSet():
+    if ClosureFixer.TRACKED_FACILITIES_SET is None:
+        ClosureFixer.TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
+    return ClosureFixer.TRACKED_FACILITIES_SET
 
 
 def buildFacOccupancyDict(patch, timeNow):
-    facTypeDict = {'day': timeNow}
+    facTypeDict = {'day': timeNow, 'format': ['factype']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
     for fac in patch.allFacilities:
         tpName = type(fac).__name__
@@ -79,19 +88,20 @@ def buildFacOccupancyDict(patch, timeNow):
 def buildFacHeldBedDict(patch, timeNow):
     facTypeDict = defaultdict(int)
     facTypeDict['day'] = timeNow
+    facTypeDict['format'] = ['factype', 'bedallockey']
     assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                              % patch.name)
     for fac in patch.allFacilities:
         tpName = type(fac).__name__
         if hasattr(fac, 'bedAllocDict'):
             for key, ct in fac.bedAllocDict.items():
-                facTypeDict[tpName + '_' + key] += ct
+                facTypeDict[(tpName, key)] += ct
 
     return facTypeDict
 
 
 def buildFacOverallHealthDict(patch, timeNow):
-    facOHDict = {'day': timeNow}
+    facOHDict = {'day': timeNow, 'format': ['factype', 'ohidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
     seenFacTypes = []
     for fac in patch.allFacilities:
@@ -104,17 +114,18 @@ def buildFacOverallHealthDict(patch, timeNow):
         tpName = type(fac).__name__
         if tpName not in seenFacTypes:
             for ohIdx in PatientOverallHealth.names:
-                key = '%s_%s' % (tpName, ohIdx)
+                key = (tpName, ohIdx)
                 facOHDict[key] = 0
             seenFacTypes.append(tpName)
-        for key, ct in ctD.items():
-            key = '%s_%s' % (tpName, key)
+        for pOH, ct in ctD.items():
+            key = (tpName, pOH)
             assert key in facOHDict, 'No key %s?' % key
             facOHDict[key] += ct
     return facOHDict
 
+
 def buildFacPthDict(patch, timeNow):
-    facPthDict = {'day': timeNow}
+    facPthDict = {'day': timeNow, 'format': ['factype', 'pthidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
     for fac in patch.allFacilities:
         facPPC = {}
@@ -127,7 +138,7 @@ def buildFacPthDict(patch, timeNow):
                     facPPC[k] = v
         tpName = type(fac).__name__
         for k, v in facPPC.items():
-            key = '%s_%s' % (tpName, k)
+            key = (tpName, k)
             if key in facPthDict:
                 facPthDict[key] += v
             else:
@@ -136,26 +147,22 @@ def buildFacPthDict(patch, timeNow):
 
 
 def buildLocalOccupancyDict(patch, timeNow):
-    global _TRACKED_FACILITIES_SET
-    if not _TRACKED_FACILITIES_SET:
-        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
-    facDict = {'day': timeNow}
+    facDict = {'day': timeNow, 'format': ['fac']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev in _TRACKED_FACILITIES_SET and hasattr(fac, 'patientStats'):
+        if fac.abbrev in tFS and hasattr(fac, 'patientStats'):
             patientCount = fac.patientStats.currentOccupancy
             facDict[fac.abbrev] = patientCount
     return facDict
 
 
 def buildLocalPthDict(patch, timeNow):
-    global _TRACKED_FACILITIES_SET
-    if not _TRACKED_FACILITIES_SET:
-        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
-    facPthDict = {'day': timeNow}
+    facPthDict = {'day': timeNow, 'format': ['fac', 'pthidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+        if fac.abbrev not in tFS:
             continue
         facPPC = {}
         for ward in fac.getWards():
@@ -166,53 +173,50 @@ def buildLocalPthDict(patch, timeNow):
                 else:
                     facPPC[k] = v
         for k, v in facPPC.items():
-            facPthDict['%s_%s' % (fac.abbrev, k)] = v
+            facPthDict[(fac.abbrev, k)] = v
     return facPthDict
 
 
 def buildLocalTierPthDict(patch, timeNow):
-    global _TRACKED_FACILITIES_SET
-    if not _TRACKED_FACILITIES_SET:
-        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
-    facPthDict = {'day': timeNow}
+    facPthDict = {'day': timeNow, 'format': ['fac', 'tieridx, pthidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
+    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev not in _TRACKED_FACILITIES_SET:
+        if fac.abbrev not in tFS:
             continue
         facPPC = defaultdict(lambda: 0)
         for ward in fac.getWards():
             pPC = ward.iA.getPatientPthCounts(timeNow)
             for k, v in pPC.items():
-                key = '%s_%s' % (ward.tier, k)
+                key = (ward.tier, k)
                 facPPC[key] += v
         for key, v in facPPC.items():
-            facPthDict['%s_%s' % (fac.abbrev, key)] = v  # so key is now abbrev_tier_pthStatus
+            wT, k = key
+            facPthDict[(fac.abbrev, wT, k)] = v  # so key is now abbrev_tier_pthStatus
     return facPthDict
 
 def generateLocalTierDictBuilder(counterKey):
-    global _TRACKED_FACILITIES_SET
-    if not _TRACKED_FACILITIES_SET:
-        _TRACKED_FACILITIES_SET = frozenset(_TRACKED_FACILITIES)
     def buildDict(patch, timeNow):
-        facTrtDict = {'day': timeNow}
+        tFS = getTrackedFacilitiesSet()
+        facTrtDict = {'day': timeNow, 'format': ['fac', 'tieridx']}
         assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                  % patch.name)
         for fac in patch.allFacilities:
-            if fac.abbrev not in _TRACKED_FACILITIES_SET:
+            if fac.abbrev not in tFS:
                 continue
             facPPC = defaultdict(lambda: 0)
             for ward in fac.getWards():
-                key = "{0}".format(ward.tier)
+                key = ward.tier
                 facPPC[key] += ward.miscCounters[counterKey]
-                #ward.miscCounters[counterKey] = 0.0
+                ward.miscCounters[counterKey] = 0.0
             for key, v in facPPC.items():
-                facTrtDict['{0}_{1}'.format(fac.abbrev,key)] = v
+                facTrtDict[(fac.abbrev,key)] = v
         return facTrtDict
     return buildDict
 
 def generateFacTypeDictBuilder(counterKey):
     def buildDict(patch, timeNow):
-        facTypeDict = {'day': timeNow}
+        facTypeDict = {'day': timeNow, 'format': ['factype']}
         assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                  % patch.name)
         for fac in patch.allFacilities:
@@ -221,36 +225,22 @@ def generateFacTypeDictBuilder(counterKey):
                 facTypeDict[tpName] = 0
             for ward in fac.getWards():
                 facTypeDict[tpName] += ward.miscCounters[counterKey]
-                #ward.miscCounters[counterKey] = 0.0
+                ward.miscCounters[counterKey] = 0.0
         return facTypeDict
     return buildDict
 
-def trackArrivalCounts(ward, t):
-    return (ward.miscCounters['arrivals'], ward.miscCounters['departures'])
-bcz_monitor.addTrackable('arrivals', trackArrivalCounts, [('localtierarrivals', 'uint32'), ('localtierdepartures', 'uint32')])
+def tupleToNoteKey(tpl):
+    if isinstance(tpl, types.TupleType):
+        return '_'.join([str(elt) for elt in tpl])
+    else:
+        return tpl  # which isn't a tuple
 
-def trackCRECounters(ward, t):
-    creCounters = ['patientDaysOnCP', 'creBundlesHandedOut', 'creSwabsPerformed', 'creArrivals',
-                   'passiveDaysOnCP', 'swabDaysOnCP', 'otherDaysOnCP', 'xdroDaysOnCP', 'newPatientsOnCP']
-    return [ward.miscCounters[c] for c in creCounters]
-bcz_monitor.addTrackable('creCounters', trackCRECounters,
-                         [('localtierCP', 'uint32'),
-                          ('localtierCREBundle', 'uint32'),
-                          ('localtierCRESwabs', 'uint32'),
-                          ('localtiercrearrivals', 'uint32'),
-                          ('localtierpassiveCP', 'uint32'),
-                          ('localtierswabCP', 'uint32'),
-                          ('localtierotherCP', 'uint32'),
-                          ('localtierxdroCP', 'uint32'),
-                          ('localtierpatientsOnCP', 'uint32'),
-                          ])
-
-def trackNewColonizations(ward, t):
-    return [ward.miscCounters['newColonizationsSinceLastChecked']]
-bcz_monitor.addTrackable('newColonizations', trackNewColonizations, [('localtiernewcolonized', 'uint32')])
-
-
-
+def dictToNote(dct):
+    """
+    This takes a dict in the format produced by the daily notes routines
+    and converts it to the format expected of the Notes output.
+    """
+    return {tupleToNoteKey(key): val for key, val in dct.items() if key != 'format'}
 
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
@@ -273,6 +263,47 @@ PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localtiernthawed': generateFacTypeDictBuilder('nThawed'),
                           'bedHoldStats': buildFacHeldBedDict
                           }
+
+
+for key, genFun in PER_DAY_NOTES_GEN_DICT.items():
+    DayDataGroup().add(key, genFun)
+
+
+def defineTrackingGroup(gpName, keyTypeL):
+    def extractFun(ward, timeNow):
+        patch = ward.patch
+        rslt = []
+        for key, tp in keyTypeL:  # @UnusedVariable
+            dct = DayDataGroup().get(patch, key, timeNow)
+            assert dct['format'] == ['fac', 'tieridx'], (('Cannot build tracking group including'
+                                                          ' %s; wrong format')
+                                                         % key)
+            assert dct['day'] == timeNow, (('Tracked quantity entry generator returned wrong date'
+                                            ' day (%s vs %s)')
+                                           % (dct['day'], timeNow))
+            tplKey = (ward.fac.abbrev, ward.tier)
+            if tplKey in dct:
+                rslt.append(dct[(ward.fac.abbrev, ward.tier)])
+            else:
+                rslt.append(0)
+        return rslt
+    bcz_monitor.addTrackable(gpName, extractFun, keyTypeL)
+
+defineTrackingGroup('arrivals', [('localtierarrivals', 'uint32'), ('localtierdepartures', 'uint32')])
+
+defineTrackingGroup('creCounters', [('localtierCP', 'uint32'),
+                          ('localtierCREBundle', 'uint32'),
+                          ('localtierCRESwabs', 'uint32'),
+                          ('localtiercrearrivals', 'uint32'),
+                          ('localtierpassiveCP', 'uint32'),
+                          ('localtierswabCP', 'uint32'),
+                          ('localtierotherCP', 'uint32'),
+                          ('localtierxdroCP', 'uint32'),
+                          ('localtierpatientsOnCP', 'uint32'),
+                          ])
+
+defineTrackingGroup('newColonizations', [('localtiernewcolonized', 'uint32')])
+
 
 def dumpFacilitiesMap(filename, patchList):
     from facilitybase import CareTier
@@ -316,13 +347,13 @@ def dumpFacilitiesMap(filename, patchList):
 
 
 def loadPolicyImplementations(implementationDir):
-    logger.info('Loading policy implementations')
+    LOGGER.info('Loading policy implementations')
     implList = []
     implementationDir = pyrheautils.pathTranslate(implementationDir)
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
                                                  requiredAttrList=['getPolicyClasses']):
         newPolicyClasses = newMod.getPolicyClasses()
-        logger.info('Loaded %s implementing %s' % (newMod.__name__,
+        LOGGER.info('Loaded %s implementing %s' % (newMod.__name__,
                                                    [cls.__name__
                                                     for cls in newPolicyClasses]))
         implList.extend(newPolicyClasses)
@@ -330,7 +361,7 @@ def loadPolicyImplementations(implementationDir):
 
 
 def loadPathogenImplementations(implementationDir):
-    logger.info('Loading infectious agent implementations')
+    LOGGER.info('Loading infectious agent implementations')
     implementationDir = pyrheautils.pathTranslate(implementationDir)
     implDict = {}
     for newMod in pyrheautils.loadModulesFromDir(implementationDir,
@@ -339,13 +370,13 @@ def loadPathogenImplementations(implementationDir):
         assert newMod.pathogenName not in implDict, \
             "Redundant definitions for pathogen %s" % newMod.category
         implDict[newMod.pathogenName] = newMod
-        logger.info('Loaded %s implementing %s' % (newMod.__name__,
+        LOGGER.info('Loaded %s implementing %s' % (newMod.__name__,
                                                    newMod.pathogenName))
     return implDict
 
 
 def loadFacilityImplementations(implementationDir):
-    logger.info('Loading facility implementations')
+    LOGGER.info('Loading facility implementations')
     # provide some string mapping
     implementationDir = pyrheautils.pathTranslate(implementationDir)
     implDict = {}
@@ -355,7 +386,7 @@ def loadFacilityImplementations(implementationDir):
         assert newMod.category not in implDict, \
             "Redundant definitions for category %s" % newMod.category
         implDict[newMod.category] = newMod
-        logger.info('Loaded %s implementing %s' % (newMod.__name__, newMod.category))
+        LOGGER.info('Loaded %s implementing %s' % (newMod.__name__, newMod.category))
     return implDict
 
 
@@ -363,7 +394,7 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
     """
     This loads facilities, including communities, checking them against a schema.
     """
-    logger.info('Parsing facilities descriptions')
+    LOGGER.info('Parsing facilities descriptions')
     allKeySet = set()
     rawRecs = []
     for d in dirList[:]:
@@ -386,7 +417,7 @@ def loadFacilityDescriptions(dirList, facImplDict, facImplRules):
             if os.name != 'nt':
                 nErrors = facImpl.checkSchema(rec)
                 if nErrors:
-                    logger.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
+                    LOGGER.warning('dropping %s; %d schema violations' % (rec['abbrev'], nErrors))
                 else:
                     facRecs.append(rec)
             else:
@@ -422,7 +453,7 @@ def distributeFacilities(comm, facDirs, facImplDict, facImplRules, partitionFile
         else:
             myFacList = comm.recv(source=0)
         if comm.rank == 0:
-            logger.info('Finished distributing facilities')
+            LOGGER.info('Finished distributing facilities')
     return myFacList
 
 
@@ -452,7 +483,7 @@ class TweakedOptParser(optparse.OptionParser):
         if msg is None:
             msg = ""
         print(msg)
-        # logger.critical(msg)
+        # LOGGER.critical(msg)
         if hasattr(self, 'comm') and self.comm.size > 1:
             self.comm.Abort(code)
         else:
@@ -460,10 +491,10 @@ class TweakedOptParser(optparse.OptionParser):
 
 
 def checkInputFileSchema(fname, schemaFname, comm=None):
-    if logger is None:
+    if LOGGER is None:
         myLogger = logging.getLogger(__name__)
     else:
-        myLogger = logger
+        myLogger = LOGGER
     try:
         with open(fname, 'rU') as f:
             inputJSON = yaml.safe_load(f)
@@ -496,19 +527,19 @@ def checkInputFileSchema(fname, schemaFname, comm=None):
 def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
     """
     recGenDict is of the form {key: genFun} where genFun has the signature:
-    
+
       dictOfNotes = genFun(patch, timeNow)
-      
+
     The result is a set of notes of the form:
-    
+
       key: [dictOfNotesAtTime0, dictOfNotesAtTime1, ..., dictOfNotesAtRunDurationDaysPlusOne]
     """
     def perDayCB(loop, timeNow):
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
-        noteHolder.addNote({key: [recFun(patch, timeNow)]
-                            for key, recFun in recGenDict.items()})
-        pyrheautils.resetMiscCounters(patch, timeNow)
+        dctD = {key: [dictToNote(DayDataGroup().get(patch, key, timeNow))]
+                for key in recGenDict}
+        noteHolder.addNote(dctD)
         if timeNow > runDurationDays:
             patch.group.stop()
     return perDayCB
@@ -533,11 +564,11 @@ def getLoggerConfig():
 
 
 def configureLogging(cfgDict, cfgExtra):
-    global logger
+    global LOGGER
     logging.config.dictConfig(cfgDict)
     if cfgExtra is not None:
         logging.getLogger('root').setLevel(cfgExtra)
-    logger = logging.getLogger(__name__)
+    LOGGER = logging.getLogger(__name__)
 
 
 class RankLoggingFilter(logging.Filter):
@@ -583,7 +614,7 @@ class BurnInAgent(patches.Agent):
 
     def run(self, startTime):
         timeNow = self.sleep(self.burnInDays)  # @UnusedVariable
-        logger.info('burnInAgent is running')
+        LOGGER.info('burnInAgent is running')
         self.noteHolderGroup.clearAll(keepRegex='.*(([Nn]ame)|([Tt]ype)|([Cc]ode)|(_vol)|(occupancy)|(pathogen))')
         # and now the agent exits
 
@@ -596,7 +627,7 @@ class ScenarioStartAgent(patches.Agent):
 
     def run(self, startTime):
         timeNow = self.sleep(self.totalWaitDays)  # @UnusedVariable
-        logger.info('Scenario is beginning')
+        LOGGER.info('Scenario is beginning')
         for sP in self.scenarioPolicyList:
             sP.begin(self, timeNow)
         # and now the agent exits
@@ -698,14 +729,14 @@ def initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
         patch.addInteractants(allIter)
         patch.addAgents(allAgents)
         patch.allFacilities = allFacilities
-        logger.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
+        LOGGER.info('Rank %d patch %s: %d interactants, %d agents, %d facilities' %
                     (comm.rank, patch.name, len(allIter), len(allAgents), len(allFacilities)))
         patchNH = noteHolderGroup.createNoteHolder()
         patch.loop.addPerDayCallback(createPerDayCB(patch, patchNH, totalRunDays,
                                                     recGenDict=PER_DAY_NOTES_GEN_DICT))
         initialNote = {'name': patch.name, 'rank': comm.rank}
         for key, genFun in PER_DAY_NOTES_GEN_DICT.items():
-            initialNote[key] = [genFun(patch, 0)]
+            initialNote[key] = [dictToNote(genFun(patch, 0))]
         patchNH.addNote(initialNote)
 
 
@@ -717,8 +748,8 @@ def main():
         import pdb
         pdb.Pdb().set_trace(frame)
 
-    global logger
-    global clData
+    global LOGGER
+    global CL_DATA
 
     if os.name != "nt":
         signal.signal(signal.SIGUSR1, handle_pdb)
@@ -777,25 +808,25 @@ def main():
             numLogLevel = None
         if opts.partition is None and comm.size > 1:
             parser.error('A partition file is required for parallel runs')
-        clData = {'verbose': opts.verbose,
-                  'debug': opts.debug,
-                  'trace': opts.trace,
-                  'deterministic': opts.deterministic,
-                  'patches': opts.patches,
-                  'printCensus': opts.census,
-                  'logCfgDict': getLoggerConfig(),
-                  'loggingExtra': numLogLevel,
-                  'partitionFile': opts.partition,
-                  'randomSeed': opts.seed,
-                  'checkpoint': opts.checkpoint,
-                  'constantsFile': opts.constantsFile,
-                  'saveNewConstants': opts.saveNewConstants,
-                  'bczmonitor': opts.bczmonitor,
-                  'taumod': opts.taumod,
-                  'dumpFacilitiesMap': opts.dumpFacilitiesMap,
+        CL_DATA = {'verbose': opts.verbose,
+                   'debug': opts.debug,
+                   'trace': opts.trace,
+                   'deterministic': opts.deterministic,
+                   'patches': opts.patches,
+                   'printCensus': opts.census,
+                   'logCfgDict': getLoggerConfig(),
+                   'loggingExtra': numLogLevel,
+                   'partitionFile': opts.partition,
+                   'randomSeed': opts.seed,
+                   'checkpoint': opts.checkpoint,
+                   'constantsFile': opts.constantsFile,
+                   'saveNewConstants': opts.saveNewConstants,
+                   'bczmonitor': opts.bczmonitor,
+                   'taumod': opts.taumod,
+                   'dumpFacilitiesMap': opts.dumpFacilitiesMap,
         }
         if len(args) == 1:
-            clData['input'] = checkInputFileSchema(args[0],
+            CL_DATA['input'] = checkInputFileSchema(args[0],
                                                    os.path.join(SCHEMA_DIR, INPUT_SCHEMA),
                                                    comm)
         else:
@@ -804,41 +835,41 @@ def main():
         # NOTE- outputNotesName is defined only for rank 0.
         if opts.out:
             outputNotesName = opts.out
-        elif 'notesFileName' in clData['input']:
-            outputNotesName = clData['input']['notesFileName']
+        elif 'notesFileName' in CL_DATA['input']:
+            outputNotesName = CL_DATA['input']['notesFileName']
         else:
             outputNotesName = DEFAULT_OUTPUT_NOTES_NAME
-        clData['outputNotesName'] = outputNotesName  # make this available to the other ranks anyways
+        CL_DATA['outputNotesName'] = outputNotesName  # make this available to the other ranks anyways
         parser.destroy()
     else:
-        clData = None
+        CL_DATA = None
 
     try:
         patchGroup = None  # for the benefit of diagnostics during init
-        clData = comm.bcast(clData, root=0)
+        CL_DATA = comm.bcast(CL_DATA, root=0)
 
-        pyrheautils.prepPathTranslations(clData['input'])
+        pyrheautils.prepPathTranslations(CL_DATA['input'])
 
         # make output notes name available to the constants file for magic reasons
-        pyrheautils.outputNotesName = clData['outputNotesName']
-        pyrheautils.saveNewConstants = clData['saveNewConstants']
+        pyrheautils.outputNotesName = CL_DATA['outputNotesName']
+        pyrheautils.saveNewConstants = CL_DATA['saveNewConstants']
 
         # loading up the constants replacements needs to happen fairly early
-        if clData['constantsFile'] is not None:
-            pyrheautils.readConstantsReplacementFile(clData['constantsFile'])
+        if CL_DATA['constantsFile'] is not None:
+            pyrheautils.readConstantsReplacementFile(CL_DATA['constantsFile'])
 
-        configureLogging(clData['logCfgDict'], clData['loggingExtra'])
+        configureLogging(CL_DATA['logCfgDict'], CL_DATA['loggingExtra'])
 
-        verbose = clData['verbose']  # @UnusedVariable
-        debug = clData['debug']  # @UnusedVariable
-        trace = clData['trace']
-        deterministic = clData['deterministic']
-        inputDict = clData['input']
+        verbose = CL_DATA['verbose']  # @UnusedVariable
+        debug = CL_DATA['debug']  # @UnusedVariable
+        trace = CL_DATA['trace']
+        deterministic = CL_DATA['deterministic']
+        inputDict = CL_DATA['input']
 
         if deterministic:
             seed(1234 + comm.rank)  # Set the random number generator seed
-        elif clData['randomSeed']:
-            seed(clData['randomSeed'] + comm.rank)
+        elif CL_DATA['randomSeed']:
+            seed(CL_DATA['randomSeed'] + comm.rank)
         elif 'randomSeed' in inputDict:
             seed(inputDict['randomSeed'] + comm.rank)
 
@@ -877,21 +908,21 @@ def main():
 
         myFacList = distributeFacilities(comm, inputDict['facilityDirs'],
                                          facImplDict, facImplRules,
-                                         clData['partitionFile'])
-        logger.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
+                                         CL_DATA['partitionFile'])
+        LOGGER.info('Rank %d has facilities %s' % (comm.rank, [rec['abbrev'] for rec in myFacList]))
 
         patchGroup = patches.PatchGroup(comm, trace=trace, deterministic=deterministic,
-                                        printCensus=clData['printCensus'])
+                                        printCensus=CL_DATA['printCensus'])
         noteHolderGroup = noteholder.NoteHolderGroup()
 
-        if comm.rank == 0 and clData['checkpoint'] != -1:
-            checkpointer = checkpoint.checkpoint(clData['checkpoint'])
+        if comm.rank == 0 and CL_DATA['checkpoint'] != -1:
+            checkpointer = checkpoint.checkpoint(CL_DATA['checkpoint'])
             patchList = [patchGroup.addPatch(patches.Patch(patchGroup, checkpointer=checkpointer))]
-            for i in xrange(clData['patches'] - 1):
+            for i in xrange(CL_DATA['patches'] - 1):
                 patchList.append(patchGroup.addPatch(patches.Patch(patchGroup)))
         else:
             patchList = [patchGroup.addPatch(patches.Patch(patchGroup))
-                         for i in xrange(clData['patches'])]  # @UnusedVariable
+                         for i in xrange(CL_DATA['patches'])]  # @UnusedVariable
         totalRunDays = inputDict['runDurationDays'] + inputDict['burnInDays']
 
         # Add some things for which we need only one instance
@@ -918,9 +949,9 @@ def main():
 
         monitorList = []
         tauAdjusterList = []
-        if clData['bczmonitor'] is not None:
+        if CL_DATA['bczmonitor'] is not None:
             for patch in patchList:
-                m = bcz_monitor.Monitor(clData['bczmonitor'], patch)
+                m = bcz_monitor.Monitor(CL_DATA['bczmonitor'], patch)
                 monitorList.append(m)
                 patch.loop.addPerDayCallback(m.createDailyCallbackFn())
                 if 'trackedValues' in inputDict:
@@ -928,22 +959,19 @@ def main():
                         m.registerTrackable(tv)
                 m.solidifyFields()
 
-                if clData['taumod']:
+                if CL_DATA['taumod']:
                     ta = TauAdjuster(m)
                     tauAdjusterList.append(ta)
                     m.setStopTimeFn(1, ta.createCallbackFn())
 
-            # resetMiscCounters needs to know that there is a second process watching the miscCounters
-            pyrheautils._resetCountNeeded += 1
-
-        if clData['dumpFacilitiesMap'] is not None:
-            dumpFacilitiesMap(clData['dumpFacilitiesMap'], patchList)
+        if CL_DATA['dumpFacilitiesMap'] is not None:
+            dumpFacilitiesMap(CL_DATA['dumpFacilitiesMap'], patchList)
 
         # Check that all policy rules have been used, to avoid a common user typo problem
         quitNow = False
         for ruleKey, usedFlag in policyRulesDict.items():
             if not usedFlag:
-                logger.error('The policy rule associating %s with %s was never used- typo?',
+                LOGGER.error('The policy rule associating %s with %s was never used- typo?',
                              ruleKey[2], ruleKey[3])
                 quitNow = True
         if quitNow:
@@ -953,39 +981,39 @@ def main():
 
     except Exception as e:
         if patchGroup:
-            if logger is None:
-                logger = logging.getLogger(__name__)
-            logger.error('%s exception during initialization: %s; traceback follows' %
+            if LOGGER is None:
+                LOGGER = logging.getLogger(__name__)
+            LOGGER.error('%s exception during initialization: %s; traceback follows' %
                          (patchGroup.name, e))
             import traceback
             traceback.print_exc(file=sys.stderr)
-            logger.info('%s exiting due to exception during initialization' % patchGroup.name)
+            LOGGER.info('%s exiting due to exception during initialization' % patchGroup.name)
             logging.shutdown()
             sys.exit('Exception during initialization')
         else:
-            if logger is None:
-                logger = logging.getLogger(__name__)
-            logger.error('%s exception during initialization: %s; traceback follows' %
+            if LOGGER is None:
+                LOGGER = logging.getLogger(__name__)
+            LOGGER.error('%s exception during initialization: %s; traceback follows' %
                          ('<no patchGroup yet>', e))
             import traceback
             traceback.print_exc(file=sys.stderr)
-            logger.info('%s exiting due to exception during initialization' % '<no patchGroup yet>')
+            LOGGER.info('%s exiting due to exception during initialization' % '<no patchGroup yet>')
             logging.shutdown()
             sys.exit('Exception during initialization')
 
-    logger.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
+    LOGGER.info('%s #### Ready to Run #### (from main)' % patchGroup.name)
     runFailed = False
     try:
         exitMsg = patchGroup.start()
-        logger.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
+        LOGGER.info('%s #### all done #### (from main); %s' % (patchGroup.name, exitMsg))
     except Exception as e:
-        logger.error('%s exception %s; traceback follows' % (patchGroup.name, e))
+        LOGGER.error('%s exception %s; traceback follows' % (patchGroup.name, e))
         import traceback
         traceback.print_exc(file=sys.stderr)
         runFailed = True
     finally:
         try:
-            logger.info('%s writing notes and exiting' % patchGroup.name)
+            LOGGER.info('%s writing notes and exiting' % patchGroup.name)
     
             allNotesGroup, allNotesList = collectNotes(noteHolderGroup, comm)  # @UnusedVariable
             if comm.rank == 0:
@@ -1010,12 +1038,12 @@ def main():
                     with open(outputNotesName, 'w') as f:
                         pickle.dump(d, f)
 
-                if clData['bczmonitor'] is not None:
+                if CL_DATA['bczmonitor'] is not None:
                     for m in monitorList:
                         m.writeData()
 
         except Exception as e:
-            logger.error('%s an exception occurred while writing notes: %s'
+            LOGGER.error('%s an exception occurred while writing notes: %s'
                          % (patchGroup.name, e))
 
     logging.shutdown()

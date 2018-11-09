@@ -38,9 +38,18 @@ def addTrackable(key, fn, dtypes):
         logger.warning("TrackableValue keyword collision: %s"%key)
     TrackableValues[key] = (fn, dtypes)
 
+
 def preregisterKey(key):
     global PreregisteredKeys
     PreregisteredKeys.add(key)
+
+
+def generateBCZDirName(baseName, patchId):
+    """
+    A separate function for accessibility
+    """
+    return baseName + '_' + str(patchId)
+
 
 class Monitor(object):
     def __init__(self, filenameBase, patch, stopFn=None, nextStop=None):
@@ -48,7 +57,7 @@ class Monitor(object):
         self.nextStop = nextStop
         self.stopFn = stopFn
         self.filenameBase = filenameBase
-        self.filename = self.filenameBase + '_' + str(patch.patchId)
+        self.filename = generateBCZDirName(self.filenameBase, patch.patchId)
         self.baseColumns = ['fac', 'tier', 'ward', 'day']
         self.dtype = [('fac', 'S20'), ('tier', 'S10'), ('ward', 'uint32'), ('day', 'uint32')]
         for i in xrange(len(PthStatus.names)):
@@ -70,11 +79,11 @@ class Monitor(object):
 
     def registerTrackable(self, key):
         global TrackableValues
-        
+
         # check if this key is already registered
         if key in self.registeredKeys:
             return
-        
+
         fn, dtypes = TrackableValues[key]
         self.registerFields(dtypes, fn)
         self.registeredKeys.add(key)
@@ -88,7 +97,7 @@ class Monitor(object):
         ra = np.recarray((0,), dtype = self.dtype)
         bz.set_nthreads(3)
         self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w", auto_flush=False)
-        
+
     def collectData(self, timeNow):
         """
         traverses each ward of each facility and updates pthData
@@ -111,10 +120,8 @@ class Monitor(object):
                     row.extend(fn(ward, timeNow))
                 self.pthData.append(row)
 
-
         self.flush()
         self.pthDataDF = None
-        pyrheautils.resetMiscCounters(self.patch, timeNow)
 
     def getPthData(self):
         if self.pthDataDF is None:
