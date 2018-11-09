@@ -149,9 +149,8 @@ def buildFacPthDict(patch, timeNow):
 def buildLocalOccupancyDict(patch, timeNow):
     facDict = {'day': timeNow, 'format': ['fac']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
-    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev in tFS and hasattr(fac, 'patientStats'):
+        if hasattr(fac, 'patientStats'):
             patientCount = fac.patientStats.currentOccupancy
             facDict[fac.abbrev] = patientCount
     return facDict
@@ -160,10 +159,7 @@ def buildLocalOccupancyDict(patch, timeNow):
 def buildLocalPthDict(patch, timeNow):
     facPthDict = {'day': timeNow, 'format': ['fac', 'pthidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
-    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev not in tFS:
-            continue
         facPPC = {}
         for ward in fac.getWards():
             pPC = ward.iA.getPatientPthCounts(timeNow)
@@ -180,10 +176,7 @@ def buildLocalPthDict(patch, timeNow):
 def buildLocalTierPthDict(patch, timeNow):
     facPthDict = {'day': timeNow, 'format': ['fac', 'tieridx, pthidx']}
     assert hasattr(patch, 'allFacilities'), 'patch %s has no list of facilities!' % patch.name
-    tFS = getTrackedFacilitiesSet()
     for fac in patch.allFacilities:
-        if fac.abbrev not in tFS:
-            continue
         facPPC = defaultdict(lambda: 0)
         for ward in fac.getWards():
             pPC = ward.iA.getPatientPthCounts(timeNow)
@@ -197,13 +190,10 @@ def buildLocalTierPthDict(patch, timeNow):
 
 def generateLocalTierDictBuilder(counterKey):
     def buildDict(patch, timeNow):
-        tFS = getTrackedFacilitiesSet()
         facTrtDict = {'day': timeNow, 'format': ['fac', 'tieridx']}
         assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                  % patch.name)
         for fac in patch.allFacilities:
-            if fac.abbrev not in tFS:
-                continue
             facPPC = defaultdict(lambda: 0)
             for ward in fac.getWards():
                 key = ward.tier
@@ -535,10 +525,21 @@ def createPerDayCB(patch, noteHolder, runDurationDays, recGenDict):
       key: [dictOfNotesAtTime0, dictOfNotesAtTime1, ..., dictOfNotesAtRunDurationDaysPlusOne]
     """
     def perDayCB(loop, timeNow):
+        """ This function is called once per day for maintenance """
 #         for p in patchGroup.patches:
 #             p.loop.printCensus()
-        dctD = {key: [dictToNote(DayDataGroup().get(patch, key, timeNow))]
-                for key in recGenDict}
+        tFS = getTrackedFacilitiesSet()
+        dctD = {}
+        for key in recGenDict:
+            dctD = {key: [dictToNote(DayDataGroup().get(patch, key, timeNow))]
+                    for key in recGenDict}
+            dayD = DayDataGroup().get(patch, key, timeNow)
+            if dayD['format'][0] == 'fac':
+                # Drop data for facilities that are not of interest
+                grpD = {dKey: dVal for dKey, dVal in dayD.items() if dKey[0] in tFS}
+            else:
+                grpD = dayD.copy()
+            dctD[key] = [dictToNote(grpD)]
         noteHolder.addNote(dctD)
         if timeNow > runDurationDays:
             patch.group.stop()
