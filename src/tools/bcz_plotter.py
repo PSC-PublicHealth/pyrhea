@@ -133,7 +133,6 @@ def occupancyTimeFig(allDF, facDict, meanPopByCat=None):
 
 def pathogenTimeFig(allDF):
     df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
-    print df
     nPatch = df['patch'].nunique()
     nTier = df['tier'].nunique()
 
@@ -180,14 +179,38 @@ def colonizationTimeFig(allDF):
             axes[tierOff, patchOff].plot(patchTierDF['day'].values,
                                          patchTierDF['localtiernewcolonized'].values,
                                          '-')
-            print 'New Colonized %s' % tier
-            print patchTierDF['localtiernewcolonized']
             axes[tierOff, patchOff].set_xlabel('Days')
             axes[tierOff, patchOff].set_ylabel('count')
             axes[tierOff, patchOff].set_title(tier)
             tierOff += 1
         patchOff += 1
         fig.suptitle('New Colonizations by Tier')
+
+
+def cpTimeFig(allDF):
+    df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
+    nPatch = df['patch'].nunique()
+    nTier = df['tier'].nunique()
+
+    fig, axes = plt.subplots(nrows=nTier, ncols=nPatch)
+    axes.reshape((nTier, nPatch))
+    if nTier == 1:
+        axes = axes[np.newaxis, :]
+    if nPatch == 1:
+        axes = axes[:, np.newaxis]
+    patchOff = 0
+    for patch, patchDF in df.groupby(['patch']):
+        tierOff = 0
+        for tier, patchTierDF in patchDF.groupby(['tier']):
+            axes[tierOff, patchOff].plot(patchTierDF['day'].values,
+                                         patchTierDF['localtierCP'].values,
+                                         '-')
+            axes[tierOff, patchOff].set_xlabel('Days')
+            axes[tierOff, patchOff].set_ylabel('count')
+            axes[tierOff, patchOff].set_title(tier)
+            tierOff += 1
+        patchOff += 1
+        fig.suptitle('Contact Precautions by Tier')
 
 
 def readFacFiles(facilityDirs):
@@ -209,9 +232,6 @@ def scanAllFacilities(facilityDirs, facDict=None):
         if 'totalDischarges' in fac:
             totDisch = fac['totalDischarges']['value']
         else:
-            #if fac['category'] != 'COMMUNITY':
-            #    print fac['category']
-            #    print fac
             assert fac['category'] == 'COMMUNITY', '%s should have totDisch and does not' % fac['abbrev']
             totDisch = None
         if 'totalTransfersOut' in fac:
@@ -264,7 +284,6 @@ def main():
     implDir = pyrheautils.pathTranslate(inputDict['facilityImplementationDir'])
 
     allDF = importBCZ(bczBaseName)
-    print allDF.columns
 
     catNames = list(set([rec['category'] for rec in facDict.values()]))
 
@@ -281,16 +300,6 @@ def main():
     catToImplDict = {cat: findFacImplCategory(implDir, facImplRules, cat)
                      for cat in catNames}
 
-#     writeTransferMapAsDot(buildTransferMap(catNames, categoryDict),
-#                           'sim_transfer_matrix.csv',
-#                           facDirList, catToImplDict)
-
-#     countBirthsDeaths(catNames, allOfCategoryDict)
-
-#     try:
-#         occupancyTimeFig(specialDict, meanPopByCat=meanPopByCategory)
-#     except Exception, e:
-#         logger.error('Exception in occupancyTimeFig: %s' % e)
     try:
         occupancyTimeFig(allDF, facDict, meanPopByCat=meanPopByCategory)
     except Exception, e:
@@ -300,19 +309,17 @@ def main():
         pathogenTimeFig(allDF)
     except Exception, e:
         logger.error('Exception in pathogenTimeFig: %s' % e)
-    try:
-        colonizationTimeFig(allDF)
-    except Exception, e:
-        logger.error('Exception in colonizationTimeFig: %s' % e)
-        raise
-#     try:
-#         overallHealthTimeFig(specialDict)
-#     except Exception, e:
-#         logger.error('Exception in overallHealthTimeFig: %s' % e)
-#     try:
-#         miscTimeFig(specialDict)
-#     except Exception, e:
-#         logger.error('Exception in miscTimeFig: %s' % e)
+    if 'trackedValues' in inputDict:
+        if 'newColonizations' in inputDict['trackedValues']:
+            try:
+                colonizationTimeFig(allDF)
+            except Exception, e:
+                logger.error('Exception in colonizationTimeFig: %s' % e)
+        if 'creCounters' in inputDict['trackedValues']:
+            try:
+                cpTimeFig(allDF)
+            except Exception, e:
+                logger.error('Exception in cpTimeFig: %s' % e)
 
     plt.show()
 

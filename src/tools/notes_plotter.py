@@ -726,11 +726,14 @@ def colonizationTimeFig(specialDict, facDict):
         tierL = list(tierSet)
         tierL.sort()
         fig, axes = plt.subplots(nrows=len(tierL), ncols=len(patchL))
-        axes.reshape((len(tierL), len(patchL)))
-        if len(tierL) == 1:
-            axes = axes[np.newaxis, :]
-        if len(patchL) == 1:
-            axes = axes[:, np.newaxis]
+        if len(tierL) == 1 and len(patchL) == 1:
+            axes = np.asarray([[axes]])
+        else:
+            axes.reshape((len(tierL), len(patchL)))
+            if len(tierL) == 1:
+                axes = axes[np.newaxis, :]
+            if len(patchL) == 1:
+                axes = axes[:, np.newaxis]
         dayVD = {}
         valVD = {}
         for tSL in timeSeriesListGenerator(specialDict, 'localtiernewcolonized'):

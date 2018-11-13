@@ -146,6 +146,11 @@ class MRSA(Pathogen):
         self.propogationInfoTime = None
         self.treatmentProbModifierDict = None
 
+        if ward.tier == CareTier.HOME:
+            self.clearColonizedStatusProb = _constants['homeClearColonizedStatusProb']['value']
+        else:
+            self.clearColonizedStatusProb = 0.0
+
         initialFractionColonized = self.core._getInitialPthFrac(PthStatus.COLONIZED,
                                                                 ward.fac.abbrev,
                                                                 ward.fac.category, ward.tier)
@@ -384,7 +389,9 @@ class MRSA(Pathogen):
                                     pChlorhexBathSuccess)
             else:
                 chxTree = sponClearTree.copy()
-            return chxTree
+            return BayesTree(PthStatusSetter(PthStatus.CLEAR),
+                             chxTree,
+                             self.clearColonizedStatusProb)
         elif patientStatus.pthStatus == PthStatus.CHRONIC:
             # Chronic infection is forever
             return BayesTree(PatientStatusSetter())

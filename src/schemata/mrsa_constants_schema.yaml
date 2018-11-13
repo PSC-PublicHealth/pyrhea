@@ -83,6 +83,9 @@
         'description': >
           If a patient is successfully decolonized by a single chlorhexidine bath, probability that an undetectably low but
           non-zero level of colonization remains so that rebound colonization is possible
+      'homeClearColonizedStatusProb':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
@@ -106,6 +109,7 @@
       - 'fracPermanentlyColonized'
       - 'probChlorhexBathSuccess'
       - 'probChlorhexBathLeadsToUndetColonization'
+      - 'homeClearColonizedStatusProb'
 
       
       

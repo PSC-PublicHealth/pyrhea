@@ -155,6 +155,20 @@ class CommunityWard(genericCommunity.CommunityWard):
             raise genericCommunity.FreezerError('%s has unexpected PthStatus %s' %
                                                 (agent.name,
                                                  PthStatus.names[agent._status.pthStatus]))
+    
+    def getPthCountHook(self):
+        """
+        A channel to report patient pthStatus counts including freeze-dried patients
+        """
+        dct = defaultdict(int)
+        for classKey, freezer in self.freezers.items():
+            # This bit is the reverse of the classify() method.
+            pthStatus = {'colonized': PthStatus.COLONIZED, 'base': PthStatus.CLEAR,
+                         'undetcolonized': PthStatus.UNDETCOLONIZED}[classKey.split('_')[1]]
+            dct[pthStatus] += len(freezer.frozenAgentList)
+        for agent in self.getLiveLockedAgents():
+            dct[agent.getPthStatus()] += 1
+        return dct
 
 
 class CommunityCore(object):

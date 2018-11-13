@@ -70,7 +70,11 @@ class Pathogen(object):
                 for pt in self.ward.getPatientList():
                     dct[pt._status.pthStatus] += 1
             except FreezerError:
-                pass  # We're going to have to ignore freeze-dried patients
+                if hasattr(self.ward, 'getPthCountHook'):
+                    # Backup method to support freeze-dried patients
+                    dct.update(self.ward.getPthCountHook())
+                else:
+                    pass  # We're going to have to ignore freeze-dried patients
             self.patientPth = dct
             self.patientPthTime = timeNow
         return self.patientPth

@@ -314,7 +314,7 @@ def main():
         else:
             pass
 
-    sampL = ['BETH_5025_H_54']
+    sampL = random.sample(patientLocs, 3)
     for patNm in sampL:
         print '%s: %s' % (patNm, patientLocs[patNm])
 
@@ -323,13 +323,11 @@ def main():
         #print patName, 'eventL: ', eventL
         oldLoc, oldDate, oldPS, oldAlive = eventL[0]
         oldPthStatus = -1 if oldPS is None else oldPS.pthStatus
-        if patName == 'BETH_5025_H_54': print 'point 1', eventL
         eventL = eventL[1:]
         oldTier = tierFromPatientStatus(oldPS)
         oldAddr = (oldLoc, oldTier)
         pLPSC = None  # 'place of last pth status change'
         placeEvtD[oldAddr].append((oldDate, patName, oldLoc, oldPS, pLPSC, oldAlive))
-        if patName == 'BETH_5025_H_54': print 'point 1b: %s %s' % (oldAddr, placeEvtD[oldAddr][-1])
         for evt in eventL:
             if len(evt) >= 4:
                 newLoc, newDate, newPS, newAlive = evt
@@ -350,8 +348,6 @@ def main():
                                                oldAddr, pLPSC, newAlive))
             else:
                 placeEvtD[newAddr].append((newDate, patName, newLoc, newPS, pLPSC, newAlive))
-            if patName == 'BETH_5025_H_54':
-                print 'point 2', newLoc, newDate, newPS, newTier, newAddr, pLPSC
             oldLoc, oldDate, oldPS, oldTier = newLoc, newDate, newPS, newTier
             oldAddr, oldPthStatus, oldAlive = newAddr, newPthStatus, newAlive
     newPlaceEvtD = {}

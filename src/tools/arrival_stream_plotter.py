@@ -67,8 +67,9 @@ _PTH_STATUS_MAP = {v: k for k, v in PthStatus.names.items()}
 
 
 def tierFromCat(cat):
-    return {'COMMUNITY': CareTier.HOME, 'SNF': None, 'LTACH': CareTier.LTAC,
-            'VSNF': None, 'HOSPITAL': CareTier.HOSP}[cat]
+    return {'COMMUNITY': CareTier.HOME, 'SNF': CareTier.NURSING, 'LTACH': CareTier.LTAC,
+            'VSNF': None, 'HOSPITAL': CareTier.HOSP, 'LTAC': CareTier.LTAC,
+            'NURSINGHOME': CareTier.NURSING}[cat]
 
 
 def mergeSelfTransfers(tupleL):
@@ -196,8 +197,6 @@ def buildStateChain(placeEvtD, targetLoc, targetTier, facDict):
     while eventL:
         nextEvent = eventL.pop(0)
         nextEDay = nextEvent[0]
-        if nextEvent[1] == 'BETH_5025_H_54':
-            print 'nextEvent for %s : %s' % (targetLoc, str(nextEvent))
         assert day <= nextEDay, 'Events out of order; day %d vs expected %d' % (day, nextEDay)
         while day < nextEDay:
             stateD[day + 1] = stateD[day].copy()
@@ -211,6 +210,7 @@ def buildStateChain(placeEvtD, targetLoc, targetTier, facDict):
                 raise RuntimeError('zombie! %s' % str(nextEvent))
             pthStatus = None if patStatus is None else patStatus.pthStatus
             if not alive:
+                print 'ping %s' % patNm
                 stateNow.rm(patNm)
                 DEAD_LIST.append(patNm)
                 LAST_TOD = max(LAST_TOD, day)
@@ -276,6 +276,8 @@ def main():
     parser.add_option('-i', '--input', action='store', type='string',
                       help='file containing output of arrival_stream_parser',
                       default=DEFAULT_INPUT)
+    parser.add_option('-f', '--facility', action='store', type='string',
+                      help='restrict plot to this facility', default=None)
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -285,6 +287,9 @@ def main():
     lowDate = opts.low
     highDate = opts.high
 
+    if opts.facility:
+        targetFac = opts.facility
+
     inputDict = tu.readModelInputs(args[0])
     facDict = tu.getFacDict(inputDict)
 
@@ -292,18 +297,26 @@ def main():
     with open(infile, 'rU') as f:
         placeEvtD = pickle.load(f)
 
-    cat, tier = 'SNF', CareTier.NURSING
-    #cat, tier = 'LTACH', CareTier.LTAC
-    targetFac = None
-    #targetFac = 'PLUM_24_S'
-    #targetFac = 'ALDE_6120_S'
-    #targetFac = 'EVAN_1300_S'
-    #targetFac = 'RML_5601_L'    
-    #targetFac = 'PRES_100_L'    
-    #targetFac = 'THC_365_L'    
+    if targetFac:
+        cat = facDict[targetFac]['category']
+        tier = tierFromCat(cat)
+        if tier is None:
+            sys.exit('There is no single tier of care for %s')
+    else:
+        #cat, tier = 'NURSINGHOME', CareTier.NURSING
+        cat, tier = 'LTAC', CareTier.LTAC
+        #cat, tier = 'HOSPITAL', CareTier.HOSP
+        #targetFac = 'PLUM_24_S'
+        #targetFac = 'ALDE_6120_S'
+        #targetFac = 'EVAN_1300_S'
+        #targetFac = 'RML_5601_L'    
+        #targetFac = 'PRES_100_L'    
+        #targetFac = 'THC_365_L'    
+        
 
     allMergeD = defaultdict(lambda: defaultdict(int))
     pthMergeD = defaultdict(lambda: defaultdict(int))
+    allKeySet = set()
     maxMaxDay = 0
     if targetFac is None:
         for fac, rec in facDict.items():
@@ -318,6 +331,7 @@ def main():
                         allMergeD[day][key] += val
                     for key, val in pthCounts.items():
                         pthMergeD[day][key] += val
+                    allKeySet.update(allMergeD[day])
                 maxMaxDay = max(maxMaxDay, maxDay)
             #print fac
             #break
@@ -334,19 +348,21 @@ def main():
                 allMergeD[day][key] += val
             for key, val in pthCounts.items():
                 pthMergeD[day][key] += val
+            allKeySet.update(allMergeD[day])
         maxMaxDay = maxDay
 
-    for day in xrange(maxMaxDay+1):
-        allD = {key: val for key, val in allMergeD[day].items()}
-        pthD = {key: val for key, val in pthMergeD[day].items()}
-        print 'Day %s: %s %s: %s %s' % (day, sum(allD.values()),
-                                        float(sum(pthD.values()))/float(1+sum(allD.values())),
-                                        allD, pthD)
-        print '-----------'
+#     for day in xrange(maxMaxDay+1):
+#         allD = {key: val for key, val in allMergeD[day].items()}
+#         pthD = {key: val for key, val in pthMergeD[day].items()}
+#         print 'Day %s: %s %s: %s %s' % (day, sum(allD.values()),
+#                                         float(sum(pthD.values()))/float(1+sum(allD.values())),
+#                                         allD, pthD)
+#         print '-----------'
     print 'Total dead: %d' % len(DEAD_LIST)
     print 'Last time of death: %d' % LAST_TOD
 
-    keys = ['None', 'COMMUNITY', 'SNF', 'HOSPITAL', 'LTACH', 'VSNF']
+    keys = list(allKeySet)
+    keys.sort()
     xV = np.linspace(0.0, maxMaxDay, num=maxMaxDay+1)
     yPthA = np.zeros((len(keys), maxMaxDay+1))
     yAllA = np.zeros((len(keys), maxMaxDay+1))

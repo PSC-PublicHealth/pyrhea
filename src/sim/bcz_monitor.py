@@ -105,9 +105,6 @@ class Monitor(object):
 
         for fac in self.patch.allFacilities:
             for ward in fac.getWards():
-                # for now let's drop any "HOME" wards
-                if ward.tier == CareTier.HOME:
-                    continue
                 pPC = ward.iA.getPatientPthCounts(timeNow)
                 counts = []
                 total = 0
