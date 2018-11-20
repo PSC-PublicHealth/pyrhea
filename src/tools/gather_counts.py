@@ -371,9 +371,9 @@ def main():
         totalStats = pool.map(pool_helper, argsList)
         pool.close()
     else:
+        totalStats = []
         if pklNotes:
             print 'Warning: using serial processing because nprocs == 1'
-            totalStats = []
             for args in argsList:
                 totalStats.append(pool_helper(args))
     print 'Finished scanning pickled notes'
@@ -389,7 +389,6 @@ def main():
     else:
         if bczNotes:
             print 'Warning: using serial processing because nprocs == 1'
-            totalStats = []
             for args in argsList:
                 totalStats.append(bcz_pool_helper(args))
     print 'Finished scanning bcz notes'
