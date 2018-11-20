@@ -36,6 +36,7 @@ from facilitybase import CareTier, PthStatus
 from time_series_plotter import mergeNotesFiles, getTimeSeriesList
 from pyrhea import getLoggerConfig
 import tools_util as tu
+from bcz_plotter import importBCZ
 #import affinity
 
 #print "Cpu_Count = {0}".format(cpu_count())
@@ -46,14 +47,6 @@ import tools_util as tu
 #os.system("taskset -p 0xff %d"%os.getpid())
 
 DEFAULT_OUT_FILE = 'counts_output'
-
-
-def pandasVersionIsAtLeast23():
-    """There is a frustrating incompatibility in versions of Pandas below 0.23.0"""
-    # Thanks to stackoverflow.com/questions/11887762/how-do-i-compare-version-numbers-in-python
-    # user kindall !
-    versionTuple = tuple(map(int, (pd.__version__.split("."))))
-    return versionTuple >= (0, 23, 0)
 
 
 def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
@@ -98,11 +91,11 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
                 if entryDF is None:
                     entryDF = facDF
                 else:
-                    if pandasVersionIsAtLeast23():
+                    if tu.pandasVersionIsAtLeast23():
                         entryDF = pd.concat((entryDF, facDF), sort=True)
                     else:
                         entryDF = pd.concat((entryDF, facDF))
-                        
+
             entryDF = entryDF.reset_index(drop=True)
             bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
@@ -111,9 +104,64 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
     return bigDF
 
 
+def collectBCZ(nmList):
+    """
+    nmList is a list of path names.  Some may be directory names of the form (something)bcz_0,
+    (something)bcz_1, etc.  These are interpreted as a group of BCZ directories with a patch
+    number suffix.  Returns two lists, the first being all the non-bcolz entries from the
+    original nmList and the second being the list of BCZ group base strings.
+    """
+    nonBCZL = []
+    bczS = set()
+    for nm in nmList:
+        if os.path.isdir(nm):
+            offset = nm.rfind('bcz_')
+            if offset < 0:
+                nonBCZL.append(nm)
+            else:
+                try:
+                    int(nm[offset+4])
+                    bczS.add(nm[:offset+3])
+                except ValueError:
+                    nonBCZL.append(nm)
+        else:
+            nonBCZL.append(nm)
+    return nonBCZL, list(bczS)
+
+
+def extractCountsFromBCZ(bczNm, abbrevList, translationDict, burninDays):
+    """Convert the time series contents of a notes file to a Pandas DataFrame"""
+    print "Handling bcz group {0}".format(bczNm)
+    ### totalStats is assumed to be a Manager
+    try:
+        df = importBCZ(bczNm)
+    except Exception as e:
+        print "for bcz directory {0} there is an exception {1}".format(bczNm,e)
+        raise
+
+    # We want only days after the end of burnin
+    df.drop(df[df.day < burninDays].index, inplace=True)
+    # Repair a naming discrepancy.
+    transDct = {'fac': 'abbrev'}
+    transDct.update({val: key for key, val in translationDict.items()})
+    df = df.rename(index=str, columns=transDct)
+
+    # Convert things to float64
+    colL = ([col for col in translationDict.keys()]
+            + [nm.upper() for nm in PthStatus.names.values()])
+    colL = [col for col in colL if col in df]
+    df[colL] = df[colL].apply(pd.to_numeric, downcast='float')
+
+    # We don't care about ward, and other input routines leave an 'index' column
+    return df.groupby(['abbrev', 'day', 'tier']).sum().reset_index()
+
+
 def pool_helper(args):
     return extractCountsFromNotes(*args)
 
+
+def bcz_pool_helper(args):
+    return extractCountsFromBCZ(*args)
 
 def computeConfidenceIntervals(df, fieldsOfInterest):
     """This is used via pd.Groupby.apply() to provide CIs for data columns"""
@@ -185,7 +233,8 @@ def sumDaysWithOffsets(fullDF, valuesToGather, baseDays, fieldsOfInterest):
 
 
 def sumSelectedGroups(inDF, facilitiesWithin13Miles, facilitiesWithinCookCounty, targetFacilitySet):
-    fullSr = inDF.sum(numeric_only=True).drop(['index', 'day', 'run'])
+    fullSr = inDF.sum(numeric_only=True)
+    fullSr = fullSr.drop(labels=['index', 'day', 'run'])
     fullSr['prevalence'] = fullSr['colonizedDays'] / fullSr['bedDays']
     fullSr = fullSr.add_suffix('_regn')
     in13mi = inDF['abbrev'].isin(facilitiesWithin13Miles)
@@ -208,7 +257,7 @@ def main():
     """)
 
     parser.add_option('-n', '--notes', action='append', type='string',
-                     help="Notes filename - may be repeated; may be either .mpz or .pkl")
+                     help="Notes filename - may be repeated; may be .mpz or .pkl a bcz_ directory set")
     parser.add_option('-o', '--out', action='store', type='string',
                      help="Output file prefix (defaults to %s)" % DEFAULT_OUT_FILE)
     parser.add_option('-g','--glob', action='store_true',
@@ -290,7 +339,8 @@ def main():
 
     notes = []
     if opts.glob:
-        notes = glob.glob('{0}'.format(opts.notes[0]))
+        for nt in opts.notes:
+            notes.extend(glob.glob('{0}'.format(nt)))
     else:
         notes = opts.notes
 
@@ -307,9 +357,10 @@ def main():
 
     print "XDRO Facilities = {0}".format(xdroAbbrevs)
 
+    notes, bczNotes = collectBCZ(notes)
     pklNotes = [nf for nf in notes if nf.endswith('.pkl')]
     mpzNotes = [nf for nf in notes if (nf.endswith('.mpk') or nf.endswith('.mpz'))]
-    assert len(pklNotes) + len(mpzNotes) == len(notes), 'some input notes are in unknown format'
+    assert len(pklNotes) + len(mpzNotes) == len(notes), ('some input notes are in unknown format')
 
     # pkl files get handled in parallel
     argsList = [(pklNotes[i], abbrevList,
@@ -320,11 +371,28 @@ def main():
         totalStats = pool.map(pool_helper, argsList)
         pool.close()
     else:
-        print 'Warning: using serial processing because nprocs == 1'
-        totalStats = []
-        for args in argsList:
-            totalStats.append(pool_helper(args))
+        if pklNotes:
+            print 'Warning: using serial processing because nprocs == 1'
+            totalStats = []
+            for args in argsList:
+                totalStats.append(pool_helper(args))
     print 'Finished scanning pickled notes'
+
+    # bcz files get handled in parallel
+    argsList = [(bczNotes[i], abbrevList,
+                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
+                for i in range(0, len(bczNotes))]
+    if nprocs > 1:
+        pool = Pool(nprocs)
+        totalStats = pool.map(bcz_pool_helper, argsList)
+        pool.close()
+    else:
+        if bczNotes:
+            print 'Warning: using serial processing because nprocs == 1'
+            totalStats = []
+            for args in argsList:
+                totalStats.append(bcz_pool_helper(args))
+    print 'Finished scanning bcz notes'
 
     # read any mpz files in line
     if mpzNotes:
