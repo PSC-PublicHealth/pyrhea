@@ -63,7 +63,6 @@ import map_transfer_matrix as mtm
 import tools_util as tu
 from pyrhea import getLoggerConfig
 from bcz_monitor import generateBCZDirName
-from gather_counts import pandasVersionIsAtLeast23
 from notes_plotter import findFacImplCategory, checkInputFileSchema, loadFacilityDescription
 from notes_plotter import loadFacilityTypeConstants
 
@@ -81,6 +80,8 @@ def importBCZ(basePath):
     patchId = 0
     pth = generateBCZDirName(basePath, patchId)
     df = bcolz.ctable(rootdir=pth, mode='r').todataframe()
+    if df is None:
+        sys.exit('Failed to read %s' % pth)
     df['patch'] = patchId
     while True:
         patchId += 1
@@ -88,7 +89,7 @@ def importBCZ(basePath):
         if os.path.isdir(pth):
             subDF = bcolz.ctable(rootdir=pth, mode='r').todataframe()
             subDF['patch'] = patchId
-            if pandasVersionIsAtLeast23():
+            if tu.pandasVersionIsAtLeast23():
                 df = pd.concat((df, subDF), sort=True)
             else:
                 df = pd.concat((df, subDF))

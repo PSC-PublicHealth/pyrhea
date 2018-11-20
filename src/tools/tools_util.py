@@ -4,6 +4,8 @@ import sys
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
 
+import pandas as pd
+
 #import map_transfer_matrix as mtm
 import schemautils
 import pyrheautils
@@ -14,6 +16,14 @@ import glob
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), os.path.pardir, 'schemata')
 INPUT_SCHEMA = 'rhea_input_schema.yaml'
+
+
+def pandasVersionIsAtLeast23():
+    """There is a frustrating incompatibility in versions of Pandas below 0.23.0"""
+    # Thanks to stackoverflow.com/questions/11887762/how-do-i-compare-version-numbers-in-python
+    # user kindall !
+    versionTuple = tuple(map(int, (pd.__version__.split("."))))
+    return versionTuple >= (0, 23, 0)
 
 
 def checkInputFileSchema(fname, schemaFname):
