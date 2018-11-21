@@ -172,22 +172,29 @@ def main(argv=None):
         argv = sys.argv[1:]
     try:
         # setup option parser
-        parser = OptionParser(version=program_version_string, epilog=program_longdesc, description=program_license)
+        parser = OptionParser(version=program_version_string, epilog=program_longdesc,
+                              description=program_license)
         parser.add_option("-s", "--sampfile", dest="sampfile", action="append",
-                          help="msgpack file containing a pandas dataframe of samples", metavar="FILE")
+                          help="msgpack file containing a pandas dataframe of samples",
+                          metavar="FILE")
         parser.add_option("--glob", dest="glob", action="store_true",
                           help="apply filename globbing to sampfile values", metavar="FLAG")
         parser.add_option("-t", "--target", dest="target", action="store",
-                          help="pkl file containing target prevalence info [default: %default]", metavar="FILE")
+                          help="pkl file containing target prevalence info [default: %default]",
+                          metavar="FILE")
         parser.add_option("-y", "--tauopts", dest="tauopts", action="store",
-                          help="yaml file containing taumod options [default: %default]", metavar="FILE")
+                          help="yaml file containing taumod options [default: %default]",
+                          metavar="FILE")
         parser.add_option("-v", "--verbose", dest="verbose", action="count",
                           help="set verbosity level [default: %default]")
         parser.add_option("--log", dest="log", action="store_true",
                           help="use log scale on the Y axis", metavar="FLAG")
+        parser.add_option("--show", dest="show", action="store",
+                          help="What to plot.  One of 'prevalence', 'incidence' [default: %default]")
 
         # set defaults
-        parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl", log=False)
+        parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl", log=False,
+                            show='prevalence')
 
         # process options
         (opts, args) = parser.parse_args(argv)
@@ -202,6 +209,9 @@ def main(argv=None):
 
         if not opts.sampfile:
             parser.error('At least one sample file is required')
+        
+        if opts.show not in ['prevalence', 'incidence']:
+            parser.error('Invalid option to --show')
 
         # MAIN BODY #
         with open(opts.tauopts, 'rU') as f:
@@ -240,11 +250,12 @@ def main(argv=None):
         sampDF = sampDF.add_suffix('_sum').reset_index()
         sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
         
-        #colKey, label, tD = 'prev_sample', 'prevalence', targetD
-        colKey, label, tD = 'newColonized_sum', 'incidence', None
+        colKey, label, tD = {'prevalence': ('prev_sample', 'prevalence', targetD),
+                             'incidence': ('newColonized_sum', 'incidence', None)}[opts.show]
         for tier in sampDF['tier'].unique():
-            prevalenceBoxPlots(sampDF, tD, tier, logy=opts.log,
-                               label=label, colKey=colKey)
+            if tier != 'HOME':
+                prevalenceBoxPlots(sampDF, tD, tier, logy=opts.log,
+                                   label=label, colKey=colKey)
         tierPrevalenceBoxPlot(savSampDF, tD, logy=opts.log,
                               label=label, colKey=colKey)
 
