@@ -20,6 +20,8 @@ import os
 
 from optparse import OptionParser
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg') # Hack for no display w/ pyplot. Change pyplot backend *before* loading it.
 import matplotlib.pyplot as plt
 from matplotlib.legend_handler import HandlerTuple
 
