@@ -54,7 +54,6 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg') # Hack for no display w/ pyplot. Change pyplot backend *before* loading it.
 import matplotlib.pyplot as plt # use plt.savefig(<path>) rather than plt.show()
-from matplotlib import rcParams
 
 __all__ = []
 __version__ = 0.1
@@ -209,7 +208,7 @@ def main(argv=None):
 
         if not opts.sampfile:
             parser.error('At least one sample file is required')
-        
+
         if opts.show not in ['prevalence', 'incidence']:
             parser.error('Invalid option to --show')
 
