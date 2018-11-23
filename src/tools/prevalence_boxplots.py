@@ -182,7 +182,8 @@ def main(argv=None):
                           help="pkl file containing target prevalence info [default: %default]",
                           metavar="FILE")
         parser.add_option("-y", "--tauopts", dest="tauopts", action="store",
-                          help="yaml file containing taumod options [default: %default]",
+                          help=("optional yaml file containing taumod options [default: %default]"
+                                "If omitted, the last 90 days of data will be used"),
                           metavar="FILE")
         parser.add_option("-v", "--verbose", dest="verbose", action="count",
                           help="set verbosity level [default: %default]")
@@ -192,7 +193,7 @@ def main(argv=None):
                           help="What to plot.  One of 'prevalence', 'incidence' [default: %default]")
 
         # set defaults
-        parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl", log=False,
+        parser.set_defaults(tauopts=None, target="expected.pkl", log=False,
                             show='prevalence')
 
         # process options
@@ -213,10 +214,12 @@ def main(argv=None):
             parser.error('Invalid option to --show')
 
         # MAIN BODY #
-        with open(opts.tauopts, 'rU') as f:
-            tauOpts = yaml.load(f)
-        #dayL = tauOpts['DayList']
-        dayL = range(90)
+        if opts.tauopts is None:
+            dayL = range(90)
+        else:
+            with open(opts.tauopts, 'rU') as f:
+                tauOpts = yaml.load(f)
+            dayL = tauOpts['DayList']
 
         with open(opts.target, 'rU') as f:
             targetD = pickle.load(f)
