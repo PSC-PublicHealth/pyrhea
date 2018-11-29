@@ -1,0 +1,52 @@
+#! /usr/bin/bash -x
+
+scenario=%scenario%
+runyaml=%runyaml%
+basedir=%basedir%
+bundledir=%bundledir%
+workdir=%workdir%
+topdir=%topdir%
+minNotesSz=%minNotesSz%
+pyrheadir=%pyrheadir%
+targetdir=%targetdir%
+simdir=$pyrheadir/src/sim
+tooldir=$pyrheadir/src/tools
+prepscript=%prepscript%
+
+source ${HOME}/setup_python_path_olympus.sh
+
+myrank=$SLURM_PROCID
+
+ofile=$workdir/out_${OMPI_COMM_WORLD_RANK}.out
+
+if [ $myrank == 0 ]; then
+    echo 'I am the taumod runner' > $ofile
+    cp $topdir/log_cfg.yaml $workdir
+    if [ ! -f $workdir/taumod_config.yaml ] ; then
+	cp $topdir/taumod_config.yaml $workdir
+    fi
+    if [ ! -f $workdir/$prepscript ] ; then
+	cp $topdir/$prepscript $workdir
+    fi
+    cd $workdir
+    $simdir/lockserver.py --debug > $workdir/lockserver.log 2>&1 &
+    lockserverpid=$!
+    echo 'lockserver pid is ' $lockserverpid >> $ofile
+    python $simdir/taumod.py > $workdir/taumod.log 2>&1
+    echo "taumod exited" >> $workdir/taumod.log
+    kill $lockserverpid
+else
+    myinstance=$(( $myrank - 1 ))
+    outbase=$workdir/pyrhea_${myinstance}_out
+    ofile=${outbase}.out
+    echo "I am running pyrhea as instance $myinstance" > $ofile
+    echo "hostname is " `hostname` >> $ofile
+    cd $workdir
+    echo 'running in' `pwd` >> $ofile
+    sleep 30
+    #cp $workdir/lockserver.info .
+    python $simdir/pyrhea.py --taumod --out ${outbase}.pkl \
+	-b ${outbase}.bcz \
+	-c $workdir/$prepscript $bundledir/$runyaml >> $ofile 2>&1
+fi
+
