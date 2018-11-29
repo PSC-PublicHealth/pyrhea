@@ -125,7 +125,7 @@ class TauMod(object):
         # days [50, 43, 36]
         self.dayList = Config()['DayList']
 
-        self.nextDay = 0
+        self.nextDay = Config()['StartDay'] if 'StartDay' in Config() else 0
         self.endDay = Config()['EndDay']
 
         # factors for calculating tau adjustment
