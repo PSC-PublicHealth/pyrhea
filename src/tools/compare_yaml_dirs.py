@@ -35,6 +35,17 @@ import phacsl.utils.formats.yaml_tools as yaml_tools
 
 _VERBOSE = False
 
+def cleanDicts(thing):
+    """
+    This is used during printing to remove unsightly OrderedDicts from output
+    """
+    if isinstance(thing, types.ListType):
+        return [cleanDicts(elt) for elt in thing]
+    elif isinstance(thing, types.DictType):
+        return {key: cleanDicts(val) for key, val in thing.items()}
+    else:
+        return thing
+
 def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
     """
     Compare two terms, recursively.
@@ -43,13 +54,15 @@ def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
         preamble = ''
     # print '%s %s -> %s' % (preamble, oldTerm, newTerm)
     if isinstance(oldTerm, types.DictType):
+        oldTerm = {key:val for key, val in oldTerm.items()} # avoid OrderedDicts
         if isinstance(newTerm, types.DictType):
+            newTerm = {key:val for key, val in newTerm.items()} # avoid OrderedDicts
             allKeys = set(newTerm.keys() + oldTerm.keys())
             for key in allKeys:
                 if key in oldTerm:
                     if key in newTerm:
                         if newTerm[key] != oldTerm[key]:
-                            newPreamble = '%s %s: ' % (preamble, key)
+                            newPreamble = '%s <%s>: ' % (preamble, key)
                             innerTermCompare(facDict, updatedFacDict,
                                              oldTerm[key], newTerm[key], preamble=newPreamble)
                     else:
@@ -69,19 +82,22 @@ def innerTermCompare(facDict, updatedFacDict, oldTerm, newTerm, preamble=None):
             idx = 0
             while oldL and newL:
                 innerTermCompare(facDict, updatedFacDict,
-                                 oldL.pop(0), newL.pop(0), preamble='%s %s:'%(preamble, idx))
+                                 oldL.pop(0), newL.pop(0), preamble='%s [%s]:'%(preamble, idx))
                 idx += 1
             if oldL:
-                print '%s: lost %s in update' % (preamble, oldL)
+                print '%s: lost %s in update' % (preamble, cleanDicts(oldL))
             elif newL:
-                print '%s: gained %s in update' % (preamble, newL)
+                print '%s: gained %s in update' % (preamble, cleanDicts(newL))
             else:
                 pass  # lists have been compared
         else:
             print '%s%s -> %s' % (preamble, oldTerm, newTerm)
     else:
         if oldTerm != newTerm:
-            print '%s%s -> %s' % (preamble, oldTerm, newTerm)
+            try:
+                print '%s%s -> %s' % (preamble, oldTerm, newTerm)
+            except UnicodeEncodeError:
+                print '%s%s -> %s' % (preamble, oldTerm.encode('utf-8'), newTerm.encode('utf-8'))
 
 
 def termCompare(facDict, updatedFacDict, abbrev, key):
