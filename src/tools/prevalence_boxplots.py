@@ -117,11 +117,14 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', co
         plt.cla()  # to save memory
 
 
-def tierPrevalenceBoxPlot(sampDF, targetD, logy=False, label='prevalence', colKey='prev_sample'):
+def tierPrevalenceBoxPlot(sampDF, targetD, dayL, logy=False, label='prevalence',
+                          colKey='prev_sample'):
     # Need a different summing pattern for this copy of sampDF
     sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
     sampDF = sampDF.add_suffix('_sum').reset_index()
     sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
+    sampDF['newColonized_sample'] = sampDF['newColonized_sum'].astype(float)/len(dayL)
+    sampDF['TOTAL_sample'] = sampDF['TOTAL_sum'].astype(float)/len(dayL)
 
     tierTargetD = defaultdict(set)
     if targetD is not None:
@@ -190,7 +193,8 @@ def main(argv=None):
         parser.add_option("--log", dest="log", action="store_true",
                           help="use log scale on the Y axis", metavar="FLAG")
         parser.add_option("--show", dest="show", action="store",
-                          help="What to plot.  One of 'prevalence', 'incidence' [default: %default]")
+                          help=("What to plot.  One of 'prevalence', 'incidence', "
+                                "'population' [default: %default]"))
 
         # set defaults
         parser.set_defaults(tauopts=None, target="expected.pkl", log=False,
@@ -210,7 +214,7 @@ def main(argv=None):
         if not opts.sampfile:
             parser.error('At least one sample file is required')
 
-        if opts.show not in ['prevalence', 'incidence']:
+        if opts.show not in ['prevalence', 'incidence', 'population']:
             parser.error('Invalid option to --show')
 
         # MAIN BODY #
@@ -221,8 +225,11 @@ def main(argv=None):
                 tauOpts = yaml.load(f)
             dayL = tauOpts['DayList']
 
-        with open(opts.target, 'rU') as f:
-            targetD = pickle.load(f)
+        if opts.show == 'prevalence':
+            with open(opts.target, 'rU') as f:
+                targetD = pickle.load(f)
+        else:
+            targetD = None
 
         sampFileL = opts.sampfile
         if opts.glob:
@@ -246,19 +253,21 @@ def main(argv=None):
         sampDF['TOTAL'] = sampDF[['COLONIZED', 'CLEAR', 'INFECTED', 'CHRONIC',
                                   'RECOVERED', 'UNDETCOLONIZED']].sum(axis=1)
         savSampDF = sampDF.copy()
-        #sampDF = sampDF.groupby(['tier', 'abbrev', 'day', 'run']).sum()  # Sum over wards within a sample
-        sampDF = sampDF.groupby(['tier', 'abbrev', 'run']).sum()  # Sum over wards within a sample
-        #sampDF = sampDF.drop(columns=['ward'])
+        sampDF = sampDF.groupby(['tier', 'abbrev', 'run']).sum()  # Sum over days and wards within a sample
         sampDF = sampDF.add_suffix('_sum').reset_index()
         sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
-        
+        sampDF['newColonized_sample'] = sampDF['newColonized_sum'].astype(float)/len(dayL)
+        sampDF['TOTAL_sample'] = sampDF['TOTAL_sum'].astype(float)/len(dayL)
+        print sampDF.columns
+
         colKey, label, tD = {'prevalence': ('prev_sample', 'prevalence', targetD),
-                             'incidence': ('newColonized_sum', 'incidence', None)}[opts.show]
+                             'incidence': ('newColonized_sample', 'incidence', None),
+                             'population': ('TOTAL_sample', 'population', None)}[opts.show]
         for tier in sampDF['tier'].unique():
             if tier != 'HOME':
                 prevalenceBoxPlots(sampDF, tD, tier, logy=opts.log,
                                    label=label, colKey=colKey)
-        tierPrevalenceBoxPlot(savSampDF, tD, logy=opts.log,
+        tierPrevalenceBoxPlot(savSampDF, tD, dayL, logy=opts.log,
                               label=label, colKey=colKey)
 
     except Exception, e:
