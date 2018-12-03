@@ -133,7 +133,8 @@ def main(argv=None):
         parser.add_option("--log", dest="log", action="store_true",
                           help="use log scale on the Y axis", metavar="FLAG")
         parser.add_option("--show", dest="show", action="store",
-                          help="What to plot.  One of 'prevalence', 'incidence' [default: %default]")
+                          help=("What to plot.  One of 'prevalence', 'incidence', 'population'\n"
+                                "[default: %default]"))
         parser.add_option("--label", dest="figlbl", action="store",
                           help="A label for the figure [default: %default]")
         parser.add_option("-o", "--out", dest="out", action="store",
@@ -153,7 +154,7 @@ def main(argv=None):
 
         if not opts.sampfile:
             parser.error('At least one sample file is required')
-        if opts.show not in ['prevalence', 'incidence']:
+        if opts.show not in ['prevalence', 'incidence', 'population']:
             parser.error('Invalid option to --show')
 
         # MAIN BODY #
@@ -174,14 +175,15 @@ def main(argv=None):
         if DEBUG:
             print 'Dropping irrelevant columns'
         for col in sampDF.columns:
-            if col not in ['day', 'tier', 'prevalence', 'run', 'newColonized']:
+            if col not in ['day', 'tier', 'prevalence', 'run', 'newColonized', 'TOTAL']:
                 sampDF = sampDF.drop(columns=[col])
 
         fig, axes = plt.subplots(1, 1)
         allArtists = []
         allLabels = []
         key, lbl = {'prevalence': ('prevalence', 'prevalence'),
-                    'incidence': ('newColonized', 'incidence')}[opts.show]
+                    'incidence': ('newColonized', 'incidence'),
+                    'population': ('TOTAL', 'total population')}[opts.show]
         if VERBOSE:
             print 'Starting pltCurvesWithBounds'
         tierL = sampDF['tier'].unique()[:]
