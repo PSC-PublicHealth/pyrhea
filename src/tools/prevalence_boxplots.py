@@ -114,7 +114,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', co
                 print 'fac %s tier %s' % (key, tier)
             labelL.append(key)
             sampL.append(subDF[colKey].dropna())
-            if targetD is not None:
+            if targetD is not None and (key, tier) in targetD:
                 markerXL.append(1.0 + idx)
                 markerYL.append(targetD[(key, tier)])
         if DEBUG:
@@ -220,7 +220,7 @@ def main(argv=None):
                           help="A label for the figures [default: %default]")
 
         # set defaults
-        parser.set_defaults(tauopts=None, target="expected.pkl", log=False,
+        parser.set_defaults(tauopts=None, target=None, log=False,
                             show='prevalence', figlbl=None)
 
         # process options
@@ -248,11 +248,11 @@ def main(argv=None):
                 tauOpts = yaml.load(f)
             dayL = tauOpts['DayList']
 
-        if opts.show == 'prevalence':
+        if opts.target is None:
+            targetD = None
+        else:
             with open(opts.target, 'rU') as f:
                 targetD = pickle.load(f)
-        else:
-            targetD = None
 
         sampFileL = opts.sampfile
         if opts.glob:
