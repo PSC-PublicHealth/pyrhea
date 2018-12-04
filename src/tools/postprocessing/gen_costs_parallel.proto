@@ -2,8 +2,7 @@
 #
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=28
-#SBATCH -p RM
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 
 scenario=%scenario%
 runyaml=%runyaml%

@@ -1,8 +1,10 @@
 #! /bin/bash
 #
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=2
-#SBATCH -p RM-shared
+#SBATCH --constraint="intel"
+#SBATCH --mem-per-cpu=20000
+#xxxxSBATCH --ntasks-per-node=2
+#xxxxSBATCH -p RM-shared
 #SBATCH --time=1:00:00
 #SBATCH --array=0-%maxfile%
 ar=$SLURM_ARRAY_TASK_ID
@@ -25,7 +27,8 @@ tooldir=$pyrheadir/src/tools
 cd $tooldir
 
 narr=()
-for fn in `$topdir/find_notes.py $targetdir $minNotesSz`
+#for fn in `$topdir/find_notes.py $targetdir $minNotesSz`
+for fn in `$topdir/find_bcz.py $targetdir`
 do
 	narr+=($fn)
 done
@@ -36,5 +39,5 @@ sto=$workdir/gather_counts_${ar}.out
 
 runName=$bundledir/$runyaml
 
-python gather_counts.py -n $targetdir/$myNote -m 1 -x $workdir/xdro_facs.yaml \
+python gather_counts.py -n $targetdir/$myNote -m 1 \
        --nocsv --nostats --out $outName  $runName >& $sto
