@@ -944,6 +944,12 @@ def main():
                                      scenarioPolicies)
             patchList[0].addAgents([ssA])
 
+        # Check that constants replacements happened as expected
+        pyrheautils.checkReplacementsWereUsed()
+        if CL_DATA['saveNewConstants']:
+            logging.shutdown()
+            sys.exit('shutting down after saving new constants')
+
         initializeFacilities(patchList, myFacList, facImplDict, facImplRules,
                              policyClassList, policyRulesDict,
                              PthClass, noteHolderGroup, comm, totalRunDays)
@@ -977,8 +983,7 @@ def main():
                 quitNow = True
         if quitNow:
             raise RuntimeError('Probable typos found in the policy section of the input file')
-        # Check that constants replacements happened as expected
-        pyrheautils.checkReplacementsWereUsed()
+
 
     except Exception as e:
         if patchGroup:
