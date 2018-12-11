@@ -14,7 +14,7 @@ sampling days to be used.
 Output is a set of files prevalence_TIER_nn.png (where TIER is for example HOSP and nn is an integer)
 and prevalence_pooled_over_tiers.png .
 
-It defines prevalenceBoxPlots, tierPrevalenceBoxPlots
+It defines facBoxPlots, tierBoxPlot
 
 @author:     welling
 
@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt # use plt.savefig(<path>) rather than plt.show()
 __all__ = []
 __version__ = 0.1
 __date__ = '2018-05-02'
-__updated__ = '2018-05-02'
+__updated__ = '2018-12-11'
 
 DEBUG = False
 VERBOSE = False
@@ -66,6 +66,17 @@ TESTRUN = 0
 PROFILE = 0
 
 BOXES_PER_FIG = 10
+
+SHOW_OPTIONS_DICT = {'prevalence': ('prev_sample', 'prevalence', 'prevalence'),
+                     'colonizations': ('newColonized_sample', 'colonizations',
+                                       'total colonizations per day'),
+                     'population': ('TOTAL_sample', 'population', 'population'),
+                     'arrivecolonized': ('arrive_colonized_sample', 'arrivecolonized',
+                                         'fraction arriving colonized'),
+                     'incidence': ('incidence_sample', 'incidence',
+                                   'per-patient incidence'),
+                     'arrivals': ('arrivals_sample', 'arrivals', 'arrivals')
+                     }
 
 def expandGlobbedList(pathList):
     """
@@ -89,10 +100,10 @@ def buildLbl(tier, figlbl, longlbl):
             return '%s %s' % (tier, longlbl)
         else:
             return '%s %s %s' % (figlbl, tier, longlbl)
-    
 
-def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', colKey='prev_sample',
-                       figlbl=None, longlbl=None):
+
+def facBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', colKey='prev_sample',
+                figlbl=None, longlbl=None):
     tierDF = sampDF[sampDF['tier']==tier]
     tierGps = tierDF.groupby('abbrev')
     nBlocks = (len(tierGps) / BOXES_PER_FIG) + 1
@@ -123,7 +134,7 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', co
         axes.boxplot(sampL, labels=labelL)
         if markerYL:
             axes.plot(markerXL, markerYL, 'D')
-            
+
         if nBlocks > 1:
             axes.set_title('%s %d' % (buildLbl(tier, figlbl, longlbl), blockNum))
         else:
@@ -135,14 +146,8 @@ def prevalenceBoxPlots(sampDF, targetD, tier, logy=False, label='prevalence', co
         plt.cla()  # to save memory
 
 
-def tierPrevalenceBoxPlot(sampDF, targetD, dayL, logy=False, label='prevalence',
-                          colKey='prev_sample', figlbl=None, longlbl=None):
-    # Need a different summing pattern for this copy of sampDF
-    sampDF = sampDF.groupby(['tier', 'day', 'run']).sum()  # Sum over wards within a sample
-    sampDF = sampDF.add_suffix('_sum').reset_index()
-    sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
-    sampDF['newColonized_sample'] = sampDF['newColonized_sum'].astype(float)/len(dayL)
-    sampDF['TOTAL_sample'] = sampDF['TOTAL_sum'].astype(float)/len(dayL)
+def tierBoxPlot(sampDF, targetD, dayL, logy=False, label='prevalence',
+                colKey='prev_sample', figlbl=None, longlbl=None):
 
     tierTargetD = defaultdict(set)
     if targetD is not None:
@@ -166,13 +171,26 @@ def tierPrevalenceBoxPlot(sampDF, targetD, dayL, logy=False, label='prevalence',
     if VERBOSE:
         print 'plotting tier collective boxplots'
     axes.boxplot(sampL, labels=labelL)
-    axes.set_title(buildLbl(tier, figlbl, longlbl))
+    axes.set_title(buildLbl('All Tiers', figlbl, longlbl))
     if markerYL:
         axes.plot(markerXL, markerYL, 'D')
     if logy:
         axes.set_yscale('log')
     plt.tight_layout()
     plt.savefig('%s_pooled_over_tiers.png' % label)
+
+
+def deriveCols(df, dayL):
+    df['prev_sample'] = (df['COLONIZED_sum'].astype(float)
+                             / df['TOTAL_sum'].astype(float))
+    df['newColonized_sample'] = df['newColonized_sum'].astype(float) / len(dayL)
+    df['TOTAL_sample'] = df['TOTAL_sum'].astype(float)/len(dayL)
+    df['arrive_colonized_sample'] = (df['creArrivals_sum'].astype(float)
+                                         / df['arrivals_sum'].astype(float))
+    df['incidence_sample'] = (df['newColonized_sum'].astype(float)
+                              / df['localtierdepartures_sum'].astype(float))
+    df['arrivals_sample'] = (df['arrivals_sum'].astype(float) / len(dayL))
+    return df
 
 
 def main(argv=None):
@@ -207,15 +225,15 @@ def main(argv=None):
                           metavar="FILE")
         parser.add_option("-y", "--tauopts", dest="tauopts", action="store",
                           help=("optional yaml file containing taumod options [default: %default]"
-                                "If omitted, the last 90 days of data will be used"),
+                                " If omitted, the last 90 days of data will be used"),
                           metavar="FILE")
         parser.add_option("-v", "--verbose", dest="verbose", action="count",
                           help="set verbosity level [default: %default]")
         parser.add_option("--log", dest="log", action="store_true",
                           help="use log scale on the Y axis", metavar="FLAG")
         parser.add_option("--show", dest="show", action="store",
-                          help=("What to plot.  One of 'prevalence', 'incidence', "
-                                "'population' [default: %default]"))
+                          help=("What to plot.  One of {0} [default: %default]"
+                                .format(', '.join(SHOW_OPTIONS_DICT.keys()))))
         parser.add_option("--label", dest="figlbl", action="store",
                           help="A label for the figures [default: %default]")
 
@@ -237,7 +255,7 @@ def main(argv=None):
         if not opts.sampfile:
             parser.error('At least one sample file is required')
 
-        if opts.show not in ['prevalence', 'incidence', 'population']:
+        if opts.show not in SHOW_OPTIONS_DICT:
             parser.error('Invalid option to --show')
 
         # MAIN BODY #
@@ -275,30 +293,21 @@ def main(argv=None):
         sampDF = pd.concat(sampDFL)
         sampDF['TOTAL'] = sampDF[['COLONIZED', 'CLEAR', 'INFECTED', 'CHRONIC',
                                   'RECOVERED', 'UNDETCOLONIZED']].sum(axis=1)
-        savSampDF = sampDF.copy()
-        sampDF = sampDF.groupby(['tier', 'abbrev', 'run']).sum()  # Sum over days and wards within a sample
+        sampDF = sampDF.groupby(['tier', 'abbrev', 'run']).sum()  # Sum over days and wards
         sampDF = sampDF.add_suffix('_sum').reset_index()
-        sampDF['prev_sample'] = sampDF['COLONIZED_sum'].astype(float)/sampDF['TOTAL_sum'].astype(float)
-        sampDF['newColonized_sample'] = sampDF['newColonized_sum'].astype(float)/len(dayL)
-        sampDF['TOTAL_sample'] = sampDF['TOTAL_sum'].astype(float)/len(dayL)
+        poolDF = deriveCols(sampDF.groupby(['tier', 'run']).sum().reset_index(), dayL)
+        sampDF = deriveCols(sampDF, dayL)
 
-        colKey, label, lnglbl, tD = {
-            'prevalence': ('prev_sample', 'prevalence',
-                           'prevalence', targetD),
-            'incidence': ('newColonized_sample', 'incidence',
-                          'total incidence per day',
-                          None),
-            'population': ('TOTAL_sample', 'population',
-                           'population', None)
-            }[opts.show]
+
+        colKey, label, lnglbl = SHOW_OPTIONS_DICT[opts.show]
         for tier in sampDF['tier'].unique():
             if tier != 'HOME':
-                prevalenceBoxPlots(sampDF, tD, tier, logy=opts.log,
-                                   label=label, figlbl=opts.figlbl, longlbl=lnglbl,
-                                   colKey=colKey)
-        tierPrevalenceBoxPlot(savSampDF, tD, dayL, logy=opts.log,
-                              label=label, figlbl=opts.figlbl, longlbl=lnglbl,
-                              colKey=colKey)
+                facBoxPlots(sampDF, targetD, tier, logy=opts.log,
+                            label=label, figlbl=opts.figlbl, longlbl=lnglbl,
+                            colKey=colKey)
+        tierBoxPlot(poolDF, targetD, dayL, logy=opts.log,
+                    label=label, figlbl=opts.figlbl, longlbl=lnglbl,
+                    colKey=colKey)
 
     except Exception, e:
         indent = len(program_name) * " "
