@@ -28,18 +28,20 @@ sto=$workdir/diagnostics.out
 
 echo 'generating log boxplots' >& $sto
 $tooldir/prevalence_boxplots.py -s '../pyrhea_*_dataframe.mpz' --glob \
-    --log -v --target=${topdir}/expected.pkl >> $sto 2>&1
+    --log -v --target=${topdir}/expected.pkl \
+    --label=${scenario} >> $sto 2>&1
 echo 'renaming to log_ prefix' >> $sto 2>&1
 for fname in prevalence_*.png; do
     mv ${fname} log_${fname} >> $sto 2>&1
 done
 echo 'generating linear boxplots' >> $sto 2>&1
 $tooldir/prevalence_boxplots.py -s '../pyrhea_*_dataframe.mpz' --glob \
-    -v --target=${topdir}/expected.pkl >> $sto 2>&1
+    -v --target=${topdir}/expected.pkl \
+    --label=${scenario} >> $sto 2>&1
 echo 'generating fuzzy time series' >> $sto 2>&1
 $tooldir/plot_fuzzy_time_series.py -s '../pyrhea_*_dataframe.mpz' --glob -v -v --log \
-    --label=$scenario --out=${scenario}_prevalence_by_tier_time_series.png >> $sto 2>&1
+    --label=${scenario} --out=${scenario}_prevalence_by_tier_time_series.png >> $sto 2>&1
 $tooldir/plot_fuzzy_time_series.py -s '../pyrhea_*_dataframe.mpz' --glob -v -v --log \
-    --label=$scenario --show=incidence \
+    --label=${scenario} --show=incidence \
     --out=${scenario}_incidence_by_tier_time_series.png >> $sto 2>&1
 echo 'done!' >> $sto 2>&1
