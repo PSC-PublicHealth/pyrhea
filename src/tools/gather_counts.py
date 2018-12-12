@@ -397,7 +397,10 @@ def main():
     if mpzNotes:
         print 'reading pre-parsed notes'
         for mFname in mpzNotes:
-            totalStats.append(pd.read_msgpack(mFname))
+            df = pd.read_msgpack(mFname)
+            # We don't care about HOME tier, so save a bunch of space
+            df = df.drop(index=df[df['tier']=='HOME'].index)
+            totalStats.append(df)
     print 'Finished scanning all notes'
 
     tsDFL = []
