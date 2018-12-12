@@ -96,7 +96,7 @@ class Monitor(object):
     def solidifyFields(self):
         ra = np.recarray((0,), dtype = self.dtype)
         bz.set_nthreads(3)
-        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w", auto_flush=False)
+        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w", auto_flush=False, chunklen=256*1024)
 
     def collectData(self, timeNow):
         """

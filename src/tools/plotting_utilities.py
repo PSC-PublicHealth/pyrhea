@@ -13,6 +13,10 @@ import matplotlib.cm as cm
 from matplotlib.legend_handler import HandlerTuple
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import os.path
+import sys
+
+cwd = os.path.dirname(__file__)
+sys.path.append(os.path.join(cwd, "../sim"))
 
 import schemautils
 import pyrheautils
