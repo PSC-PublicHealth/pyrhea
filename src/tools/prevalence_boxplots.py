@@ -69,13 +69,13 @@ BOXES_PER_FIG = 10
 
 SHOW_OPTIONS_DICT = {'prevalence': ('prev_sample', 'prevalence', 'prevalence'),
                      'colonizations': ('newColonized_sample', 'colonizations',
-                                       'total colonizations per day'),
+                                       'new colonizations per patient day'),
                      'population': ('TOTAL_sample', 'population', 'population'),
                      'arrivecolonized': ('arrive_colonized_sample', 'arrivecolonized',
                                          'fraction arriving colonized'),
                      'incidence': ('incidence_sample', 'incidence',
                                    'per-patient incidence'),
-                     'arrivals': ('arrivals_sample', 'arrivals', 'arrivals')
+                     'arrivals': ('arrivals_sample', 'arrivals', 'arrivals per day')
                      }
 
 def expandGlobbedList(pathList):
@@ -183,7 +183,8 @@ def tierBoxPlot(sampDF, targetD, dayL, logy=False, label='prevalence',
 def deriveCols(df, dayL):
     df['prev_sample'] = (df['COLONIZED_sum'].astype(float)
                              / df['TOTAL_sum'].astype(float))
-    df['newColonized_sample'] = df['newColonized_sum'].astype(float) / len(dayL)
+    df['newColonized_sample'] = (df['newColonized_sum'].astype(float)
+                                 / df['TOTAL_sum'].astype(float))
     df['TOTAL_sample'] = df['TOTAL_sum'].astype(float)/len(dayL)
     df['arrive_colonized_sample'] = (df['creArrivals_sum'].astype(float)
                                          / df['arrivals_sum'].astype(float))
