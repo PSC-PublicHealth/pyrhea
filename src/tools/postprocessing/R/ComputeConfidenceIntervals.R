@@ -146,7 +146,7 @@ foreach(scenario.name=scenario.names, .combine=rbind) %dopar% {
 } -> d.extra.final
 
 
-fwrite(d.final, paste(output.directory, 'prev.and.inc.csv', sep=','))
+fwrite(d.final, paste(output.directory, 'prev.and.inc.csv', sep='/'))
 fwrite(d.tier.final, paste(output.directory, 'by.tier.csv', sep='/'))
 fwrite(d.extra.final, paste(output.directory, 'incidence.within.cook.and.regionwide.csv', sep='/'))
     

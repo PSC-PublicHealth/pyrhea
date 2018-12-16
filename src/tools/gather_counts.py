@@ -540,7 +540,7 @@ def main():
                                                                  facilitiesWithinCookCounty,
                                                                  targetAbbrevS)
         fullDF = fullDF.reset_index()
-        #fullDF.to_msgpack('test_fulldf.mpz')
+        #fullDF.to_msgpack('test_fulldf.mpz', compress="zlib")
 
         allFlds = []
         for fld in fieldsOfInterest:
@@ -571,7 +571,7 @@ def main():
         if not opts.nostats:
             fullStatDF = fullDF.groupby(['day']).apply(convertToStats, allFlds).reset_index()
             #print fullStatDF
-            #fullStatDF.to_msgpack('test_fullstatsdf.mpz')
+            #fullStatDF.to_msgpack('test_fullstatsdf.mpz', compress='zlib')
             fullStatDF.to_csv("{0}_prevalence_and_incidence_per_day_13mile.csv".format(outFileName),
                               index=False, columns=statEntries, header=statHeadingRow)
         fullDF.to_csv("{0}_raw_prevalence_and_incidence_pre_day_13mile.csv".format(outFileName),
