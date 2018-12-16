@@ -25,10 +25,9 @@ from random import random
 import pyrheabase
 import pyrheautils
 from facilitybase import DiagClassA, CareTier
-from facilitybase import PatientOverallHealth, Facility, PatientAgent, ForcedStateWard
+from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent, ForcedStateWard
 from facilitybase import PatientStatusSetter, ClassASetter, HOSPQueue, ICUQueue, tierToQueueMap
 from facilitybase import FacilityManager, PthStatus
-from facilitybase import Ward as BaseWard
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
 
@@ -168,20 +167,10 @@ class OverallHealthSetter(PatientStatusSetter):
                 % PatientOverallHealth.names[self.newOverallHealth])
 
 
-class Ward(BaseWard):
-    def handlePatientDeparture(self, patientAgent, timeNow):
-        """An opportunity for derived classes to customize the departure processing of patients"""
-        super(Ward, self).handlePatientDeparture(patientAgent, timeNow)
-#        patientAgent._status._replace(mostRecentHosp=self.fac.abbrev,
-#                                      mostRecentHospReleaseTime=timeNow)
-        for tP in self.fac.treatmentPolicies:
-            tP.handlePatientDeparture(self, patientAgent, timeNow)
-        self.miscCounters['departures'] += 1
-
 class ICUWard(ForcedStateWard):
     def __init__(self, name, patch, nBeds):
         super(ICUWard, self).__init__(name, patch, CareTier.ICU, nBeds)
-        
+
     def handlePatientArrival(self, patientAgent, timeNow):
         """
         Patient is arriving by triage, so force the patient's internal status and diagnosis
