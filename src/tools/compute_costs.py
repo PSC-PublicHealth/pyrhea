@@ -28,6 +28,7 @@ import csv
 
 import numpy as np
 import scipy.stats as st
+import pandas as pd
 
 cwd = os.path.dirname(__file__)
 sys.path.append(os.path.join(cwd, "../sim"))
@@ -125,7 +126,7 @@ class Distribution(object):
             return np.random.uniform(self.args['low'],self.args['high'])
         
         else:
-            raise RuntimeError("unknown distribution: {0}".fromat(self.type))
+            raise RuntimeError("unknown distribution: {0}".format(self.type))
         
 
 def calculateNPVValues(startAge_,annualWage_,targetYear_, params_, discountRate_=0.03):
@@ -795,68 +796,74 @@ def extractXDROCounts(abbrev,specialDict,burninDays):
             sumT += sum(curve[dayIndex:])
     return sumT
 
-def getNewCols(abbrevs,note,facDict,xdroabbrevs,burninDays):#,newColsReturn):
-    specialDict = mergeNotesFiles([note], False)
-    #print "specialDict = {0}".format(specialDict)
-    #print "specialXDRODict = {0}".format(specialXDRODict)
+def getNewCols(abbrevs, note, facDict, xdroabbrevs, burninDays):#,newColsReturn):
     newColL = {}#defaultdict(lambda:0.0)
     newColAll = 0.0
-    for abbrev in abbrevs:
-        print "abbrev = {0}".format(abbrev)
-        newColDict = extractNewColonized(abbrev,specialDict,burninDays)
-        newColL[abbrev] = 0.0
-        for k,v in newColDict.items():
-            newColL[abbrev] += v
-            newColAll += v
-    
-    print "nColL = {0}".format(newColL)
     cpDaysByAbbrev = {}#defaultdict(lambda: {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0})
-    for abbrev in abbrevs:
-        cpDaysByAbbrev[abbrev] = {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0}
-        cpForThisPlace = extractContactPrecautionDays(abbrev, specialDict,burninDays)
-        for tpl,values in cpForThisPlace.items():
-            for k,v in values.items():
-                #print k
-                cpDaysByAbbrev[abbrev][k] += v
-    
-    
-    #print "cpDays = {0}".format(cpDaysByAbbrev)    
-#     cpDaysByType = {}
-#     for abbrev in abbrevs:
-#         cpForThisPlace = extractContactPrecautionDays(abbrev,specialDict)
-#         facCat = facDict[abbrev]['category']
-#         if facCat not in cpDaysByType.keys():
-#             cpDaysByType[facCat] = 0.0
-#         for k,v in cpForThisPlace.items():
-#             cpDaysByType[facCat] += v 
-#  
-   
-    #creBundlesAll = 0.0
     creBundlesByAbbrev = {}#defaultdict(lambda:0.0)
-    for abbrev in abbrevs:
-        creBundlesByAbbrev[abbrev] = 0.0
-        creBundlesDict = extractCREBundlesGiven(abbrev, specialDict,burninDays)
-        for k,v in creBundlesDict.items():
-            creBundlesByAbbrev[abbrev] += v
-
     creSwabsByAbbrev = {}
-    for abbrev in abbrevs:
-        creSwabsByAbbrev[abbrev] = 0.0
-        creSwabsDict = extractCRESwabsGiven(abbrev, specialDict,burninDays)
-        for k,v in creBundlesDict.items():
-            creSwabsByAbbrev[abbrev] += v
-            
     xdroByAbbrev = {}#defaultdict(lambda: 0.0)
     for abbrev in abbrevs:
+        newColL[abbrev] = 0.0
+        cpDaysByAbbrev[abbrev] = {'pCP':0.0,'aCP':0.0,'xCP':0.0,'oCP':0.0}
+        creBundlesByAbbrev[abbrev] = 0.0
+        creSwabsByAbbrev[abbrev] = 0.0
         xdroByAbbrev[abbrev] = 0.0
-        if abbrev in xdroabbrevs:
-            xdroByAbbrev[abbrev]  += extractXDROCounts(abbrev,specialDict,burninDays)
-        else:
-            xdroByAbbrev[abbrev] = 0.0
+
+    if note.endswith('.pkl'):
+        specialDict = mergeNotesFiles([note], False)
+        #print "specialDict = {0}".format(specialDict)
+        #print "specialXDRODict = {0}".format(specialXDRODict)
+        for abbrev in abbrevs:
+            print "abbrev = {0}".format(abbrev)
+            newColDict = extractNewColonized(abbrev,specialDict,burninDays)
+            cpForThisPlace = extractContactPrecautionDays(abbrev, specialDict,burninDays)
+            creBundlesDict = extractCREBundlesGiven(abbrev, specialDict,burninDays)
+            creSwabsDict = extractCRESwabsGiven(abbrev, specialDict,burninDays)
+            xdroCt = (extractXDROCounts(abbrev,specialDict,burninDays) if abbrev in xdroabbrevs
+                      else 0.0)
+            for k, val in newColDict.items():
+                newColL[abbrev] += val
+                newColAll += val
+            for tpl, values in cpForThisPlace.items():  # @UnusedVariable
+                for k, val in values.items():
+                    #print k
+                    cpDaysByAbbrev[abbrev][k] += val
+            for k, val in creBundlesDict.items():
+                creBundlesByAbbrev[abbrev] += val
+            for k, val in creSwabsDict.items():
+                creSwabsByAbbrev[abbrev] += val
+            xdroByAbbrev[abbrev]  += xdroCt
+
+    elif note.endswith('.mpk') or note.endswith('.mpz'):
+        fullDF = pd.read_msgpack(note)
+        # I don't know where the +1 comes from; I'm just mirroring the .pkl code. -JSW
+        fullDF = fullDF[fullDF['day'] >= burninDays + 1]
+        sumDF = fullDF.groupby(['abbrev']).sum().drop(columns=['day', 'run', 'patch',
+                                                               'index', 'ward'])
+        for abbrev in abbrevs:
+            rec = sumDF.loc[abbrev]
+            newColL[abbrev] = rec['newColonized']
+            newColAll += rec['newColonized']
+            cpDaysByAbbrev[abbrev]['pCP'] = rec['passiveCPDays']
+            cpDaysByAbbrev[abbrev]['aCP'] = rec['swabCPDays']
+            cpDaysByAbbrev[abbrev]['xCP'] = rec['xdroCPDays']
+            cpDaysByAbbrev[abbrev]['oCP'] = rec['otherCPDays']
+            creBundlesByAbbrev[abbrev] = rec['creBundlesHandedOut']
+            creSwabsByAbbrev[abbrev] = rec['creSwabsUsed']
+            xdroByAbbrev[abbrev] = (rec['arrivals'] if abbrev in xdroabbrevs
+                                    else 0.0)
+    else:
+        raise RuntimeError('Unsupported note file format {0}'.format(note))
+
+    print "nColL = {0}".format(newColL)
+
     print "leaving"
+
     #for abbrev,xdro in xdroByAbbrev.items():
     #    print "{0}: {1}".format(abbrev,xdro)
     #print "X = {0}".format(xdroByAbbrev)
+
     return (newColL,cpDaysByAbbrev,creBundlesByAbbrev,creSwabsByAbbrev,xdroByAbbrev)
 
     #newColsReturn[i] = (newColAll,cpDaysByType,creBundlesAll,xdroAll)	 
