@@ -1080,11 +1080,7 @@ def main():
     creBundlesArray = [0.0 for x in range(0,len(notes))]
     creSwabsArray = [0.0 for x in range(0,len(notes))]
     xdroArray = [0.0 for x in range(0,len(notes))] 
-    abbrevs = []
-    if 'trackedFacilities' in inputDict:
-        for abbrev in inputDict['trackedFacilities']:
-            if abbrev in facDict:
-                abbrevs.append(abbrev)
+    abbrevs = [fac for fac, rec in facDict.items() if rec['category'] != 'COMMUNITY'][:]
 
     nprocs = opts.nprocs
 
@@ -1093,6 +1089,12 @@ def main():
     p = Pool(nprocs)
     nColsReturnTmp = p.map(getNewCols_poolHelper,argsList)
     p.close()
+
+    # import cPickle as pickle
+    # with open('stuff.pkl', 'w') as f:
+    #     pickle.dump(nColsReturnTmp, f)
+    # sys.exit('done')
+    
     
     #print "HERE!!!!"
     for i in range(0,len(nColsReturnTmp)):
