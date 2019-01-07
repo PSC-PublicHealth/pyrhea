@@ -797,6 +797,8 @@ def main():
                           help="save pathogen status as a pandas data structure in the file specified")
         parser.add_option("--taumod", action="store_true", default=False,
                           help="run pyrhea in the taumod mode")
+        parser.add_option("-n", "--disableNotes", action="store_true",
+                          help="disable noteholder functions to save memory (a minimal notes file will still be written)")
         parser.add_option("-m", "--dumpFacilitiesMap", action="store", type="string", default=None,
                           help="write a facililties map to the file specified to facilitate post processing")
 
@@ -825,6 +827,7 @@ def main():
                    'bczmonitor': opts.bczmonitor,
                    'taumod': opts.taumod,
                    'dumpFacilitiesMap': opts.dumpFacilitiesMap,
+                   'disableNotes' : opts.disableNotes,
         }
         if len(args) == 1:
             CL_DATA['input'] = checkInputFileSchema(args[0],
@@ -954,6 +957,9 @@ def main():
                              policyClassList, policyRulesDict,
                              PthClass, noteHolderGroup, comm, totalRunDays)
 
+        if CL_DATA['disableNotes']:
+            noteHolderGroup.disableAll()
+            
         monitorList = []
         tauAdjusterList = []
         if CL_DATA['bczmonitor'] is not None:
