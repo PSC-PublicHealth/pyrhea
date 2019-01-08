@@ -59,8 +59,7 @@ class ClassASetter(PatientStatusSetter):
 
     def set(self, patientStatus, timeNow):
         if self.forceRelocate:
-            return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
-                    ._replace(relocateFlag=True))
+            return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow, relocateFlag=True)
         else:
             return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
 
@@ -145,11 +144,10 @@ class Ward(pyrheabase.Ward):
         self.miscCounters['arrivals'] += 1
         if patientAgent.getStatus().pthStatus == PthStatus.COLONIZED:
             self.miscCounters['creArrivals'] += 1
-        if patientAgent.id in self.fac.arrivingPatientTransferInfoDict.keys():
-            transferInfo = self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
-            del self.fac.arrivingPatientTransferInfoDict[patientAgent.id]
-        else:
-            transferInfo = self.fac.getBedRequestPayload(patientAgent, self.tier)[-1]
+        transferInfo = self.fac.arrivingPatientTransferInfoDict.pop(
+            key=patientAgent.id,
+            default=self.fac.getBedRequestPayload(patientAgent, self.tier)[-1]
+        )
 
         self.fac.diagnosticPolicy.handlePatientArrival(self, patientAgent, transferInfo,
                                                        timeNow)
@@ -274,7 +272,7 @@ class PatientRecord(object):
 
     def __exit__(self, tp, val, tb):  # @UnusedVariable
         self._owningFac.mergePatientRecord(self.patientId, self, None)
-    
+
     def forgetPathogenInfo(self):
         """
         Scenarios sometimes require that patient information be 'lost', but we don't want to
@@ -637,7 +635,7 @@ class Facility(pyrheabase.Facility):
         return self.diagnosticPolicy.diagnose(ward, patientId, patientStatus,
                                               oldDiagnosis, timeNow=timeNow)
 
-    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment, 
+    def prescribe(self, ward, patientId, patientDiagnosis, patientTreatment,
                   modifierDct, timeNow=None):
         """
         This returns a tuple of either form (careTier, patientTreatment).
@@ -843,7 +841,7 @@ class PatientAgent(pyrheabase.PatientAgent):
         key is one of the elements of PatientTreatment, for example 'rehab'.
         Returns a boolean for the state of that treatment element for this patient.
         """
-        return self._treatment._asdict()[key]
+        return getattr(self._treatment, key)
 
     def getTreatmentProtocol(self):
         """
