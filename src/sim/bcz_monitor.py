@@ -72,7 +72,7 @@ class Monitor(object):
 
     def getFilename(self):
         return self.filename
-        
+
     def registerFields(self, dtypes, fn):
         self.registeredFns.append(fn)
         self.dtype.extend(dtypes)
@@ -96,7 +96,8 @@ class Monitor(object):
     def solidifyFields(self):
         ra = np.recarray((0,), dtype = self.dtype)
         bz.set_nthreads(3)
-        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w", auto_flush=False, chunklen=256*1024)
+        self.pthData = bz.ctable(ra, rootdir=self.filename, mode="w",
+                                 auto_flush=False, chunklen=256*1024)
 
     def collectData(self, timeNow):
         """
