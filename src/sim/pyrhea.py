@@ -190,17 +190,17 @@ def buildLocalTierPthDict(patch, timeNow):
 
 def generateLocalTierDictBuilder(counterKey):
     def buildDict(patch, timeNow):
-        facTrtDict = {'day': timeNow, 'format': ['fac', 'tieridx']}
+        facTrtDict = {'day': timeNow, 'format': ['fac', 'tieridx', 'wardidx']}
         assert hasattr(patch, 'allFacilities'), ('patch %s has no list of facilities!'
                                                  % patch.name)
         for fac in patch.allFacilities:
             facPPC = defaultdict(lambda: 0)
             for ward in fac.getWards():
-                key = ward.tier
-                facPPC[key] += ward.miscCounters[counterKey]
+                key = (ward.tier, ward.wardNum)
+                facPPC[key] = ward.miscCounters[counterKey]
                 ward.miscCounters[counterKey] = 0.0
-            for key, v in facPPC.items():
-                facTrtDict[(fac.abbrev,key)] = v
+            for (tN, wN), v in facPPC.items():
+                facTrtDict[(fac.abbrev, tN, wN)] = v
         return facTrtDict
     return buildDict
 
@@ -230,7 +230,19 @@ def dictToNote(dct):
     This takes a dict in the format produced by the daily notes routines
     and converts it to the format expected of the Notes output.
     """
-    return {tupleToNoteKey(key): val for key, val in dct.items() if key != 'format'}
+    if 'format' in dct and dct['format'][-1] == 'wardidx':
+        innerD = defaultdict(int)
+        for key, val in dct.items():
+            if isinstance(key, types.TupleType):
+                innerKey = tuple(key[:-1])
+                innerD[innerKey] += val
+            elif key == 'format':
+                innerD['format'] = val[:-1]
+            else:
+                innerD[key] = val
+        return dictToNote(innerD)
+    else:
+        return {tupleToNoteKey(key): val for key, val in dct.items() if key != 'format'}
 
 PER_DAY_NOTES_GEN_DICT = {'occupancy': buildFacOccupancyDict,
                           'localoccupancy': buildLocalOccupancyDict,
@@ -265,17 +277,14 @@ def defineTrackingGroup(gpName, keyTypeL):
         rslt = []
         for key, tp in keyTypeL:  # @UnusedVariable
             dct = DayDataGroup().get(patch, key, timeNow)
-            assert dct['format'] == ['fac', 'tieridx'], (('Cannot build tracking group including'
-                                                          ' %s; wrong format')
-                                                         % key)
+            assert dct['format'] == ['fac', 'tieridx', 'wardidx'], (('Cannot build tracking group'
+                                                                     ' including %s; wrong format')
+                                                                     % key)
             assert dct['day'] == timeNow, (('Tracked quantity entry generator returned wrong date'
                                             ' day (%s vs %s)')
                                            % (dct['day'], timeNow))
-            tplKey = (ward.fac.abbrev, ward.tier)
-            if tplKey in dct:
-                rslt.append(dct[(ward.fac.abbrev, ward.tier)])
-            else:
-                rslt.append(0)
+            tplKey = (ward.fac.abbrev, ward.tier, ward.wardNum)
+            rslt.append(dct[tplKey] if tplKey in dct else 0)
         return rslt
     bcz_monitor.addTrackable(gpName, extractFun, keyTypeL)
 
@@ -615,7 +624,7 @@ class BurnInAgent(patches.Agent):
 
     def run(self, startTime):
         timeNow = self.sleep(self.burnInDays)  # @UnusedVariable
-        LOGGER.info('burnInAgent is running')
+        LOGGER.info('burnInAgent is running at time %s', timeNow)
         self.noteHolderGroup.clearAll(keepRegex='.*(([Nn]ame)|([Tt]ype)|([Cc]ode)|(_vol)|(occupancy)|(pathogen))')
         # and now the agent exits
 
@@ -797,6 +806,8 @@ def main():
                           help="save pathogen status as a pandas data structure in the file specified")
         parser.add_option("--taumod", action="store_true", default=False,
                           help="run pyrhea in the taumod mode")
+        parser.add_option("-n", "--disableNotes", action="store_true",
+                          help="disable noteholder functions to save memory (a minimal notes file will still be written)")
         parser.add_option("-m", "--dumpFacilitiesMap", action="store", type="string", default=None,
                           help="write a facililties map to the file specified to facilitate post processing")
 
@@ -825,6 +836,7 @@ def main():
                    'bczmonitor': opts.bczmonitor,
                    'taumod': opts.taumod,
                    'dumpFacilitiesMap': opts.dumpFacilitiesMap,
+                   'disableNotes' : opts.disableNotes,
         }
         if len(args) == 1:
             CL_DATA['input'] = checkInputFileSchema(args[0],
@@ -954,6 +966,9 @@ def main():
                              policyClassList, policyRulesDict,
                              PthClass, noteHolderGroup, comm, totalRunDays)
 
+        if CL_DATA['disableNotes']:
+            noteHolderGroup.disableAll()
+            
         monitorList = []
         tauAdjusterList = []
         if CL_DATA['bczmonitor'] is not None:

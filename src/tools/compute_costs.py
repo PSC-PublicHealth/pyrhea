@@ -720,12 +720,12 @@ def determineOutcomes(nIncidence_,nCarriersCRE_, probInfect_, attribMort_, cGlov
                                         + (1.0-pICU)*nCases*nContactsDay) \
                                         * ggr*LOS_NVAP),
                                        targetYear_)
-            
+
             outcomeCosts[k]['thirdParty Costs'] = thirdPartyCosts
-                        
+
     return outcomeCosts
-    
-    
+
+
 def extractNewColonized(abbrev,specialDict,burninDays):
     ncList = getTimeSeriesList(abbrev,specialDict,'localtiernewcolonized')
     print ncList
@@ -736,7 +736,7 @@ def extractNewColonized(abbrev,specialDict,burninDays):
         print dayIndex
         for tpl, curve in curves.items():
             sums[CareTier.names[tpl]] = sum(curve[dayIndex:])
-    
+
     return sums
 
 def extractContactPrecautionDays(abbrev,specialDict,burninDays):
@@ -1092,12 +1092,11 @@ def main():
     nColsReturnTmp = p.map(getNewCols_poolHelper,argsList)
     p.close()
 
-    # import cPickle as pickle
-    # with open('stuff.pkl', 'w') as f:
-    #     pickle.dump(nColsReturnTmp, f)
-    # sys.exit('done')
-    
-    
+#     import cPickle as pickle
+#     with open('stuff.pkl', 'w') as f:
+#         pickle.dump(nColsReturnTmp, f)
+#     sys.exit('done')
+
     #print "HERE!!!!"
     for i in range(0,len(nColsReturnTmp)):
         newColsArray[i] = nColsReturnTmp[i][0]
