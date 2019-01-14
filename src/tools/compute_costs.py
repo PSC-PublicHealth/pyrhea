@@ -840,7 +840,9 @@ def getNewCols(abbrevs, note, facDict, xdroabbrevs, burninDays):#,newColsReturn)
         # I don't know where the +1 comes from; I'm just mirroring the .pkl code. -JSW
         fullDF = fullDF[fullDF['day'] >= burninDays + 1]
         sumDF = fullDF.groupby(['abbrev']).sum().drop(columns=['day', 'run', 'patch',
-                                                               'index', 'ward'])
+                                                               'ward'])
+        if 'index' in sumDF.columns:
+            sumDF = sumDF.drop(columns=['index'])
         for abbrev in abbrevs:
             rec = sumDF.loc[abbrev]
             newColL[abbrev] = rec['newColonized']

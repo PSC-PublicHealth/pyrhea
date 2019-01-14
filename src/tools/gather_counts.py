@@ -234,7 +234,9 @@ def sumDaysWithOffsets(fullDF, valuesToGather, baseDays, fieldsOfInterest):
 
 def sumSelectedGroups(inDF, facilitiesWithin13Miles, facilitiesWithinCookCounty, targetFacilitySet):
     fullSr = inDF.sum(numeric_only=True)
-    fullSr = fullSr.drop(labels=['index', 'day', 'run'])
+    fullSr = fullSr.drop(labels=['day', 'run'])
+    if 'index' in fullSr:
+        fullSr = fullSr.drop(labels=['index'])
     fullSr['prevalence'] = fullSr['colonizedDays'] / fullSr['bedDays']
     fullSr = fullSr.add_suffix('_regn')
     in13mi = inDF['abbrev'].isin(facilitiesWithin13Miles)
@@ -245,7 +247,9 @@ def sumSelectedGroups(inDF, facilitiesWithin13Miles, facilitiesWithinCookCounty,
     outTarget = np.logical_not(inTarget)
     for sel, sfx in [(in13mi, '_in13mi'), (out13mi, '_out13mi'), (inCook, '_inCook'),
                      (outCook, '_outCook'), (inTarget, '_inTarget'), (outTarget, '_outTarget')]:
-        thisSr = inDF[sel].sum(numeric_only=True).drop(['index', 'day', 'run'])
+        thisSr = inDF[sel].sum(numeric_only=True).drop(['day', 'run'])
+        if 'index' in thisSr:
+            thisSr = thisSr.drop(['index'])
         thisSr['prevalence'] = thisSr['colonizedDays'] / thisSr['bedDays']
         fullSr = pd.concat([fullSr, thisSr.add_suffix(sfx)], axis=0)
     return fullSr
