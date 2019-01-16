@@ -50,7 +50,7 @@
       'srcToCategoryMapFileSchema':
         'description': 'Schema for the YAML files containing the source to category maps'
         'type': 'string'
-      'fracBypassIndirec':
+      'fracBypassIndirect':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': >
           Fraction of patients which are transferred according to the tables given in
