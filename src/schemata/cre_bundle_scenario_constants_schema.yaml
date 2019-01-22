@@ -15,18 +15,16 @@
         'description': 'A real scenario would need more info, of course.'
     'required':
     - 'stringToLogWhenStarting'
-      
-  'locationsImplementingScenario': 
+
+  'locationsImplementingScenario':
     'type': 'array'
-    'items': 
+    'userLevel': 'simple'
+    'items':
       'type': 'object'
-      'properties': 
+      'properties':
         'abbrev': {'type': string}
         'times':
           'type': 'object'
           'properties':
             'startDate': {'type': 'number'}
             'endDate': {'type': 'number'}
-     
-    
-    

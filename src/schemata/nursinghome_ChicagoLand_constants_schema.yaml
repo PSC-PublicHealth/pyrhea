@@ -6,7 +6,7 @@
 '$ref': '#/definitions/nursinghomeconstants'
 
 'definitions':
-    
+
   'count':
     'type': 'object'
     'properties':
@@ -24,7 +24,7 @@
     'required':
       - 'value'
       - 'prov'
-      
+
   'float':
     'type': 'object'
     'properties':
@@ -60,30 +60,37 @@
       'deathRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Fraction of discharges which are via death'
+        'userLevel': 'hidden'
       }
       'hospTransferToICURate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a HOSPITAL will be into ICU care'
+        'userLevel': 'hidden'
       }
       'vsnfTransferToVentRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a VSNF will require VENT care'
+        'userLevel': 'advanced'
       }
       'vsnfTransferToSkilNrsRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a VSNF will require SKILNRS care'
+        'userLevel': 'advanced'
       }
       'initialUnhealthyFrac': {
         '$ref': 'basics_schema.yaml#/definitions/fraction',
         'description': 'Fraction of non-long-term-resident patients who are initially UNHEALTHY rather than HEALTHY'
+        'userLevel': 'advanced'
       }
       'bedCountMultiplier': {
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
         'description': 'Scales the number of beds in each facility of this type'
+        'userLevel': 'advanced'
       }
       'heldBedDurationDays': {
         '$ref': 'basics_schema.yaml#/definitions/posinteger',
         'description': 'Number of days the facility will hold a patient bed after that patient moves to a higher tier of care'
+        'userLevel': 'advanced'
       }
     'required':
       - 'deathRate'
@@ -92,5 +99,3 @@
       - 'vsnfTransferToSkilNrsRate'
       - 'initialUnhealthyFrac'
       - 'heldBedDurationDays'
-      
-      

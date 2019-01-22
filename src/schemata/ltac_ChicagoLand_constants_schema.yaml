@@ -6,7 +6,7 @@
 '$ref': '#/definitions/ltacconstants'
 
 'definitions':
-    
+
   'count':
     'type': 'object'
     'properties':
@@ -24,7 +24,7 @@
     'required':
       - 'value'
       - 'prov'
-      
+
   'float':
     'type': 'object'
     'properties':
@@ -33,28 +33,41 @@
     'required':
       - 'value'
       - 'prov'
-      
+
   'ltacconstants':
     'type': 'object'
     'properties':
-      'bedsPerWard': {'$ref': '#/definitions/count'}
-      'dischargeViaDeathFrac': {'$ref': '#/definitions/fraction'}
-      'fracOfDischargesRequiringRehab': {'$ref': '#/definitions/fraction'}
+      'bedsPerWard': {
+        '$ref': '#/definitions/count'
+        'userLevel': 'simple'
+      }
+      'dischargeViaDeathFrac': {
+        '$ref': '#/definitions/fraction'
+        'userLevel': 'hidden'
+      }
+      'fracOfDischargesRequiringRehab': {
+        '$ref': '#/definitions/fraction'
+        'userLevel': 'hidden'
+      }
       'hospTransferToICURate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a HOSPITAL will require ICU care'
+        'userLevel': 'hidden'
       }
       'vsnfTransferToVentRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a VSNF will require VENT care'
+        'userLevel': 'advanced'
       }
       'vsnfTransferToSkilNrsRate': {
         '$ref': '#/definitions/fraction',
         'description': 'Probability a transfer to a VSNF will require SKILNRS care'
+        'userLevel': 'advanced'
       }
       'bedCountMultiplier': {
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
         'description': 'Scales the number of beds in each facility of this type'
+        'userLevel': 'advanced'
       }
     'required':
       - 'bedsPerWard'
@@ -62,4 +75,3 @@
       - 'hospTransferToICURate'
       - 'vsnfTransferToVentRate'
       - 'vsnfTransferToSkilNrsRate'
-      

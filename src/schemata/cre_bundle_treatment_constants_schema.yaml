@@ -22,21 +22,23 @@
     'properties':
       'transmissibilityMultiplier':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place' 
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'
+        'userLevel': 'simple'
       'swabDiagnosticSensitivity':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'sensitivity of a single rectal swab (screening test) to detect CRE colonization' 
+        'description': 'sensitivity of a single rectal swab (screening test) to detect CRE colonization'
+        'userLevel': 'simple'
       'swabDiagnosticSpecificity':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': '1.0 minus false positive rate for a single rectal swab.'
+        'userLevel': 'simple'
       'swabDelayDaysByCategory':
         '$ref': '#/definitions/nonNegIntByCategory'
         'description': 'Number of days delay before the results of a rectal swab test are returned'
-                 
+        'userLevel': 'simple'
+
     'required':
     - 'transmissibilityMultiplier'
     - 'swabDiagnosticSensitivity'
     - 'swabDiagnosticSpecificity'
     - 'swabDelayDaysByCategory'
-      
-     

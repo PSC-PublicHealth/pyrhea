@@ -7,11 +7,11 @@
 
 'definitions':
 
-  'lIS': 
+  'lIS':
     'type': 'array'
-#    'items': 
+#    'items':
 #      'type': 'object'
-#      'properties': 
+#      'properties':
 #        'abbrev': {'type': string}
 #        'times':
 #          'type': 'object'
@@ -19,7 +19,7 @@
 #            'startDate': {'type': 'number'}
 #            'endDate': {'type': 'number'}
 
-  'lISWrapper': 
+  'lISWrapper':
     'type': 'object'
     'properties':
       'prov': { 'type': 'string' }
@@ -27,18 +27,16 @@
     'required':
     - 'prov'
     - 'facilities'
-   
 
   'scenario_constants':
     'type': 'object'
     'properties':
        'locationsImplementingScenario':
          '$ref': '#/definitions/lISWrapper'
+         'userLevel': 'simple'
        'enhancedDetectionFraction':
          '$ref': 'basics_schema.yaml#/definitions/fraction'
+         'userLevel': 'simple'
     'required':
     - 'locationsImplementingScenario'
     - 'enhancedDetectionFraction'
-      
-
-    

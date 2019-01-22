@@ -24,11 +24,11 @@
             'items':
               'type': 'string'
               'description': 'The identifying abbreviation of a facility'
+        'useLevel': 'simple'
       'enhancedDetectionFraction':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'Effective rate of pathogen detection due to the policy'  
+        'description': 'Effective rate of pathogen detection due to the policy'
+        'useLevel': 'simple'
     'required':
     - 'stringToLogWhenStarting'
     - 'locationsImplementingScenario'
-      
-     

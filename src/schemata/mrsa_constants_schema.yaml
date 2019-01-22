@@ -15,7 +15,7 @@
         'frac': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
       'required':
         - 'category'
-        - 'frac'      
+        - 'frac'
 
   'mrsaconstants':
     'type': 'object'
@@ -23,69 +23,97 @@
       'initialFractionColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
         'description': 'initial fraction colonized'
+        'userLevel': 'advanced'
       'categoryInitialFractionColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'Initial fraction colonized when no facility-specific value is available'
+        'userLevel': 'simple'
       'initialFractionInfected':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
         'description': 'initial fraction infected'
+        'userLevel': 'hidden'
       'categoryInitialFractionInfected':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'Initial fraction infected when no facility-specific value is available'
+        'userLevel': 'hidden'
       'initialFractionUndetectablyColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
         'description': 'initial fraction infected'
+        'userLevel': 'advanced'
       'categoryInitialFractionUndetectablyColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'Initial fraction infected when no facility-specific value is available'
+        'userLevel': 'simple'
       'initialFractionChronicallyColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
         'description': 'initial fraction infected'
+        'userLevel': 'advanced'
       'categoryInitialFractionChronicallyColonized':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'Initial fraction infected when no facility-specific value is available'
+        'userLevel': 'simple'
       'tau':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'transmission constants'
+        'userLevel': 'simple'
       'facilityTau':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByFacilityByCategory'
         'descriptions': 'override transmission constants by facility and tier'
+        'userLevel': 'advanced'
       'exposureCutoff':
         '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierByCategory'
-        'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'        
+        'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'
+        'userLevel': 'advanced'
       'colonizedDischargeDelayTime':
         '$ref': 'cre_constants_schema.yaml#/definitions/nonnegfloatByTier'
         'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+        'userLevel': 'simple'
       'infectedDischargeDelayTime':
         '$ref': 'cre_constants_schema.yaml#/definitions/nonnegfloatByTier'
         'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+        'userLevel': 'hidden'
       'colonizedTransferProbScale':
         '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierPair'
         'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
+        'userLevel': 'advanced'
       'infectedTransferProbScale':
         '$ref': 'cre_constants_schema.yaml#/definitions/scaleByTierPair'
         'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
-      'probNewExposuresAreUndetectable': 
+        'userLevel': 'hidden'
+      'probNewExposuresAreUndetectable':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'When a patient is newly colonized, this is the probability that the colonization is undetectable'
-      'infectionDurationPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
-      'reboundPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+        'userLevel': 'hidden'
+      'infectionDurationPDF':
+        '$ref': 'basics_schema.yaml#/definitions/PDF'
+        'userLevel': 'hidden'
+      'reboundPDF':
+        '$ref': 'basics_schema.yaml#/definitions/PDF'
+        'userLevel': 'advanced'
       'fracPermanentlyColonized':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
-      'spontaneousLossPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
-      'colonizationToInfectionPDF': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+        'userLevel': 'advanced'
+      'spontaneousLossPDF':
+        '$ref': 'basics_schema.yaml#/definitions/PDF'
+        'userLevel': 'advanced'
+      'colonizationToInfectionPDF':
+        '$ref': 'basics_schema.yaml#/definitions/PDF'
+        'userLevel': 'hidden'
       'probChlorhexBathSuccess':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': 'Probability that a colonized patient will not be detectably colonized after a single chlorhexidine bath'
+        'userLevel': 'simple'
       'probChlorhexBathLeadsToUndetColonization':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByTierByCategory'
         'description': >
           If a patient is successfully decolonized by a single chlorhexidine bath, probability that an undetectably low but
           non-zero level of colonization remains so that rebound colonization is possible
+        'userLevel': 'simple'
       'homeClearColonizedStatusProb':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
+        'userLevel': 'simple'
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
@@ -110,6 +138,3 @@
       - 'probChlorhexBathSuccess'
       - 'probChlorhexBathLeadsToUndetColonization'
       - 'homeClearColonizedStatusProb'
-
-      
-      
