@@ -19,13 +19,13 @@
       'required':
         - 'status'
         - 'frac'
-        
+
   'fracByStatusByTier':
     'type': 'array'
     'items':
       'type': 'object'
       'properties':
-        'tier': 
+        'tier':
           '$ref': 'facility_schema.yaml#/definitions/caretier'
           'description': 'Tier of care (ICU, NURSING, etc)'
         'pathogenStatuses': {'$ref': '#/definitions/fracByStatus'}
@@ -49,11 +49,11 @@
       'baseFractionUnderContactPrecautions':
         '$ref': '#/definitions/fracByStatusByTierByCategory'
         'description': 'Fraction of patients under contact precautions for reasons other than pathogen status'
+        'userLevel': 'simple'
       'transmissibilityMultiplier':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'          
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'
+        'userLevel': 'simple'
     'required':
     - 'baseFractionUnderContactPrecautions'
     - 'transmissibilityMultiplier'
-      
-     

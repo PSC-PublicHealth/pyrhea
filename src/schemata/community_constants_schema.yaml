@@ -12,27 +12,56 @@
     'description': 'property names are patient classes, values are the associated PDFs'
     'additionalProperties':
       '$ref': 'basics_schema.yaml#/definitions/PDF'
-    
+
   'communityconstants':
     'type': 'object'
     'properties':
-      'losModelMap': {'$ref': '#/definitions/pdfmap' }
+      'losModelMap': {
+        '$ref': '#/definitions/pdfmap',
+        'userLevel': 'advanced'
+      }
       'initialUnhealthyFrac': {
         '$ref': 'basics_schema.yaml#/definitions/fraction',
-        'description': 'Fraction of residents who are initially UNHEALTHY rather than HEALTHY'
+        'description': 'Fraction of residents who are initially UNHEALTHY rather than HEALTHY',
+        'userLevel': 'advanced'
       }
       'populationScale': {
-         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
-         'description': 'Scale overall population size by this value relative to meanPop'
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'description': 'Scale overall population size by this value relative to meanPop',
+        'userLevel': 'advanced'
       }
-      'communityDeathRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityVerySickRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityNeedsRehabRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityNeedsLTACRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityNeedsSkilNrsRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityNeedsVentRate': {'$ref': 'basics_schema.yaml#/definitions/fraction'}
-      'communityPatientCheckInterval': {'$ref': 'basics_schema.yaml#/definitions/count'}
-      'communityColonizedReadmissionRateScale': {'$ref': 'basics_schema.yaml#/definitions/nonnegfloat'}
+      'communityDeathRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityVerySickRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityNeedsRehabRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityNeedsLTACRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityNeedsSkilNrsRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityNeedsVentRate': {
+        '$ref': 'basics_schema.yaml#/definitions/fraction',
+        'userLevel': 'advanced'
+      }
+      'communityPatientCheckInterval': {
+        '$ref': 'basics_schema.yaml#/definitions/count',
+        'userLevel': 'hidden'
+      }
+      'communityColonizedReadmissionRateScale': {
+        '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
+        'userLevel': 'hidden'
+      }
       'srcToCategoryMapFilePaths':
         'description': >
           Paths to YAML files containing weighted data mapping facility abbrevs
@@ -40,6 +69,7 @@
           indirect transfer count data marginalized over destinations
         'type': 'array'
         'items': {'type': 'string'}
+        'userLevel': 'hidden'
       'bypassCategoryMapFilePaths':
         'description': >
           Paths to YAML files containing weighted category map data.  These transfer
@@ -47,24 +77,30 @@
           transfer mechanism.  These transfers are independent of patient history.
         'type': 'array'
         'items': {'type': 'string'}
+        'userLevel': 'hidden'
       'srcToCategoryMapFileSchema':
         'description': 'Schema for the YAML files containing the source to category maps'
         'type': 'string'
+        'userLevel': 'hidden'
       'fracBypassIndirect':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': >
           Fraction of patients which are transferred according to the tables given in
           bypassTransferFilePaths (ignoring history) rather than those given in transferFilePaths
           (dependent on their history if available).
+        'userLevel': 'hidden'
       'kalmanQ':
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Kalman filter process variance for estimating scale factor for LOS rate constant'
+        'userLevel': 'hidden'
       'kalmanH':
         '$ref': 'basics_schema.yaml#/definitions/float'
         'description': 'Kalman dz/dx for estimating scale factor for LOS rate constant'
+        'userLevel': 'hidden'
       'rateScaleDelta':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'Change community hospitalization rates by this fraction to control population drift'
+        'userLevel': 'hidden'
     'required':
       - 'losModelMap'
       - 'communityDeathRate'
@@ -81,6 +117,3 @@
       - 'rateScaleDelta'
       - 'kalmanQ'
       - 'kalmanH'
- 
-     
-      

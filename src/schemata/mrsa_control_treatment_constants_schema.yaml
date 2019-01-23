@@ -22,25 +22,27 @@
     'properties':
       'transmissibilityMultiplier':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place' 
+        'description': 'This factor multiplies the transmissibility coefficient tau when the treatment is in place'
+        'userLevel': 'simple'
       'swabDiagnosticSensitivity':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
-        'description': 'sensitivity of a swab (screening test) to detect MRSA colonization' 
+        'description': 'sensitivity of a swab (screening test) to detect MRSA colonization'
+        'userLevel': 'simple'
       'swabDiagnosticSpecificity':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': '1.0 minus false positive rate for a single rectal swab.'
+        'userLevel': 'simple'
       'swabDelayDaysByTierMin':
         '$ref': '#/definitions/nonNegIntByTier'
         'description': 'Minimum number of days delay before the results of a rectal swab test are returned'
+        'userLevel': 'simple'
       'swabDelayDaysByTierMax':
         '$ref': '#/definitions/nonNegIntByTier'
         'description': 'Maximum number of days delay before the results of a rectal swab test are returned'
-                 
+        'userLevel': 'simple'
+
     'required':
     - 'transmissibilityMultiplier'
     - 'swabDiagnosticSensitivity'
     - 'swabDiagnosticSpecificity'
     - 'swabDelayDaysByTierMin'
-    - 'swabDelayDaysByTierMax'
-      
-     

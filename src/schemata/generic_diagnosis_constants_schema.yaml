@@ -33,24 +33,31 @@
       'pathogenDiagnosticEffectiveness':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'If a patient arrives with COLONIZED pathogen status, how likely is it to be detected?'
+        'userLevel': 'simple'
       'pathogenDiagnosticFalsePositiveRate':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'If a patient arrives with CLEAR pathogen status, how likely is the patient to be diagnosed as COLONIZED?'
+        'userLevel': 'simple'
       'sameFacilityDiagnosisMemory':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
         'description': "If a patient gets a diagnosis, how likely is that diagnosis to make it into the facility's permanent record system?"
+        'userLevel': 'simple'
       'sendDiagnosisBetweenFacility':
         '$ref': '#/definitions/fracByCategoryFrom'
         'description': "Probability that a diagnosis will be sent with a patient on transfer, based on the sending facility's category."
+        'userLevel': 'simple'
       'receiveDiagnosisBetweenFacility':
         '$ref': '#/definitions/fracByCategoryTo'
         'description': "Probability that a diagnosis sent with a patient on transfer will be used by the receiving facility, based on the receiving facility's category."
+        'userLevel': 'simple'
       'registryAddCompliance':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
         'description': "Probability that a diagnosis will be added to the registry, based on the sending facility's category."
+        'userLevel': 'simple'
       'registrySearchCompliance':
         '$ref': 'cre_constants_schema.yaml#/definitions/fracByCategory'
         'description': "Probability that a site will search the registry for a previous diagnosis, based on the sending facility's category."
+        'userLevel': 'simple'
     'required':
       - 'pathogenDiagnosticEffectiveness'
       - 'pathogenDiagnosticFalsePositiveRate'
@@ -58,6 +65,4 @@
       - 'sendDiagnosisBetweenFacility'
       - 'receiveDiagnosisBetweenFacility'
       - 'registryAddCompliance'
-      - 'registrySearchCompliance' 
-      
-     
+      - 'registrySearchCompliance'

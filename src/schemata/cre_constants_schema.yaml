@@ -16,7 +16,7 @@
       'required':
         - 'category'
         - 'frac'
-        
+
   'fracByTier':
     'type': 'array'
     'items':
@@ -118,7 +118,7 @@
       'properties':
         'tierFrom':
           '$ref': 'facility_schema.yaml#/definitions/caretier'
-          'description': 'Tier of care originating the transfer (ICU, NURSING, etc)'    
+          'description': 'Tier of care originating the transfer (ICU, NURSING, etc)'
         'tierTo':
           '$ref': 'facility_schema.yaml#/definitions/caretier'
           'description': 'Tier of care receiving the transfer (ICU, NURSING, etc)'
@@ -132,45 +132,52 @@
       'initialFractionColonized':
         '$ref': '#/definitions/fracByTierByFacilityByCategory'
         'description': 'initial fraction colonized'
+        'userLevel': 'advanced'
       'categoryInitialFractionColonized':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'Initial fraction colonized when no facility-specific value is available'
+        'userLevel': 'simple'
       'tau':
         '$ref': '#/definitions/fracByTierByCategory'
         'description': 'transmission constants'
+        'userLevel': 'simple'
       'facilityTau':
         '$ref': '#/definitions/fracByTierByFacilityByCategory'
         'descriptions': 'override transmission constants by facility and tier'
+        'userLevel': 'advanced'
       'exposureCutoff':
         '$ref': '#/definitions/scaleByTierByCategory'
         'description': 'If this value is k, effective number of exposures is (k*exposures)/(k+exposures)'
+        'userLevel': 'advanced'
       'fracPermanentlyColonized':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'Fraction of patients with the characteristic that they can never spontaneously lose colonization'
+        'userLevel': 'advanced'
       'spontaneousLossTimeConstant':
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
         'description': 'Exponential decay time constant for spontaneous loss of colonization, in days'
+        'userLevel': 'advanced'
       'colonizedDischargeDelayTime':
         '$ref': '#/definitions/nonnegfloatByTier'
         'description': 'Discharge delay time for colonized vs. clear patients, in days.  Default is no delay.'
+        'userLevel': 'simple'
       'colonizedTransferProbScale':
         '$ref': '#/definitions/scaleByTierPair'
         'description': 'Scale factor by which a COLONIZED individual is more likely to make this transfer than a CLEAR or RECOVERED individual'
+        'userLevel': 'advanced'
       'homeClearColonizedStatusProb':
         '$ref': 'basics_schema.yaml#/definitions/fraction'
         'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
-                
+        'userLevel': 'simple'
+
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'
       - 'tau'
-      - 'facilityTau'      
+      - 'facilityTau'
       - 'fracPermanentlyColonized'
       - 'spontaneousLossTimeConstant'
       - 'colonizedDischargeDelayTime'
       - 'colonizedTransferProbScale'
       - 'exposureCutoff'
       - 'homeClearColonizedStatusProb'
-      
-      
-     
