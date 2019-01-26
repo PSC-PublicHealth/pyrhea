@@ -17,12 +17,14 @@
 
 _rhea_svn_id_ = "$Id$"
 
+import logging
 import types
 import sys
 import random
+from scipy.stats import kstest
 from scipy.stats.distributions import rv_continuous, lognorm, expon, weibull_min
+from scipy.optimize import minimize_scalar
 from math import fabs, log, exp
-import logging
 
 import unittest
 import cStringIO
@@ -386,7 +388,7 @@ def fullLogNormCRVFromMean(mean, sigma):
     and sigma.
     """
     mu = log(mean) - (0.5 * sigma * sigma)
-    return lognorm(sigma, scale=exp(mu), loc=0.0)
+    return lognorm(sigma, scale=np.exp(mu), loc=0.0)
 
 
 def fullCRVFromPDFModel(pdfModel):
@@ -418,6 +420,30 @@ def fullCRVFromPDFModel(pdfModel):
     else:
         raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 
+def jointSamples(nSamps, aCRV, bCRV, frac):
+    """
+    Generate nSamps samples from the joint distribution frac*(aCRV + bCRV) + (1.0-frac)*aCRV
+
+    This is useful in decomposing mixed populations like hospital patients
+    """
+    aSamps = aCRV.rvs(nSamps)
+    bSamps = bCRV.rvs(nSamps)
+    choices = np.random.choice(2, nSamps, p=[frac, 1.0 - frac])
+    return np.choose(choices, [aSamps + bSamps, aSamps])
+
+def correctLogNormCRVForComponent(meanLOSHosp, lowBound, highBound,
+                                  hospCRV, fracICU, icuCRV,
+                                  nSamples=1000000):
+    def func(val, nSamps, meanLOSHosp, hospCRV, fracICU, icuCRV):
+        guessCRV = fullLogNormCRVFromMean(meanLOSHosp, val)
+        samps = jointSamples(nSamps, guessCRV, icuCRV, fracICU)
+        rslt = kstest(samps, hospCRV.cdf).statistic
+        #print '%s -> %s' % (val, rslt)
+        return rslt
+    rslt = minimize_scalar(func, [lowBound, highBound],
+                           args=(nSamples, meanLOSHosp, hospCRV, fracICU, icuCRV))
+    #print rslt
+    return rslt.x
 
 def createMapFun(parms):
     s = parms['s']
