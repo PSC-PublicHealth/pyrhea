@@ -6,3 +6,4 @@ pika
 jsonschema
 scipy
 ujson
+GitPython
