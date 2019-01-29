@@ -442,7 +442,7 @@ def correctLogNormCRVForComponent(meanLOSHosp, lowBound, highBound,
         return rslt
     rslt = minimize_scalar(func, [lowBound, highBound],
                            args=(nSamples, meanLOSHosp, hospCRV, fracICU, icuCRV))
-    #print rslt
+    assert rslt.success, 'Minimization failed; result was %s' % rslt
     return rslt.x
 
 def createMapFun(parms):
