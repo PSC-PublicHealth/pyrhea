@@ -89,10 +89,20 @@
     - 'properties':
         'category': 
           'type': 'string'
-          'enum': ['HOSPITAL', 'LTAC', 'LTACH']
+          'enum': ['HOSPITAL']
       'required':
       - 'totalDischarges'
       - 'correctedLOSModel'
+          
+  'ltacfacts':
+    'allOf':
+    - {'$ref': '#/definitions/basicfacilityfacts'}
+    - 'properties':
+        'category': 
+          'type': 'string'
+          'enum': ['LTAC', 'LTACH']
+      'required':
+      - 'totalDischarges'
           
   'nursinghomefacts':
     'allOf':

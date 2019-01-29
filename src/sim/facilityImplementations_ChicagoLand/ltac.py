@@ -36,7 +36,7 @@ from hospital import estimateWork as hospitalEstimateWork
 from hospital import buildChangeTree, biasTransfers, pickWardSizes
 
 category = 'LTAC'
-_schema = 'hospitalfacts_schema.yaml'
+_schema = 'ltacfacts_schema.yaml'
 _constants_values = '$(MODELDIR)/constants/ltac_constants.yaml'
 _constants_schema = 'ltac_ChicagoLand_constants_schema.yaml'
 _validator = None
