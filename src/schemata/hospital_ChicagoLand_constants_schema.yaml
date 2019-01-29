@@ -38,52 +38,52 @@
     'type': 'object'
     'properties':
       'bedsPerWard': {
-        '$ref': '#/definitions/count'
+        '$ref': '#/definitions/count',
         'userLevel': 'simple'
       }
       'bedsPerICUWard': {
-        '$ref': '#/definitions/count'
+        '$ref': '#/definitions/count',
         'userLevel': 'simple'
       }
       'hospDischargeViaDeathFrac': {
-        '$ref': '#/definitions/fraction'
+        '$ref': '#/definitions/fraction',
         'userLevel': 'hidden'
       }
       'icuDischargeViaDeathFrac': {
-        '$ref': '#/definitions/fraction'
+        '$ref': '#/definitions/fraction',
         'userLevel': 'hidden'
       }
       'icuLOSLogNormSigma': {
-        '$ref': '#/definitions/float'
+        '$ref': '#/definitions/float',
         'userLevel': 'advanced'
       }
       'fracOfDischargesRequiringRehab': {
-        '$ref': '#/definitions/fraction'
+        '$ref': '#/definitions/fraction',
         'userLevel': 'hidden'
       }
       'fracTriageHOSPToICU': {
         '$ref': '#/definitions/fraction',
-        'description': 'Fraction of hospital bed requests which are ICU bed requests'
+        'description': 'Fraction of hospital bed requests which are ICU bed requests',
         'userLevel': 'hidden'
       }
       'hospTransferToICURate': {
         '$ref': '#/definitions/fraction',
-        'description': 'Probability a transfer to a HOSPITAL will be into ICU care'
+        'description': 'Probability a transfer to a HOSPITAL will be into ICU care',
         'userLevel': 'hidden'
       }
       'vsnfTransferToVentRate': {
         '$ref': '#/definitions/fraction',
-        'description': 'Probability a transfer to a VSNF will require VENT care'
+        'description': 'Probability a transfer to a VSNF will require VENT care',
         'userLevel': 'simple'
       }
       'vsnfTransferToSkilNrsRate': {
         '$ref': '#/definitions/fraction',
-        'description': 'Probability a transfer to a VSNF will require SKILNRS care'
+        'description': 'Probability a transfer to a VSNF will require SKILNRS care',
         'userLevel': 'simple'
       }
       'bedCountMultiplier': {
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat',
-        'description': 'Scales the number of beds in each facility of this type'
+        'description': 'Scales the number of beds in each facility of this type',
         'userLevel': 'advanced'
       }
     'required':
