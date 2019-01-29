@@ -52,6 +52,9 @@
         'type': 'array'
         'items': {'$ref': '#/definitions/categorycount'}
       'losModel': {'$ref': 'basics_schema.yaml#/definitions/PDF'}
+      'correctedLOSModel': {
+        '$ref': 'basics_schema.yaml#/definitions/PDF',
+        'description': 'LOS model for the HOSP tier alone, excluding any ICU time'}
       'totalDischarges':
         'description': 'Count of all discharges, including discharge via death'
         '$ref': 'basics_schema.yaml#/definitions/nonnegfloat'
@@ -89,6 +92,7 @@
           'enum': ['HOSPITAL', 'LTAC', 'LTACH']
       'required':
       - 'totalDischarges'
+      - 'correctedLOSModel'
           
   'nursinghomefacts':
     'allOf':

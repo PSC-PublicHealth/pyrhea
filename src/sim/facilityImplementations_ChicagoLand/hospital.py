@@ -264,18 +264,14 @@ class Hospital(Facility):
             icuBeds = int(round(descr['fracAdultPatientDaysICU']['value'] * allBeds))
         nonICUBeds = max(allBeds - icuBeds, 0)
 
-        assert descr['losModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
-            'Hospital %(abbrev)s LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
-        scaledLOSParms = self.scaleLOS(descr['losModel'],
-                                       (descr['scaleLengthOfStay']['value'] if
-                                        'scaleLengthOfStay' in descr else None))
-        self.hospCachedCDF = CachedCDFGenerator(lognorm(scaledLOSParms[1],
-                                                        scale=math.exp(scaledLOSParms[0])))
-        self.hospTreeCache = {}
+        assert descr['correctedLOSModel']['pdf'] == 'lognorm(mu=$0,sigma=$1)', \
+            'Hospital %(abbrev)s corrected LOS PDF is not lognorm(mu=$0,sigma=$1)' % descr
+        hospLM = descr['correctedLOSModel']
+
         if descr['meanLOSICU']['value'] == 0.0:
             self.icuCachedCDF = None
         else:
-            # Construct a losModel struct from the mean and sigma
+            # Construct a losModel struct for the ICUs from the mean and sigma
             mean = descr['meanLOSICU']['value']
             sigma = _constants['icuLOSLogNormSigma']['value']
             mu = math.log(mean) - (0.5 * sigma * sigma)
@@ -286,6 +282,13 @@ class Hospital(Facility):
                                             'scaleLengthOfStay' in descr else None))
             self.icuCachedCDF = CachedCDFGenerator(lognorm(scaledICUParms[1],
                                                            scale=math.exp(scaledICUParms[0])))
+
+        scaledLOSParms = self.scaleLOS(hospLM,
+                                       (descr['scaleLengthOfStay']['value'] if
+                                        'scaleLengthOfStay' in descr else None))
+        self.hospCachedCDF = CachedCDFGenerator(lognorm(scaledLOSParms[1],
+                                                        scale=math.exp(scaledLOSParms[0])))
+        self.hospTreeCache = {}
         self.icuTreeCache = {}
 
         for i, bedCt in enumerate(pickWardSizes(icuBeds, bedsPerICUWard)):
