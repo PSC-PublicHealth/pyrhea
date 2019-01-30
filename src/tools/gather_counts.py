@@ -49,7 +49,7 @@ from bcz_plotter import importBCZ
 DEFAULT_OUT_FILE = 'counts_output'
 
 
-def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
+def extractCountsFromNotes(note, abbrevList, translationDict, lowCutoffDays):
     """Convert the time series contents of a notes file to a Pandas DataFrame"""
     print "note = {0}".format(note)
     ### totalStats is assumed to be a Manager
@@ -66,7 +66,8 @@ def extractCountsFromNotes(note, abbrevList, translationDict, burninDays):
                 if not tplList:
                     continue
                 for dayVec, curves in tplList:
-                    dayIndex = np.where(dayVec==burninDays)[0][0]
+                    assert np.min(dayVec) <= lowCutoffDays, 'Requested low cutoff is outside data range'
+                    dayIndex = np.where(dayVec==lowCutoffDays)[0][0]
                     for innerKey, lVec in curves.items():
                         thisD = {'day': dayVec[dayIndex:]}
                         if isinstance(innerKey, (int, long)):
@@ -129,7 +130,7 @@ def collectBCZ(nmList):
     return nonBCZL, list(bczS)
 
 
-def extractCountsFromBCZ(bczNm, abbrevList, translationDict, burninDays):
+def extractCountsFromBCZ(bczNm, abbrevList, translationDict, lowCutoffDays):
     """Convert the time series contents of a notes file to a Pandas DataFrame"""
     print "Handling bcz group {0}".format(bczNm)
     ### totalStats is assumed to be a Manager
@@ -140,7 +141,8 @@ def extractCountsFromBCZ(bczNm, abbrevList, translationDict, burninDays):
         raise
 
     # We want only days after the end of burnin
-    df.drop(df[df.day < burninDays].index, inplace=True)
+    assert df['day'].min() <= lowCutoffDays, 'Requested low cutoff is outside data range'
+    df.drop(df[df.day < lowCutoffDays].index, inplace=True)
     # Repair a naming discrepancy.
     transDct = {'fac': 'abbrev'}
     transDct.update({val: key for key, val in translationDict.items()})
@@ -279,6 +281,8 @@ def main():
     parser.add_option('--nostats', action='store_true', default=False,
                       help=('suppress calculation of stats (mean, median, etc.) leaving only'
                             'raw csv output'))
+    parser.add_option('--lowdate', action='store', type='int',
+                      help=('low cutoff date for data conversion.  The default is end of burn-in'))
 
     opts, args = parser.parse_args()
     if len(args) != 1:
@@ -310,6 +314,8 @@ def main():
 
     burninDays = int(inputDict['burnInDays'])
     print "burninDays = {0}".format(burninDays)
+    lowCutoffDays = opts.lowdate if opts.lowdate is not None else burninDays
+    print 'lowCutoff = {0}'.format(lowCutoffDays)
     runDays = int(inputDict['runDurationDays'])
     print "runDays = {0}".format(runDays)
     scenarioWaitDays = int(inputDict['scenarioWaitDays'])
@@ -368,7 +374,7 @@ def main():
 
     # pkl files get handled in parallel
     argsList = [(pklNotes[i], abbrevList,
-                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
+                 {key: tpl[0] for key, tpl in valuesToGather.items()}, lowCutoffDays)
                 for i in range(0, len(pklNotes))]
     if nprocs > 1:
         pool = Pool(nprocs)
@@ -384,7 +390,7 @@ def main():
 
     # bcz files get handled in parallel
     argsList = [(bczNotes[i], abbrevList,
-                 {key: tpl[0] for key, tpl in valuesToGather.items()}, burninDays)
+                 {key: tpl[0] for key, tpl in valuesToGather.items()}, lowCutoffDays)
                 for i in range(0, len(bczNotes))]
     if nprocs > 1:
         pool = Pool(nprocs)
