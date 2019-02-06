@@ -143,7 +143,7 @@ def writeCsvs():
 
     with open("infTrack_decolonizations.csv", "w") as f:
         f.write("agent, time, fac, tier, ward\n")
-        for e in colonizations:
+        for e in decolonizations:
             f.write("%s,%s,%s,%s,%s\n"%(e[0], e[1], e[2], e[3], e[4]))
 
     with open("infTrack_arrivals.csv", "w") as f:
