@@ -36,6 +36,7 @@ from labwork import LabWork, LabWorkMsg
 from policybase import TransferDestinationPolicy, TreatmentPolicy, DiagnosticPolicy
 
 LOGGER = logging.getLogger(__name__)
+infectionLogger = logging.getLogger("infectionTracking")
 
 HackBedMultiplier = 1
 
@@ -883,6 +884,12 @@ class PatientAgent(pyrheabase.PatientAgent):
                 and self.getStatus().pthStatus == PthStatus.COLONIZED):
                 #print "New Infection at {0}".format(self.ward.fac.abbrev)
                 self.ward.miscCounters['newColonizationsSinceLastChecked'] += 1
+                infectionLogger.info("%s newly colonized at %d in fac %s, tier %s, ward %d"%(
+                    self.name, timeNow, self.ward.fac.abbrev, CareTier.names[self.ward.tier], self.ward.wardNum))
+            if (previousStatus.pthStatus == PthStatus.COLONIZED
+                and self.getStatus().pthStatus != PthStatus.COLONIZED):
+                infectionLogger.info("%s decolonized at %d in fac %s, tier %s, ward %d"%(
+                    self.name, timeNow, self.ward.fac.abbrev, CareTier.names[self.ward.tier], self.ward.wardNum))
             if self.getTreatment('creBundle'):
                 self.ward.miscCounters['creBundlesHandedOut'] += 1
 
