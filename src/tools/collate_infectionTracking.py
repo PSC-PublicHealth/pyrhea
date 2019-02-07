@@ -41,8 +41,8 @@ def printHistory(history):
 def processHistory():
     colonizationCountHist = defaultdict(int)
     colonizationCountHistByYear = defaultdict(lambda:defaultdict(int))
-
-    maxYears = 10
+    daysPerYear = 100
+    maxYears = 30
     
     for agent,history in agentHistory.items():
         lastDepArr = None
@@ -70,7 +70,7 @@ def processHistory():
                     print "**********************************"
                     
                 colonizationCount +=1
-                year = int(date / 365)
+                year = int(date / daysPerYear)
                 colonizationCountByYear[year] += 1
                 
         if 0 and colonizationCount > 3:
@@ -86,7 +86,8 @@ def processHistory():
     print "colonization count histogram:"
     print colonizationCountHist
     print "by year"
-    print colonizationCountHistByYear
+    for y in xrange(maxYears):
+        print colonizationCountHistByYear[y]
 
 def appendBuggyHistory():
     appendHistory('comArrival', ("buggyAgent1", 5, 'CLEAR'))
@@ -105,7 +106,7 @@ def parse(line):
         colonizations.append(data)
         return
 
-    m = redecolonize.search(line)
+    m = reDecolonize.search(line)
     if (m):
         data = m.group(1,2,3,4,5)
         appendHistory('decolonization', data)

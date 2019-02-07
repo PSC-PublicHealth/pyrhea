@@ -903,6 +903,9 @@ class PatientAgent(pyrheabase.PatientAgent):
             self.updateDiseaseState(self.getTreatmentProtocol(), self.ward.fac, modifierDct, timeNow)
             if self.getStatus().diagClassA == DiagClassA.DEATH:
                 LOGGER.debug('%s died at %s at time %s', '%s_%s'%self.id, self.ward.fac.name, timeNow)
+                infectionLogger.info("%s died at %d in fac %s, tier %s, ward %s with status %s"%(
+                    self.name, timeNow, self.ward.fac.abbrev, CareTier.names[self.ward.tier],
+                    self.ward.wardNum, PthStatus.names[self.getStatus().pthStatus]))
                 return None
             self._diagnosis = self.ward.fac.diagnose(self.ward, self.id, self.getStatus(),
                                                      self.getDiagnosis(), timeNow=timeNow)
