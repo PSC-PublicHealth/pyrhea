@@ -59,45 +59,42 @@ def extractCountsFromNotes(note, abbrevList, translationDict, lowCutoffDays):
         print "finished opening {0}".format(note)
         for key, noteKey in translationDict.items():
             print "  key = {0}".format(key)
-            entryDF = None
+            entryDF = pd.DataFrame(columns=['day', 'tier', 'abbrev'])
             for abbrev in abbrevList:
-                facDF = None
+                facDF = pd.DataFrame(columns=['day', 'tier']).pivot(index='day', columns='tier').stack()
                 tplList = getTimeSeriesList(abbrev, specialDict, noteKey)
                 if not tplList:
                     continue
                 for dayVec, curves in tplList:
                     assert np.min(dayVec) <= lowCutoffDays, 'Requested low cutoff is outside data range'
                     dayIndex = np.where(dayVec==lowCutoffDays)[0][0]
+                    thisCol = None
                     for innerKey, lVec in curves.items():
                         thisD = {'day': dayVec[dayIndex:]}
                         if isinstance(innerKey, (int, long)):
                             tier = CareTier.names[innerKey]
                             thisD['tier'] = tier
                             thisD[key] = lVec[dayIndex:]
+                            thisCol = key
                         elif isinstance(innerKey, types.TupleType) and len(innerKey) == 2:
                             tier, pthStatus = innerKey
                             tier = CareTier.names[tier]
                             pthStatus = PthStatus.names[pthStatus]
                             thisD['tier'] = tier
                             thisD[pthStatus] = lVec[dayIndex:]
+                            thisCol = pthStatus
                         else:
                             raise RuntimeError('Unknown time series key format {0} for {1} {2}'
                                                .format(innerKey, abbrev, noteKey))
-                        thisDF = pd.DataFrame(thisD)
-                        if facDF is None:
-                            facDF = thisDF
-                        else:
-                            facDF = pd.merge(facDF, thisDF, how='outer')
+                        thisDF = pd.DataFrame(thisD).pivot(index='day', columns='tier').stack()
+                        facDF = facDF.combine_first(thisDF)
                 facDF['abbrev'] = abbrev
-                if entryDF is None:
-                    entryDF = facDF
+                facDF = facDF.reset_index()
+                if tu.pandasVersionIsAtLeast23():
+                    entryDF = pd.concat((entryDF, facDF), sort=True)
                 else:
-                    if tu.pandasVersionIsAtLeast23():
-                        entryDF = pd.concat((entryDF, facDF), sort=True)
-                    else:
-                        entryDF = pd.concat((entryDF, facDF))
+                    entryDF = pd.concat((entryDF, facDF))
 
-            entryDF = entryDF.reset_index(drop=True)
             bigDF = pd.merge(bigDF, entryDF, how='outer', suffixes=['', '_' + key])
     except Exception as e:
         print "for file {0} there is an exception {1}".format(note,e)
@@ -450,7 +447,7 @@ def main():
         tsDFL.append(df)
     tsDF = pd.concat(tsDFL).reset_index()
     tsDFL = []  # to make sure we free memory
-    #print tsDF
+    print tsDF
     
     if opts.double_sum_bug_workaround:
         print 'applying double sum bug workaround'
