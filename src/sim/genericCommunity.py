@@ -39,11 +39,13 @@ from facilitybase import MissingPatientRecordError, decodeHistoryEntry, findQueu
 from quilt.netinterface import GblAddr
 from stats import CachedCDFGenerator, BayesTree
 import schemautils
+from pathogenbase import PthStatus
 
 import time
 import psutil
 
 logger = logging.getLogger(__name__)
+infectionLogger = logging.getLogger("infectionTracking")
 
 category = 'COMMUNITY'
 _schema = 'communityfacts_schema.yaml'
@@ -501,6 +503,8 @@ class CommunityWard(Ward):
         super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
         # If a patient lands here, make this fac its home unless it's FRAIL
         # (and thus should not be landing here at all...)
+        infectionLogger.info("%s arriving in community at time %d with colonization status %s"%(
+            patientAgent.name, timeNow, PthStatus.names[patientAgent.getStatus().pthStatus]))
         if patientAgent.getStatus().overall != PatientOverallHealth.FRAIL:
             patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.HOME,
                                                              self.fac.reqQueues).getGblAddr())
@@ -727,6 +731,9 @@ class Community(Facility):
             self.trappedPatientFlowDct[patientAgent.id] = flowKey # in case patient gets trapped
             key = (flowKey, startTime - patientStatus.startDateA,
                    timeNow - patientStatus.startDateA)
+            infectionLogger.info("%s leaving community at time %d with colonization status %s"%(
+                patientAgent.name, timeNow, PthStatus.names[patientStatus.pthStatus]))
+
             if key in self.treeCache:
                 return self.treeCache[key]
             else:

@@ -68,6 +68,8 @@ loggers:
   bcz_monitor:
     level: WARNING
 #    handlers: [rabbitmq]
+  infectionTracking:
+    level: INFO
 root:
   level: WARNING
   handlers: [console]
