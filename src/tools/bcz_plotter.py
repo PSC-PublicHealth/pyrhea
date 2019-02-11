@@ -101,37 +101,6 @@ def addCategory(fac, facDict):
     return facDict[fac]['category']
 
 
-def occupancyTimeFig(allDF, facDict, meanPopByCat=None):
-    allDF['category'] = allDF['fac'].apply(addCategory, args=(facDict,))
-    df = allDF.groupby(['day', 'category', 'patch']).sum().reset_index()
-    nPatch = df['patch'].nunique()
-    nCat = df['category'].nunique()
-
-    fig, axes = plt.subplots(nrows=1, ncols=nPatch)
-    if nPatch == 1:
-        axes = [axes]
-    patchOff = 0
-    for patch, patchDF in df.groupby(['patch']):
-        for cat, patchCatDF in patchDF.groupby(['category']):
-            if np.any(patchCatDF['TOTAL'].values):
-                baseline, = axes[patchOff].plot(patchCatDF['day'].values,
-                                                patchCatDF['TOTAL'].values,
-                                                '-', label=cat)
-                meanPop = meanPopByCat[cat]
-                yline = np.full(patchCatDF['day'].values.shape, meanPop)
-                axes[patchOff].plot(patchCatDF['day'].values, yline,
-                                    color=baseline.get_color(),
-                                    linestyle='--')
-            axes[patchOff].legend()
-            axes[patchOff].set_xlabel('Days')
-            axes[patchOff].set_ylabel('count')
-            axes[patchOff].set_title('patch %s' % patchOff)
-        patchOff += 1
-        fig.suptitle('Population by Category')
-    fig.tight_layout()
-    fig.canvas.set_window_title("Time History of Occupancy")
-
-
 def pathogenTimeFig(allDF):
     df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
     nPatch = df['patch'].nunique()
@@ -161,6 +130,71 @@ def pathogenTimeFig(allDF):
         patchOff += 1
         fig.suptitle('Pathogen Status by Tier')
 
+def occupancyTimeFig(allDF, facDict, meanPopByCat=None):
+    allDF['category'] = allDF['fac'].apply(addCategory, args=(facDict,))
+    df = allDF.groupby(['day', 'category', 'patch']).sum().reset_index()
+    nPatch = df['patch'].nunique()
+
+    fig, axes = plt.subplots(nrows=1, ncols=nPatch)
+    if nPatch == 1:
+        axes = [axes]
+    patchOff = 0
+    for patch, patchDF in df.groupby(['patch']):
+        for cat, patchCatDF in patchDF.groupby(['category']):
+            if np.any(patchCatDF['TOTAL'].values):
+                baseline, = axes[patchOff].plot(patchCatDF['day'].values,
+                                                patchCatDF['TOTAL'].values,
+                                                '-', label=cat)
+                meanPop = meanPopByCat[cat]
+                yline = np.full(patchCatDF['day'].values.shape, meanPop)
+                axes[patchOff].plot(patchCatDF['day'].values, yline,
+                                    color=baseline.get_color(),
+                                    linestyle='--')
+            axes[patchOff].legend()
+            axes[patchOff].set_xlabel('Days')
+            axes[patchOff].set_ylabel('count')
+            axes[patchOff].set_title('patch %s' % patchOff)
+        patchOff += 1
+        fig.suptitle('Population by Category')
+    fig.tight_layout()
+    fig.canvas.set_window_title("Time History of Occupancy")
+
+
+def occupancyTierTimeFig(allDF, facDict, meanPopByTier=None):
+    print 'allDF columns: %s' % allDF.columns
+    df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
+    nPatch = df['patch'].nunique()
+    nTier = df['tier'].nunique()
+
+    fig, axes = plt.subplots(nrows=nTier, ncols=nPatch)
+    axes.reshape((nTier, nPatch))
+    if nTier == 1:
+        axes = axes[np.newaxis, :]
+    if nPatch == 1:
+        axes = axes[:, np.newaxis]
+    patchOff = 0
+    for patch, patchDF in df.groupby(['patch']):  # @UnusedVariable
+        tierOff = 0
+        for tier, patchTierDF in patchDF.groupby(['tier']):
+            baseline, = axes[tierOff, patchOff].plot(patchTierDF['day'].values,
+                                                     patchTierDF['TOTAL'].values,
+                                         '-')
+            if meanPopByTier is not None and tier in meanPopByTier:
+                meanPop = meanPopByTier[tier]
+                yline = np.full(patchTierDF['day'].values.shape, meanPop)
+                axes[patchOff].plot(patchTierDF['day'].values, yline,
+                                    color=baseline.get_color(),
+                                    linestyle='--')
+            axes[tierOff, patchOff].set_xlabel('Days')
+            axes[tierOff, patchOff].set_ylabel('count')
+            axes[tierOff, patchOff].set_title(tier)
+            tierOff += 1
+        patchOff += 1
+        fig.suptitle('Population by Tier')
+    fig.tight_layout()
+    fig.canvas.set_window_title("Time History of Occupancy By Tier")
+
+
 
 def colonizationTimeFig(allDF):
     df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
@@ -186,6 +220,58 @@ def colonizationTimeFig(allDF):
             tierOff += 1
         patchOff += 1
         fig.suptitle('New Colonizations by Tier')
+
+
+def arrivalsTimeFig(allDF):
+    df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
+    nPatch = df['patch'].nunique()
+    nTier = df['tier'].nunique()
+
+    fig, axes = plt.subplots(nrows=nTier, ncols=nPatch)
+    axes.reshape((nTier, nPatch))
+    if nTier == 1:
+        axes = axes[np.newaxis, :]
+    if nPatch == 1:
+        axes = axes[:, np.newaxis]
+    patchOff = 0
+    for patch, patchDF in df.groupby(['patch']):
+        tierOff = 0
+        for tier, patchTierDF in patchDF.groupby(['tier']):
+            axes[tierOff, patchOff].plot(patchTierDF['day'].values,
+                                         patchTierDF['localtierarrivals'].values,
+                                         '-')
+            axes[tierOff, patchOff].set_xlabel('Days')
+            axes[tierOff, patchOff].set_ylabel('count')
+            axes[tierOff, patchOff].set_title(tier)
+            tierOff += 1
+        patchOff += 1
+        fig.suptitle('Arrivals by Tier')
+
+
+def creArrivalsTimeFig(allDF):
+    df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
+    nPatch = df['patch'].nunique()
+    nTier = df['tier'].nunique()
+
+    fig, axes = plt.subplots(nrows=nTier, ncols=nPatch)
+    axes.reshape((nTier, nPatch))
+    if nTier == 1:
+        axes = axes[np.newaxis, :]
+    if nPatch == 1:
+        axes = axes[:, np.newaxis]
+    patchOff = 0
+    for patch, patchDF in df.groupby(['patch']):
+        tierOff = 0
+        for tier, patchTierDF in patchDF.groupby(['tier']):
+            axes[tierOff, patchOff].plot(patchTierDF['day'].values,
+                                         patchTierDF['localtiercrearrivals'].values,
+                                         '-')
+            axes[tierOff, patchOff].set_xlabel('Days')
+            axes[tierOff, patchOff].set_ylabel('count')
+            axes[tierOff, patchOff].set_title(tier)
+            tierOff += 1
+        patchOff += 1
+        fig.suptitle('CRE Carrier Arrivals by Tier')
 
 
 def cpTimeFig(allDF):
@@ -307,9 +393,22 @@ def main():
         logger.error('Exception in occupancyTimeFig: %s' % e)
         raise
     try:
+        occupancyTierTimeFig(allDF, facDict)
+    except Exception, e:
+        logger.error('Exception in occupancyTimeFig: %s' % e)
+        raise
+    try:
         pathogenTimeFig(allDF)
     except Exception, e:
         logger.error('Exception in pathogenTimeFig: %s' % e)
+    try:
+        arrivalsTimeFig(allDF)
+    except Exception, e:
+        logger.error('Exception in arrivalsTimeFig: %s' % e)
+    try:
+        creArrivalsTimeFig(allDF)
+    except Exception, e:
+        logger.error('Exception in creArrivalsTimeFig: %s' % e)
     if 'trackedValues' in inputDict:
         if 'newColonizations' in inputDict['trackedValues']:
             try:
