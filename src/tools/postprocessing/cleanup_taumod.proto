@@ -21,4 +21,46 @@ echo $scenario
 source ${HOME}/setup_python_path_olympus.sh
 
 cd $workdir
-$tooldir/parse_taumod_out.py -i taumod.log -o taumod_${scenario}.mpk
+
+if [ -e taumod_${scenario}.mpk ]
+then
+	echo "taumod_${scenario}.mpk already exists; skipping post-processing
+else
+	$tooldir/parse_taumod_out.py -i taumod.log -o taumod_${scenario}.mpk
+fi
+
+ofiles=`ls *.out | grep -v $SLURM_JOBID`
+if [ `wc -w <<< $ofiles` -ne 0 ]
+then
+	tar -czf outfiles_${scenario}.tgz $ofiles
+	if [ $? -eq 0 ]
+	then
+		rm $ofiles
+		echo '.out files were tarred and removed'
+	else
+		echo 'Tar of .out files failed; not removed'
+	fi
+else
+	echo 'No .out files to tar and compress'
+fi
+
+count=`ls -1 pyrhea_*.pkl | wc -l`
+if [ $count != 0 ]
+then
+	gzip pyrhea_*.pkl
+	echo 'Notes files were compressed'
+else
+	echo 'No notes files found'
+fi
+
+echo 'Removing communication pkl files'
+rm tau_data_*.pkl
+rm expected_data_*.pkl
+
+count=`ls -1 *.mpz | wc -l`
+if [ $count != 0 ]
+then
+	rm -r pyrhea_*_out.bcz_0
+else
+	echo 'No .mpz files found so .bcz directories will not be removed'
+fi
