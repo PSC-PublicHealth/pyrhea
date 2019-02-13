@@ -24,7 +24,7 @@ cd $workdir
 
 if [ -e taumod_${scenario}.mpk ]
 then
-	echo "taumod_${scenario}.mpk already exists; skipping post-processing
+	echo "taumod_${scenario}.mpk already exists - skipping post-processing"
 else
 	$tooldir/parse_taumod_out.py -i taumod.log -o taumod_${scenario}.mpk
 fi
