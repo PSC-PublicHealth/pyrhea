@@ -70,7 +70,7 @@ then
 	count=`ls -1 diagnostics/*.png | wc -l`
 	if [ $count != 0 ]
 	then
-		gzip ${scenario}_diagnostics.zip diagnostics/*.png
+		zip ${scenario}_diagnostics.zip diagnostics/*.png
 		if [ $? -eq 0 ]
 		then
 			rm diagnostics/*.png
