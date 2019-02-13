@@ -1,0 +1,92 @@
+#! /bin/bash
+#
+#SBATCH -N 1
+#SBATCH --constraint="intel"
+#SBATCH --mem-per-cpu=20000
+#xxxxSBATCH --ntasks-per-node=2
+#xxxxSBATCH -p RM-shared
+#SBATCH --time=2:00:00
+
+scenario=%scenario%
+
+echo $scenario
+
+source ${HOME}/setup_python_path_olympus.sh
+
+runyaml=%runyaml%
+basedir=%basedir%
+bundledir=%bundledir%
+workdir=%workdir%
+topdir=%topdir%
+minNotesSz=%minNotesSz%
+pyrheadir=%pyrheadir%
+targetdir=%targetdir%
+tooldir=$pyrheadir/src/tools
+
+cd $workdir
+
+
+ofiles=`ls *.out | grep -v $SLURM_JOBID`
+if [ `wc -w <<< $ofiles` -ne 0 ]
+then
+	tar -czf outfiles_${scenario}.tgz $ofiles
+	if [ $? -eq 0 ]
+	then
+		rm $ofiles
+		echo '.out files were tarred and removed'
+	else
+		echo 'Tar of .out files failed; not removed'
+	fi
+else
+	echo 'No .out files to tar and compress'
+fi
+
+csvfiles=`ls *.csv `
+if [ `wc -w <<< $csvfiles` -ne 0 ]
+then
+	tar -czf csvfiles_${scenario}.tgz $csvfiles
+	if [ $? -eq 0 ]
+	then
+		rm $csvfiles
+		echo '.csv files were tarred and removed'
+	else
+		echo 'Tar of .csv files failed; not removed'
+	fi
+else
+	echo 'No .csv files to tar and compress'
+fi
+
+count=`ls -1 pyrhea_*.pkl | wc -l`
+if [ $count != 0 ]
+then
+	gzip pyrhea_*.pkl
+	echo 'Notes files were compressed'
+else
+	echo 'No notes files found'
+fi
+
+if [ -d diagnostics ]
+then
+	count=`ls -1 diagnostics/*.png | wc -l`
+	if [ $count != 0 ]
+	then
+		gzip ${scenario}_diagnostics.zip diagnostics/*.png
+		if [ $? -eq 0 ]
+		then
+			rm diagnostics/*.png
+		else
+			echo 'zip failed; diagnostic images not deleted'
+		fi
+	else
+		echo 'No diagnostics images found'
+	fi
+fi
+
+count=`ls -1 *.mpz | wc -l`
+if [ $count != 0 ]
+then
+	rm -r pyrhea_*_out.bcz_0
+else
+	echo 'No .mpz files found so .bcz directories will not be removed'
+fi
+

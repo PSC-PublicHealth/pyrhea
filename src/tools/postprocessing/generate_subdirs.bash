@@ -25,7 +25,7 @@ customize () {
 }
 
 scenariolist=${1-$DEFAULT}
-for scenario in `cat $scenariolist`
+for scenario in `cat $scenariolist | grep -v '^#'`
 do
     mkdir -p $scenario
 
@@ -48,8 +48,10 @@ do
     customize $topdir/gen_csvfiles.proto > gen_csvfiles_parallel.sl
     customize $topdir/gen_costs_parallel.proto > gen_costs_parallel.sl
     customize $topdir/run_diagnostics.proto > run_diagnostics.sl
+    customize $topdir/cleanup.proto > run_diagnostics.sl
     customize $topdir/run_taumod.proto > run_taumod.sl
     customize $topdir/taumod_runner.proto > taumod_runner.bash
+    customize $topdir/cleanup_taumod.proto > run_diagnostics.sl
     chmod +x taumod_runner.bash
     echo *
     popd > /dev/null
