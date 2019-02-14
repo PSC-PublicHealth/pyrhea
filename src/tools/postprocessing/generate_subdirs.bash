@@ -33,6 +33,10 @@ do
     #targetdir=$bundledir/baseline
     targetdir=$bundledir/$scenario
     nNotes=`$topdir/find_notes.py $targetdir $minNotesSz | wc -l`
+    altNNotes=`$topdir/find_bcz.py $targetdir | wc -l`
+    if [ $altNNotes > $nNotes ]; then
+    	nNotes=$altNNotes
+	fi
     if [ $nNotes -ne 0 ]; then
 	maxNote=$(( $nNotes-1 ))
     else
