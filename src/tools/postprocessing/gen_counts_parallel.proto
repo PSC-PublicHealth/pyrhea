@@ -33,7 +33,7 @@ do
 	narr+=($fn)
 done
 
-myNote=${narr[$ar]}
+myNote=${narr[$ar - ${SLURM_ARRAY_TASK_MIN}]}
 outName="${workdir}/${myNote}_counts"
 sto=$workdir/gather_counts_${ar}.out
 
