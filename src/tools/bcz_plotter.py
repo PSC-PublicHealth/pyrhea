@@ -161,7 +161,6 @@ def occupancyTimeFig(allDF, facDict, meanPopByCat=None):
 
 
 def occupancyTierTimeFig(allDF, facDict, meanPopByTier=None):
-    print 'allDF columns: %s' % allDF.columns
     df = allDF.groupby(['day', 'tier', 'patch']).sum().reset_index()
     nPatch = df['patch'].nunique()
     nTier = df['tier'].nunique()
@@ -339,6 +338,11 @@ def scanAllFacilities(facilityDirs, facDict=None):
 
     return transOutByCat, meanPopByCat
 
+def tabularSummary(df, col, title):
+    df['year'] = (df['day']//365) + 1
+    print '----------- %s -------------' % title
+    print df[['year', 'tier', col]].groupby(['year', 'tier']).sum()/365.0
+
 def main():
     """
     main
@@ -393,6 +397,7 @@ def main():
         logger.error('Exception in occupancyTimeFig: %s' % e)
         raise
     try:
+        tabularSummary(allDF, 'TOTAL', 'Average population by year and tier')
         occupancyTierTimeFig(allDF, facDict)
     except Exception, e:
         logger.error('Exception in occupancyTimeFig: %s' % e)
@@ -402,16 +407,19 @@ def main():
     except Exception, e:
         logger.error('Exception in pathogenTimeFig: %s' % e)
     try:
+        tabularSummary(allDF, 'localtierarrivals', 'Average arrivals by year and tier')
         arrivalsTimeFig(allDF)
     except Exception, e:
         logger.error('Exception in arrivalsTimeFig: %s' % e)
     try:
+        tabularSummary(allDF, 'localtiercrearrivals', 'Average colonized arrivals by year and tier')
         creArrivalsTimeFig(allDF)
     except Exception, e:
         logger.error('Exception in creArrivalsTimeFig: %s' % e)
     if 'trackedValues' in inputDict:
         if 'newColonizations' in inputDict['trackedValues']:
             try:
+                tabularSummary(allDF, 'localtiernewcolonized', 'Average colonizations by year and tier')
                 colonizationTimeFig(allDF)
             except Exception, e:
                 logger.error('Exception in colonizationTimeFig: %s' % e)
