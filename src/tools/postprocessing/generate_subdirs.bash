@@ -7,6 +7,13 @@ runyaml='OC_baseline_run_5_3.yaml'
 prepscript='baseline_OC_prep.py'
 DEFAULT='scenario_names.txt'
 minNotesSz=100000000
+bundledir=$topdir  # default value for normal operation
+
+#
+# To process run output which already exists in another directory, set bundledir
+# and targetdir below
+#
+#bundledir=/pylon5/pscstaff/jleonard/pyrhea/output/201811_Chicago_baseline
 
 customize () {
     cat $1 \
@@ -29,8 +36,7 @@ for scenario in `cat $scenariolist | grep -v '^#'`
 do
     mkdir -p $scenario
 
-    bundledir=$outbasedir
-    #targetdir=$bundledir/baseline
+    #targetdir=$bundledir/work2_redo
     targetdir=$bundledir/$scenario
     nNotes=`$topdir/find_notes.py $targetdir $minNotesSz | wc -l`
     altNNotes=`$topdir/find_bcz.py $targetdir | wc -l`
