@@ -189,6 +189,9 @@ class ServerLock(object):
     def clearWaiting(self, client, shared):
         self.clientsWaiting.remove((client, shared))
 
+    def count(self):
+        return self.accessCount
+
 
 class LockConnection(object):
     def __init__(self, clientSocket, address):
@@ -239,6 +242,14 @@ class LockConnection(object):
                 del self.locks[lName]
                 self.send("RELEASED %s\n"%lName)
                 continue
+
+            if cmd == "count":
+                if lName in LockDict:
+                    self.send("ACCESSCOUNT %s %d\n"%(lName, LockDict[lName].count()))
+                else:
+                    self.send("ACCESSCOUNT %s 0\n"%lName)
+                continue
+                
 
             # all other commands require an lName that isn't already in locks
             if lName in self.locks:
@@ -519,6 +530,22 @@ class LockClient(object):
         assert result=="RELEASED", "invalid response to release from lock server"
         return True
 
+    def getAccessCount(self, lName):
+        req = "count %s\n"%lName
+        self.sock.send(req)
+        s = ""
+        while "\n" not in s:
+            s += self.sock.recv(select.PIPE_BUF)
+
+        assert s.endswith('\n'), "invalid strings coming from lock server"
+        s = s.rstrip()
+
+        result, name, count = s.split(' ', 2)
+        assert result=="ACCESSCOUNT", "invalid response to requesting a lock count"
+        assert name == lName, "lock name in access count invalid"
+        assert count[0].isdigit(), "lock count is not a number" #not a complete check but I'm probably already excessive
+        return int(count)
+    
     def close(self):
         try:
             self.sock.close()
@@ -561,30 +588,14 @@ class Lock(object):
         LOGGER.debug('exit Lock %s %s', self.lName, ('shared' if self.shared else ''))
 
     def lock(self):
-        global DefaultLockClient
-        
-        for i in xrange(60):
+        for i in xrange(2):
             try:
-                if self.lockClient is None:
-                    if DefaultLockClient is None:
-                        if self.discoverServer is False:
-                            DefaultLockClient = LockClient(self.host, self.port)
-                        else:
-                            if self.discoverServer is True:
-                                filename = None
-                            else:
-                                filename = self.discoverServer
-                            self.host, self.port, _pid =  discoverLockServer(filename)
-                            DefaultLockClient = LockClient(self.host, self.port)
-
-                    self.lockClient = DefaultLockClient
+                self.lockClient = getLockConnection(self.discoverServer, self.host, self.port, self.lockClient)
                 cmd = Lock.cmdDict[(self.shared, self.wait)]
                 return self.lockClient.getLock(cmd, self.lName)
             except:
-                self.lockClient = None
+                pass
 
-            time.sleep(5)
-            LOGGER.info("retrying lock server")
         raise RuntimeError("Can't reach lockserver")
 
     def release(self):
@@ -596,6 +607,50 @@ class SharedLock(Lock):
         kwargs['shared']=True
         super(SharedLock, self).__init__(*args, **kwargs)
 
+def lockAccessCount(lockName, discoverServer=True,
+                 host=None, port=None, lockClient=None):
+    for i in xrange(2):
+        try:
+            lockClient = getLockConnection(discoverServer, host, port, lockClient)
+            return lockClient.getAccessCount(lockName)
+        except:
+            pass
+
+    raise RuntimeError("Can't get access count from lock server")
+    
+def getLockConnection(discoverServer=True, host=None, port=None, lockClient=None):
+    """
+    abstract out the code that chooses whether to connect to the lock server or use an existing 
+    connection, optionally makes the connection, and returns the connection that should be used.
+    this includes waiting some amount of time for the lock server to be started.
+    """
+    global DefaultLockClient
+
+    if lockClient is not None:
+        return lockClient
+    if DefaultLockClient is not None:
+        return DefaultLockClient
+    
+    for i in xrange(30):
+        try:
+            if discoverServer is False:
+                DefaultLockClient = LockClient(self.host, self.port)
+                return DefaultLockClient
+            else:
+                if discoverServer is True:
+                    filename = None
+                else:
+                    filename = discoverServer
+                host, port, _pid =  discoverLockServer(filename)
+                DefaultLockClient = LockClient(host, port)
+                return DefaultLockClient
+
+        except:
+            DefaultLockClient = None
+
+        time.sleep(5)
+        LOGGER.info("retrying lock server")
+    raise RuntimeError("Can't reach lockserver")
 
 ################################################
 #
