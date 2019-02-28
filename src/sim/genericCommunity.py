@@ -503,8 +503,9 @@ class CommunityWard(Ward):
         super(CommunityWard, self).handlePatientArrival(patientAgent, timeNow)
         # If a patient lands here, make this fac its home unless it's FRAIL
         # (and thus should not be landing here at all...)
-        infectionLogger.info("%s arriving in community at time %d with colonization status %s"%(
-            patientAgent.name, timeNow, PthStatus.names[patientAgent.getStatus().pthStatus]))
+        if timeNow is not None:
+            infectionLogger.info("%s arriving in community at time %d with colonization status %s"%(
+                patientAgent.name, timeNow, PthStatus.names[patientAgent.getStatus().pthStatus]))
         if patientAgent.getStatus().overall != PatientOverallHealth.FRAIL:
             patientAgent.setStatus(homeAddr=findQueueForTier(CareTier.HOME,
                                                              self.fac.reqQueues).getGblAddr())
