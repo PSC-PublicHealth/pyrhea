@@ -85,7 +85,7 @@ fi
 count=`ls -1 *.mpz | wc -l`
 if [ $count != 0 ]
 then
-	rm -r pyrhea_*_out.bcz_0
+	for dirname in pyrhea_*_out.bcz_0; do echo 'deleting ' $dirname; find $dirname -delete; done
 else
 	echo 'No .mpz files found so .bcz directories will not be removed'
 fi
