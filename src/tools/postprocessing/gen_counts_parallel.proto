@@ -40,4 +40,5 @@ sto=$workdir/gather_counts_${ar}.out
 runName=$bundledir/$runyaml
 
 python gather_counts.py -n $targetdir/$myNote -m 1 \
-       --nocsv --nostats --out $outName  $runName >& $sto
+    --nocsv --nostats --out $outName -x $workdir/xdro_facs.yaml \
+    $runName >& $sto

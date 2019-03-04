@@ -39,7 +39,7 @@ do
     #targetdir=$bundledir/work2_redo
     targetdir=$bundledir/$scenario
     nNotes=`$topdir/find_notes.py $targetdir $minNotesSz | wc -l`
-    altNNotes=`$topdir/find_bcz.py $targetdir | wc -l`
+    altNNotes=`$topdir/find_bcz.py $targetdir $minNotesSz | wc -l`
     if [ $altNNotes > $nNotes ]; then
     	nNotes=$altNNotes
 	fi
@@ -51,8 +51,12 @@ do
 
     pushd $scenario > /dev/null
     echo 'building ' $PWD
-    # $topdir/gen_facility_yaml.py $bundledir/$runyaml $scenario \
-    #	> xdro_facs.yaml
+    $topdir/gen_facility_yaml.py $runyaml $topdir $bundledir \
+        $pyrheadir ${PWD} $scenario \
+        > xdro_facs.yaml
+    $topdir/gen_scenario_custom_yaml.py $runyaml $topdir $bundledir \
+        $pyrheadir ${PWD} $scenario \
+        > scenario_custom.yaml
     customize $topdir/runs_by_array.proto > runs_by_array.sl
     customize $topdir/gen_counts_parallel.proto > gen_counts_parallel.sl
     customize $topdir/gen_csvfiles.proto > gen_csvfiles_parallel.sl

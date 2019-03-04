@@ -2,7 +2,7 @@
 #
 #SBATCH -N 1
 #SBATCH --constraint="intel"
-#SBATCH --mem-per-cpu=20000
+#SBATCH --mem-per-cpu=40000
 #xxxxxSBATCH --ntasks-per-node=2
 #xxxxxSBATCH -p RM-shared
 #SBATCH --time=48:00:00
@@ -37,6 +37,7 @@ if [ ! -f $workdir/$prepscript ] ; then
     cp $topdir/$prepscript $workdir
 fi
 cd $workdir
-python $simdir/pyrhea.py --out ${outbase}.pkl -b ${outbase}.bcz \
+python $simdir/pyrhea.py --disableNotes \
+    --out ${outbase}.pkl -b ${outbase}.bcz \
     -c $workdir/$prepscript $bundledir/$runyaml >> $ofile 2>&1
 

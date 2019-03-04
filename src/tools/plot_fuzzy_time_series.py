@@ -83,14 +83,31 @@ def parseSampleFiles(sampFileL):
     sampDF = None
     if VERBOSE:
         print 'Merging datasets...'
-    for idx, df in enumerate(sampDFLWithRun + sampDFL):
+    idx = 0
+    rawDFL = sampDFLWithRun + sampDFL
+    compactDFL = []
+    sampDF = None
+    while rawDFL:
+        df = rawDFL.pop()
         if 'ward' in df:
             # Sum over wards within a sample
             df = df.groupby(['tier', 'abbrev', 'run', 'day']).sum().reset_index()
             df = df.drop(columns=['ward'])
-        sampDF = pd.concat([sampDF, df])
+        # Sum over facilities within a tier
+        df = df.groupby(['day', 'tier', 'run']).sum().reset_index()
         if DEBUG:
-            print 'merging dataset %s' % idx
+            print 'shrinking %s' % idx
+        for col in df.columns:
+            if col in ['abbrev', 'tier']:
+                df[col] = df[col].astype('category')
+            else:
+                df[col] = df[col].astype('float32')
+        compactDFL.append(df)
+        idx += 1
+    if DEBUG:
+        print 'merging datasets'
+    sampDF = pd.concat(compactDFL, copy=False)
+    compactDFL = None  # free memory
     if VERBOSE:
         print 'Merge compete'
     pthNameL = PthStatus.names.values()[:]
@@ -186,15 +203,12 @@ def main(argv=None):
                     'population': ('TOTAL', 'total population')}[opts.show]
         if VERBOSE:
             print 'Starting pltCurvesWithBounds'
-        tierL = sampDF['tier'].unique()[:]
+        tierL = list(sampDF['tier'].unique())
         tierL.sort()
-        for tier in tierL:
-            if DEBUG:
-                print 'plotting %s' % tier
-            artistL, labelL = pltCurvesWithBounds(sampDF, axes, key, 'day', 'tier', [tier],
-                                   ['baseline %s' % tier])
-            allArtists += artistL
-            allLabels += labelL
+        artistL, labelL = pltCurvesWithBounds(sampDF, axes, key, 'day', 'tier', tierL,
+                                              ['{0}'.format(tier) for tier in tierL])
+        allArtists += artistL
+        allLabels += labelL
         if DEBUG:
             print 'Finished pltCurvesWithBounds'
         axes.legend(allArtists, allLabels, handler_map={tuple: HandlerTuple()})

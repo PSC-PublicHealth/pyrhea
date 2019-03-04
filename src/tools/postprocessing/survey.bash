@@ -1,7 +1,7 @@
 #! /usr/bin/bash -x
 
 #for scenario in `cat scenario_names.txt | grep -v '^#'`
-for scenario in `cat scenario_names.txt | sed 's/#//g'`
+for scenario in `cat scenario_names.txt | grep -v '^##' | sed 's/#//g'`
 do
     echo $scenario
     echo '    mpz files:' `ls $scenario/*.mpz  2>/dev/null | wc -l`  
