@@ -170,6 +170,16 @@
         'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
         'userLevel': 'simple'
 
+      'homeClearColonizedStatusProbChangeStart':
+        '$ref': 'basics_schema.yaml#/definitions/nonneginteger'
+        'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
+        'userLevel': 'simple'
+
+      'homeClearColonizedStatusProbChangeFrac':
+        '$ref': 'basics_schema.yaml#/definitions/fraction'
+        'description': 'COLONIZED patients in the COMMUNITY (care tier HOME) have this chance of having their status reset to CLEAR'
+        'userLevel': 'simple'
+
     'required':
       - 'initialFractionColonized'
       - 'categoryInitialFractionColonized'

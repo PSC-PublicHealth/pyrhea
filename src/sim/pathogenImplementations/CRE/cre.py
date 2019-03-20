@@ -108,6 +108,9 @@ class CRE(Pathogen):
 
         if ward.tier == CareTier.HOME:
             self.clearColonizedStatusProb = _constants['homeClearColonizedStatusProb']['value']
+            self.clearColonizedStatusProbChangeFrac = _constants['homeClearColonizedStatusProbChangeFrac']['value']
+            self.clearColonizedStatusProbChangeStart = _constants['homeClearColonizedStatusProbChangeStart']['value']
+            self.lastUpdate_ccsp = -1
         else:
             self.clearColonizedStatusProb = 0.0
         self.initialFracColonized = self._getInitialFracColonized(ward.fac.abbrev,
@@ -287,7 +290,14 @@ class CRE(Pathogen):
         else:
             assert patientStatus.pthStatus == PthStatus.COLONIZED, ('patient has unexpected PthStatus %s' %
                                                                     PthStatus.names[patientStatus.pthStatus])
-            
+
+            if self.clearColonizedStatusProb != 0.0:
+                while self.lastUpdate_ccsp != timeNow:
+                    if self.lastUpdate_ccsp >= self.clearColonizedStatusProbChangeStart:
+                        self.clearColonizedStatusProb *= self.clearColonizedStatusProbChangeFrac
+                    self.lastUpdate_ccsp += 1
+                    
+
             key = (startTime - patientStatus.startDatePth, timeNow - patientStatus.startDatePth)
             if patientStatus.canClear:
                 if key not in self.core.spontaneousLossTreeCache:
