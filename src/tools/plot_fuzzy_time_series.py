@@ -185,7 +185,7 @@ def main(argv=None):
         sampFileL = opts.sampfile
         if opts.glob:
             sampFileL = expandGlobbedList(sampFileL)
-        sampDF = parseSampleFiles(sampFileL)
+        sampDF = parseSampleFiles(sampFileL, opts.lowdate)
 
         if VERBOSE:
             print 'Merging individual facilities'
