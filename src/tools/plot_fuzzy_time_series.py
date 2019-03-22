@@ -39,10 +39,10 @@ DEBUG = False
 TESTRUN = 0
 PROFILE = 0
 
-def parseSampleFiles(sampFileL):
+def parseSampleFiles(sampFileL, lowDate=None):
     """
     Given a list of msgpack files, parse them and return the collected dataset.
-    
+
     'run' and 'TOTAL' columns are added.
     """
     sampDFL = []
@@ -102,6 +102,8 @@ def parseSampleFiles(sampFileL):
                 df[col] = df[col].astype('category')
             else:
                 df[col] = df[col].astype('float32')
+        if lowDate is not None:
+            df = df[df.day >= lowDate]
         compactDFL.append(df)
         idx += 1
     if DEBUG:
@@ -139,7 +141,7 @@ def main(argv=None):
         # setup option parser
         parser = OptionParser(version=program_version_string, epilog=program_longdesc,
                               description=program_license)
-        
+
         parser.add_option("-s", "--sampfile", dest="sampfile", action="append",
                           help="msgpack file containing a pandas dataframe of samples",
                           metavar="FILE")
@@ -156,10 +158,14 @@ def main(argv=None):
                           help="A label for the figure [default: %default]")
         parser.add_option("-o", "--out", dest="out", action="store",
                           help="Name for output image file [default: %default]")
+        parser.add_option('--lowdate', action='store', type='int',
+                          help=('low cutoff date for data conversion.'
+                                '  The default is the earliest available date'))
 
         # set defaults
         parser.set_defaults(tauopts="./taumod_config.yaml", target="expected.pkl", log=False,
-                            show='prevalence', figlbl=None, out="timeseries.png")
+                            show='prevalence', figlbl=None, out="timeseries.png",
+                            lowdate=None)
 
         # process options
         (opts, args) = parser.parse_args(argv)
