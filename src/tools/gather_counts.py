@@ -436,6 +436,7 @@ def main():
         print 'reading pre-parsed notes'
         for mFname in mpzNotes:
             df = pd.read_msgpack(mFname)
+            df = df[df.day >= lowCutoffDays]
             # We don't care about HOME tier, so save a bunch of space
             df = df.drop(index=df[df['tier']=='HOME'].index)
             totalStats.append(df)
