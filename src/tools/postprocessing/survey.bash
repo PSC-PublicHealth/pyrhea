@@ -1,6 +1,7 @@
 #! /usr/bin/bash -x
 
-lastday=2921
+. run_info.bash
+lastday=$(( $totalrundays + 1 ))
 
 count_running() {
     jobid=$1

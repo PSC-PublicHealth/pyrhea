@@ -57,7 +57,10 @@ do
     $topdir/gen_scenario_custom_yaml.py $runyaml $topdir $bundledir \
         $pyrheadir ${PWD} $scenario \
         > scenario_custom.yaml
-    customize $topdir/runs_by_array.proto > runs_by_array.sl
+	$topdir/gen_run_info.py $runyaml $topdir $bundledir \
+        $pyrheadir ${PWD} $scenario \
+        > run_info.bash
+	customize $topdir/runs_by_array.proto > runs_by_array.sl
     customize $topdir/gen_counts_parallel.proto > gen_counts_parallel.sl
     customize $topdir/gen_csvfiles.proto > gen_csvfiles_parallel.sl
     customize $topdir/gen_costs_parallel.proto > gen_costs_parallel.sl
