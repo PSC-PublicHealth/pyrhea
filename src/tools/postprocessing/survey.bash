@@ -1,9 +1,25 @@
 #! /usr/bin/bash -x
 
-#for scenario in `cat scenario_names.txt | grep -v '^#'`
+lastday=2921
+
+count_running() {
+    jobid=$1
+    echo $(squeue -u `whoami` | grep 'runs_' | grep "$jobid" | wc -l)
+}
+
+get_rhea_jobids() {
+    echo $(for fname in $scenario/slurm-*_*.out; do s=`basename "$fname"`; s="${s##*-}"; s="${s%_*}"; echo "$s"; done | uniq)
+}
+
 for scenario in `cat scenario_names.txt | grep -v '^##' | sed 's/#//g'`
 do
-    echo $scenario
+    echo '---------' $scenario
+    finished_runs=$(for fname in $scenario/pyrhea_*_out.out; do grep 'bump time' $fname | tail -1; done | grep $lastday | wc -l)
+    num_running=0
+    for jobid in $(get_rhea_jobids); do
+	num_running=$(( $num_running + $(count_running $jobid) ))
+    done
+    echo '    RHEA runs: finished ' $finished_runs 'running' $num_running
     echo '    mpz files:' `ls $scenario/*.mpz  2>/dev/null | wc -l`  
     csv_raw=`ls $scenario/*.csv 2>/dev/null | grep _raw_ | wc -l`
     csv_cost=`ls $scenario/*.csv 2>/dev/null | grep _costs_ | wc -l`
