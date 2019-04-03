@@ -1,8 +1,5 @@
 #! /usr/bin/bash -x
 
-. run_info.bash
-lastday=$(( $totalrundays + 1 ))
-
 count_running() {
     jobid=$1
     echo $(squeue -u `whoami` | grep 'runs_' | grep "$jobid" | wc -l)
@@ -15,6 +12,8 @@ get_rhea_jobids() {
 for scenario in `cat scenario_names.txt | grep -v '^##' | sed 's/#//g'`
 do
     echo '---------' $scenario
+    . $scenario/run_info.bash
+    lastday=$(( $totalrundays + 1 ))
     finished_runs=$(for fname in $scenario/pyrhea_*_out.out; do grep 'bump time' $fname | tail -1; done | grep $lastday | wc -l)
     num_running=0
     for jobid in $(get_rhea_jobids); do
