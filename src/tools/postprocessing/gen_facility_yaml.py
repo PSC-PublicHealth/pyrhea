@@ -7,8 +7,6 @@ import tools_util as tu
 import pyrheautils as pu
 import csv
 
-masterScenarioDir = '/pylon5/pscstaff/jleonard/pyrhea/output/cre_bundle'
-
 def getCapturedLocs(fileName, key):
     locL = []
     with open(fileName, 'rU') as f:
@@ -22,8 +20,6 @@ def getCapturedLocs(fileName, key):
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
-    scenario = sys.argv[2]
-    fn = sys.argv[1]
     runYaml = argv[0]
     topDir = argv[1]
     bundleDir = argv[2]
@@ -33,24 +29,28 @@ def main(argv=None):
 
     fn = os.path.join(bundleDir, runYaml)
     inputDict = tu.readModelInputs(fn)
-
     pu.prepPathTranslations(inputDict)
+
     fn = pu.pathTranslate('$(CONSTANTS)/xdro_registry_scenario_constants.yaml')
     if not os.path.isabs(fn):
         fn = os.path.join(os.path.dirname(__file__), fn)
     with open(fn, 'rU') as f:
         xdroJSON = yaml.load(f)
 
+    sCD = pu.pathTranslate('$(MODELDIR)/scenario_constants')
     if 'capture_' in scenario:
         # this is XDRO-style
-        scenariosCSV = os.path.join(topDir,
-                                    'facility_capture_percentages.csv')
         capture = int(scenario.split('capture_')[1].split('_')[0])
         key = '{0}% of facilities'.format(capture)
+        scenariosCSV = os.path.join(sCD,
+                                    'facility_capture_percentages.csv')
     else:
         # this is CRE-style
-        scenariosCSV = os.path.join(masterScenarioDir, 'scenario_groups.csv')
-        key = scenario
+        if scenario.startswith('baseline_'):
+            key = scenario[len('baseline_'):]
+        else:
+            key = scenario
+        scenariosCSV = os.path.join(sCD, 'scenario_groups.csv')
 
     locL = getCapturedLocs(scenariosCSV, key)
 
