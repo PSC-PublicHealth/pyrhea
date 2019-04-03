@@ -1,86 +1,70 @@
-import csv
 import os
-
 import sys
-sys.path.append("/pylon5/pscstaff/jleonard/pyrhea/pyrhea/src/sim")
+import yaml
+from shutil import copytree
 
 import pyrheautils
+from lockserver import Lock
 
-onn = pyrheautils.outputNotesName
-#onn = '/pylon5/pscstaff/jleonard/pyrhea/output/cre_bundle/initial_scenarios/CRE_Prevalence_13_Mile/pyrhea__SNA_CRE_Prev_13_Mile__20.pkl'
-
-
-scenario = onn.split('__')[1]
-
-print "*******************"
-print "*******************"
-print "*******************"
-print "cre bundle plus xdro"
-print ""
-print "scenario: %s"%scenario
-print "*******************"
-print "*******************"
-print "*******************"
-
-
-
-
-def getScenarioFacilities(scenario):
-    ret = []
-    with open('/pylon5/pscstaff/jleonard/pyrhea/output/cre_bundle/scenario_groups.csv') as f:
-        reader = csv.DictReader(f)
-        for l in reader:
-            if l[scenario] == '':
-                continue
-            ret.append(l[scenario])
-            
-    return ret
+CACHE_TO_LOCAL_DISK = False
 
 def mvCache():
     cache = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
-    newCache = os.path.join('/pylon5/pscstaff/jleonard/pyrhea/output/201812_Chicago_xdro_bundle/cache', str(os.environ['SLURM_JOBID']))
-    print "copying cache from %s to %s"%(cache, newCache)
-    cmd = "mkdir %s"%newCache
-    print cmd
-    os.system(cmd)
-    cmd = "cp -dR %s/* %s"%(cache, newCache)
-    print cmd
-    os.system(cmd)
-    print "finished making copy"
-    pyrheautils.PATH_STRING_MAP['COMMUNITYCACHEDIR'] = newCache
-    return
+    if CACHE_TO_LOCAL_DISK:
+        if 'SLURM_ARRAY_JOB_ID' in os.environ:
+            lockName = '%s:%s' % (os.environ['SLURM_ARRAY_JOB_ID'], os.environ['HOSTNAME'])
+            infoFName = '/tmp/info_%s' % os.environ['SLURM_ARRAY_JOB_ID']
+        else:
+            lockName = '%s:%s' % (os.environ['SLURM_JOB_ID'], newCache)
+            infoFName = '/tmp/info_%s' % os.environ['SLURM_JOB_ID']
+        newCache = None
+        with Lock(lockName):
+            doTheCopy = False
+            if os.path.exists(infoFName):
+                print 'reading ', infoFName
+                with open(infoFName, 'rU') as f:
+                    newCache = f.readline().strip()
+                    print 'newCache is ', newCache
+                if not os.path.exists(newCache):
+                    # old copy is bad
+                    print 'this newCache is empty; trying again'
+                    doTheCopy = True
+            else:
+                doTheCopy = True
+                print 'no info file found'
 
-def bridges_mvCache():
-    localDir = os.environ['LOCAL']
-    cache = '/pylon5/pscstaff/jleonard/pyrhea/pyrhea/src/sim/cache/ChicagoLand/*'
-    cpCmd = 'cp -R %s %s'%(cache, localDir)
-    print cpCmd
-    os.system(cpCmd)
-    print "finished copying"
+            if doTheCopy:
+                newCache = os.path.join(os.environ['LOCAL'], os.path.split(cache)[1])
+                with open(infoFName, 'w') as f:
+                    f.write(newCache)
+                print 'wrote new cache location %s to %s' % (newCache, infoFName)
+                copytree(cache, newCache)
+                print 'finished copying'
+            else:
+                print 'Someone else copied the cache to %s' % newCache
+    else:
+        newCache = os.path.join('/pylon5/pscstaff/welling/pyrhea/caches',
+                                str(os.environ['SLURM_JOBID']), os.path.split(cache)[1])
+        print "copying cache from %s to %s"%(cache, newCache)
+        copytree(cache, newCache)
+        print "finished making copy"
+
+    pyrheautils.PATH_STRING_MAP['COMMUNITYCACHEDIR'] = newCache
+                
     # And tell pyrhea that we moved this:
-    pyrheautils.PATH_STRING_MAP['COMMUNITYCACHEDIR'] = localDir
-    
+    assert newCache is not None, 'Somehow we avoided setting newCache'
+    pyrheautils.PATH_STRING_MAP['COMMUNITYCACHEDIR'] = newCache
 
 mvCache()
-facList = getScenarioFacilities(scenario)
-print "facilities in scenario:"
-print facList
 
-transModList = []
+with open('scenario_custom.yaml', 'rU') as f:
+    allData = yaml.load(f)
+assert 'constantsReplacementData' in allData, 'scenario custom yaml has no constantsReplacementData'
+assert 'facilitiesReplacementData' in allData, 'scenario custom yaml has no facilitiesReplacementData'
 
-facEltL = []
-for fac in facList:
-    facEltL.append({'abbrev': fac,
-                    'times': {'startDate': 1, 'endDate': 50000}})
+constantsReplacementData = allData['constantsReplacementData']
+facilitiesReplacementData = allData['facilitiesReplacementData']
 
-transModList.append([['locationsImplementingScenario', 'facilities'],
-                     facEltL])
-transModList.append([['locationsImplementingScenario', 'prov'],
-                     '%s scenario'%scenario])
+print 'constantsReplacementData: ', constantsReplacementData
+print 'facilitiesReplacementData: ', facilitiesReplacementData
 
-constantsReplacementData = {"$(CONSTANTS)/xdro_plus_cre_bundle_scenario_constants.yaml":
-                            transModList,
-                            "$(CONSTANTS)/xdro_registry_scenario_constants.yaml": # strictly for gather_counts.py
-                            [[['locationsImplementingScenario', 'locAbbrevList'],facList]]}
-facilitiesReplacementData = {}
-print constantsReplacementData
