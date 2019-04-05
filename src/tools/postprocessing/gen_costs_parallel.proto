@@ -21,17 +21,11 @@ source ${HOME}/setup_python_path_olympus.sh
 
 cd $tooldir
 
-narr=()
-for fn in `$topdir/find_notes.py $targetdir $minNotesSz`
-do
-	narr+=($fn)
-done
-
 outName="${workdir}/${scenario}_costs"
 sto=$workdir/compute_costs.out
 
 runName=$bundledir/$runyaml
 
-python compute_costs.py ${narr[@]/#/-n $targetdir\/} \
+python compute_costs.py -n $workdir/'pyrhea_*_dataframe.mpz' --glob \
     -r 5000 -m 14 -x $workdir/xdro_facs.yaml \
     --out $outName $runName >& $sto
