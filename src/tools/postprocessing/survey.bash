@@ -16,7 +16,7 @@ do
     echo '---------' $scenario
     . $scenario/run_info.bash
     lastday=$(( $totalrundays + 1 ))
-    if compgen -G "$scenario/pyrhea_*_out.out"; then
+    if compgen -G "$scenario/pyrhea_*_out.out" > /dev/null; then
 	finished_runs=$(for fname in $scenario/pyrhea_*_out.out; do grep 'bump time' $fname | tail -1; done | grep $lastday | wc -l)
     else
 	finished_runs=0
