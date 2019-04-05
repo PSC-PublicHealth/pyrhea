@@ -6,7 +6,9 @@ count_running() {
 }
 
 get_rhea_jobids() {
-    echo $(for fname in $scenario/slurm-*_*.out; do s=`basename "$fname"`; s="${s##*-}"; s="${s%_*}"; echo "$s"; done | uniq)
+    if compgen -G "$scenario/slurm-*_*.out" > /dev/null; then
+	echo $(for fname in $scenario/slurm-*_*.out; do s=`basename "$fname"`; s="${s##*-}"; s="${s%_*}"; echo "$s"; done | uniq)
+    fi
 }
 
 for scenario in `cat scenario_names.txt | grep -v '^##' | sed 's/#//g'`
@@ -14,7 +16,11 @@ do
     echo '---------' $scenario
     . $scenario/run_info.bash
     lastday=$(( $totalrundays + 1 ))
-    finished_runs=$(for fname in $scenario/pyrhea_*_out.out; do grep 'bump time' $fname | tail -1; done | grep $lastday | wc -l)
+    if compgen -G "$scenario/pyrhea_*_out.out"; then
+	finished_runs=$(for fname in $scenario/pyrhea_*_out.out; do grep 'bump time' $fname | tail -1; done | grep $lastday | wc -l)
+    else
+	finished_runs=0
+    fi
     num_running=0
     for jobid in $(get_rhea_jobids); do
 	num_running=$(( $num_running + $(count_running $jobid) ))
