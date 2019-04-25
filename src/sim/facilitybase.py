@@ -66,10 +66,14 @@ class ClassASetter(PatientStatusSetter):
             return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
 
     def __str__(self):
-        return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
+        if self.forceRelocate:
+            return ('PatientStatusSetter(classA <- %s, forceRelocate=True)'
+                    % DiagClassA.names[self.newClassA])
+        else:
+            return 'PatientStatusSetter(classA <- %s)' % DiagClassA.names[self.newClassA]
 
     def __repr__(self):
-        return ('PatientStatusSetter(classA <- %s, forceReloate=%s)'
+        return ('PatientStatusSetter(classA <- %s, forceRelocate=%s)'
                 % (DiagClassA.names[self.newClassA], self.forceRelocate))
 
 
@@ -646,7 +650,7 @@ class Facility(pyrheabase.Facility):
         by the routines to which it is a parameter.
         """
         if patientDiagnosis.relocateFlag:
-            modifierDct = {pyrheabase.TierUpdateModKey.FORCE_MOVE: True}
+            modifierDct[pyrheabase.TierUpdateModKey.FORCE_MOVE] = True
         else:
             modifierDct = {}
         careTier = None
