@@ -259,13 +259,13 @@ class BayesTree(object):
             if tagTree:
                 topTag, tagPath1, tagPath2 = tagTree
                 if topTag:
-                    ofile.write('%s(%f  tag=%s\n' % (' '*indent, prob, topTag))
+                    ofile.write('%s(%s tag=%s\n' % (' '*indent, prob, topTag))
                 else:
-                    ofile.write('%s(%f\n' % (' '*indent, prob))
+                    ofile.write('%s(%s\n' % (' '*indent, prob))
                 BayesTree._innerDump(path1, tagPath1, indent+4, ofile=ofile)
                 BayesTree._innerDump(path2, tagPath2, indent+4, ofile=ofile)
             else:
-                ofile.write('%s(%f\n' % (' '*indent, prob))
+                ofile.write('%s(%s\n' % (' '*indent, prob))
                 BayesTree._innerDump(path1, None, indent+4, ofile=ofile)
                 BayesTree._innerDump(path2, None, indent+4, ofile=ofile)
             ofile.write('%s)\n' % (' '*indent))
