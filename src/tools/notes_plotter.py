@@ -272,7 +272,7 @@ def timeSeriesListGenerator(specialDict, specialDictKey):
             assert 'day' in fields, 'Date field is missing for special data %s' % patchName
             dayV = np.array(fields['day'])
             del fields['day']
-            
+
             for key, fld in fields.items():
                 fld = np.array(fld)
                 try:
@@ -498,17 +498,17 @@ def patientFlowFig(allOfCategoryDict):
     figs3.canvas.set_window_title("Patient Flow By Tier")
 
 
-def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
-#     fig4, ax4 = plt.subplot()
-    fig4 = plt.figure(figsize=(len(catNames), 2))
-    ax4 = fig4.gca()
-    ax4.set_xlim((-0.5, len(catNames)-0.5))
-    ax4.set_ylim((-0.5, 1.5))
-    ax4.set_aspect('equal', 'datalim')
-    ax4.set_xticks(range(len(catNames)))
-    ax4.set_yticks([0.0, 1.0])
-    ax4.set_xticklabels(catNames)
-    ax4.set_yticklabels(['real', 'sim'])
+def patientFateFigClassic(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
+#     fig, axes = plt.subplot()
+    fig = plt.figure(figsize=(len(catNames), 2))
+    axes = fig.gca()
+    axes.set_xlim((-0.5, len(catNames)-0.5))
+    axes.set_ylim((-0.5, 1.5))
+    axes.set_aspect('equal', 'datalim')
+    axes.set_xticks(range(len(catNames)))
+    axes.set_yticks([0.0, 1.0])
+    axes.set_xticklabels(catNames)
+    axes.set_yticklabels(['real', 'sim'])
     clrMap = {'death': 'black',
               'HOME': 'green',
               'other': 'green',
@@ -552,7 +552,7 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
         sortMe.sort(reverse=True)
         ct2, lbl2, clrs = [list(tpl) for tpl in zip(*[tpl for idx, tpl in sortMe])]
         row = 1
-        ax4.pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90, colors=clrs,
+        axes.pie(ct2, labels=lbl2, autopct='%1.1f%%', startangle=90, colors=clrs,
                 radius=0.25, center=(offset, row), frame=True)
         row = 0
         labels = []
@@ -581,14 +581,259 @@ def patientFateFig(catNames, allOfCategoryDict, allFacInfo, catToImplDict):
                 labels = []
                 values = []
                 clrs = []
-        ax4.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, colors=clrs,
+        axes.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, colors=clrs,
                 radius=0.25, center=(offset, row), frame=True)
+ 
+    fig.tight_layout()
+    fig.canvas.set_window_title("Patient Fates (Classic mode)")
+#     fig.tight_layout()
+#     fig.canvas.set_window_title("Patient Fates (Classic mode)")
 
-    fig4.tight_layout()
-    fig4.canvas.set_window_title("Patient Fates")
-#     figs4.tight_layout()
-#     figs4.canvas.set_window_title("Patient Fates")
 
+def pieHelper(pairDict):
+    clrMap = {'death': 'black',
+              'birth': 'black',
+              'COMMUNITY': 'green',
+              'HOME': 'green',
+              'other': 'green',
+              'NURSINGHOME': 'red',
+              'NURSING': 'red',
+              'VSNF': 'pink',
+              'SKILNRS': 'gray',
+              'VENT': 'purple',
+              'NURSING+SKILNRS+VENT': 'gray',
+              'HOSPITAL': 'blue',
+              'HOSP': 'blue',
+              'HOSP+ICU': 'blue',
+              'ICU': 'cyan',
+              'LTACH': 'yellow',
+              'LTAC': 'yellow'}
+    implTierMap = {'HOSPITAL': ['HOSP', 'ICU'],
+                   'LTAC': ['LTAC'],
+                   'NURSINGHOME': ['NURSING'],
+                   'COMMUNITY': ['HOME'],
+                   'VSNF': ['NURSING', 'SKILNRS', 'VENT']}
+    wrapOrderMap = {'ICU': 0,
+                    'HOSPITAL': 1,
+                    'HOSP': 1,
+                    'HOSP+ICU': 1,
+                    'LTACH': 2,
+                    'LTAC': 2,
+                    'NURSINGHOME': 3,
+                    'NURSING': 3,
+                    'VSNF': 4,
+                    'SKILNRS': 5,
+                    'NURSING+SKILNRS+VENT': 4,
+                    'VENT': 6,
+                    'COMMUNITY': 7,
+                    'HOME': 7,
+                    'other': 7,
+                    'death': 8,
+                    'birth': 8}
+    if pairDict:
+        sortMe = [(wrapOrderMap[lbl], (ct, lbl, clrMap[lbl])) for lbl, ct in pairDict.items()
+                  if ct != 0]
+        sortMe.sort(reverse=True)
+        print 'sortMe: ',sortMe
+        print 'zip: ', [tpl for idx, tpl in sortMe]
+        values, labels, clrs = [list(tpl) for tpl in zip(*[tpl for idx, tpl in sortMe])]
+    else:
+        labels = []
+        values = []
+        clrs = []
+    return labels, values, clrs
+
+
+def patientFateFig(categoryDict, facDict, numDays):
+    categoryS = set([rec['category'] for rec in facDict.values()] + ['COMMUNITY'])
+    categoryL = list(categoryS)
+    nRealCols = len(categoryL)
+    categoryL.sort()
+    categoryL.append('death')
+    # indices for countMtx are [destinationCat, source count for patients in destinationCat]
+    catIdxD = {catNm:idx for idx, catNm in enumerate(categoryL)}
+    # indices for countMtx are [srcCat, destination count for patients in srcCat]
+    countMtx = np.zeros((len(categoryL), len(categoryL)))
+    simCountMtx = np.zeros((len(categoryL), len(categoryL)))
+
+    for rec in facDict.values():
+        srcCat = rec['category']
+        if srcCat == 'COMMUNITY':
+            pass
+        else:
+            dischPerYear = rec['totalDischarges']['value']
+            if 'deathRate' in rec:
+                deathsPerYear = rec['deathRate']['value'] * dischPerYear
+                dischPerYear -= deathsPerYear
+            else:
+                deathsPerYear = 0.0
+            tTO = 0.0
+            for recRow in rec['totalTransfersOut']:
+                tTO += recRow['count']['value']
+                countMtx[catIdxD[srcCat], catIdxD[recRow['category']]] += recRow['count']['value']
+            countMtx[catIdxD[srcCat], catIdxD['COMMUNITY']] += dischPerYear - tTO
+            # estimate of number of arrivals from community per year
+            fmComCt = rec['totalDischarges']['value'] - rec['totalTransfersIn']['value']
+            countMtx[catIdxD['COMMUNITY'], catIdxD[srcCat]] += fmComCt
+            countMtx[catIdxD[srcCat], catIdxD['death']] += deathsPerYear
+
+    for category in categoryL:
+        if category not in categoryDict:  #special case, for ex. 'death'
+            continue
+        for subKey in categoryDict[category]:
+            srcLoc = subKey.upper()
+            assert srcLoc in facDict, 'Unknown srcLoc %s' % srcLoc
+            srcCat = facDict[srcLoc]['category']
+            assert srcCat == category, 'Table structure is not as expected'
+            srcIdx = catIdxD[srcCat]
+            for subSubKey in categoryDict[category][subKey]:
+                if subSubKey.startswith('fromTo:'):
+                    dstLoc, tier = subSubKey.split(':')[1:]
+                    assert dstLoc in facDict, 'Unknown dstLoc %s' % dstLoc
+                    dstCat = facDict[dstLoc]['category']
+                    dstIdx = catIdxD[dstCat]
+                    simCountMtx[srcIdx, dstIdx] += categoryDict[category][subKey][subSubKey]
+                elif subSubKey == 'death':
+                    ct = categoryDict[category][subKey][subSubKey]
+                    simCountMtx[srcIdx, catIdxD['death']] += ct
+                    
+
+    countScale = 365.0 / numDays
+
+    print 'Patient fate matrices follow'
+    print 'approx reality:'
+    print countMtx[0:nRealCols, :]
+
+    print 'simulation:'
+    print (countScale * simCountMtx)[0:nRealCols, :]
+
+    fig = plt.figure(figsize= (nRealCols, 2))
+    axes = fig.gca()
+    axes.set_xlim((-0.5, nRealCols - 0.5))
+    axes.set_ylim((-0.5, 1.5))
+    axes.set_aspect('equal', 'datalim')
+    axes.set_xticks(range(nRealCols))
+    axes.set_yticks([0.0, 1.0])
+    axes.set_xticklabels(categoryL)
+    axes.set_yticklabels(['approx real', 'sim'])
+    for srcIdx, srcCat in enumerate(categoryL[:nRealCols]):
+
+        row = 0
+        pairDict = {dstCat : countMtx[srcIdx, dstIdx]
+                    for dstIdx, dstCat in enumerate(categoryL)}
+        labels, values, clrs = pieHelper(pairDict)
+        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                 radius=0.25, frame=True, center=(srcIdx, row))
+        row = 1
+        pairDict = {dstCat : simCountMtx[srcIdx, dstIdx]
+                    for dstIdx, dstCat in enumerate(categoryL)}
+        labels, values, clrs = pieHelper(pairDict)
+        scaleFac = countScale * (np.sum(simCountMtx[srcIdx, :])/np.sum(countMtx[srcIdx, :]))
+        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                 radius=(scaleFac * 0.25), frame=True, center=(srcIdx, row))
+
+    fig.tight_layout()
+    fig.canvas.set_window_title("Patient Fates")
+
+
+def patientSourceFig(categoryDict, facDict, numDays):
+    categoryS = set([rec['category'] for rec in facDict.values()] + ['COMMUNITY'])
+    categoryL = list(categoryS)
+    nRealCols = len(categoryL)
+    categoryL.sort()
+    categoryL.append('birth')
+    catIdxD = {catNm:idx for idx, catNm in enumerate(categoryL)}
+    # indices for countMtx are [destinationCat, source count for patients in destinationCat]
+    countMtx = np.zeros((len(categoryL), len(categoryL)))
+    simCountMtx = np.zeros((len(categoryL), len(categoryL)))
+    for rec in facDict.values():
+        srcCat = rec['category']
+        if srcCat == 'COMMUNITY':
+            pass
+        else:
+            dischPerYear = rec['totalDischarges']['value']
+            if 'deathRate' in rec:
+                deathsPerYear = rec['deathRate']['value'] * dischPerYear
+                dischPerYear -= deathsPerYear
+            else:
+                deathsPerYear = 0.0
+            tTO = 0.0
+            for recRow in rec['totalTransfersOut']:
+                tTO += recRow['count']['value']
+                countMtx[catIdxD[recRow['category']], catIdxD[srcCat]] += recRow['count']['value']
+            countMtx[catIdxD['COMMUNITY'], catIdxD[srcCat]] += dischPerYear - tTO
+            # estimate of number of arrivals from community per year
+            fmComCt = rec['totalDischarges']['value'] - rec['totalTransfersIn']['value']
+            countMtx[catIdxD[srcCat], catIdxD['COMMUNITY']] += fmComCt
+            countMtx[catIdxD['COMMUNITY'], catIdxD['birth']] += deathsPerYear
+
+    for category in categoryL:
+        if category not in categoryDict:  # special case, for ex 'birth'
+            continue
+        for subKey in categoryDict[category]:
+            srcLoc = subKey.upper()
+            assert srcLoc in facDict, 'Unknown srcLoc %s' % srcLoc
+            srcCat = facDict[srcLoc]['category']
+            assert srcCat == category, 'Table structure is not as expected'
+            srcIdx = catIdxD[srcCat]
+            for subSubKey in categoryDict[category][subKey]:
+                if subSubKey.startswith('fromTo:'):
+                    dstLoc, tier = subSubKey.split(':')[1:]
+                    assert dstLoc in facDict, 'Unknown dstLoc %s' % dstLoc
+                    dstCat = facDict[dstLoc]['category']
+#                     if category != 'COMMUNITY':
+#                         print '%s %s (%s %s)-> %s (%s) %s' %(srcLoc, tier, srcCat, category, dstLoc, dstCat, 
+#                                                              categoryDict[category][subKey][subSubKey])
+                    dstIdx = catIdxD[dstCat]
+                    simCountMtx[dstIdx, srcIdx] += categoryDict[category][subKey][subSubKey]
+                elif subSubKey == 'birth':
+                    ct = categoryDict[category][subKey][subSubKey]
+                    assert srcCat == 'COMMUNITY', ('%s has %d births but is not a community?'
+                                                   % (subKey, ct))
+                    simCountMtx[srcIdx, catIdxD['birth']] += ct
+
+    countScale = 365.0 / numDays
+
+    print 'Patient source matrices follow'
+    print 'approx reality:'
+    print countMtx[:, 0:nRealCols]
+
+    print 'simulation:'
+    print (countScale * simCountMtx)[:, 0:nRealCols]
+
+    fig = plt.figure(figsize=(nRealCols, 2))
+    axes = fig.gca()
+    axes.set_xlim((-0.5, nRealCols-0.5))
+    axes.set_ylim((-0.5, 1.5))
+    axes.set_aspect('equal', 'datalim')
+    axes.set_xticks(range(nRealCols))
+    axes.set_yticks([0.0, 1.0])
+    axes.set_xticklabels(categoryL[:nRealCols])
+    axes.set_yticklabels(['approx real', 'sim'])
+
+    for dstIdx, dstCat in enumerate(categoryL[:nRealCols]):
+        row = 0
+        pairDict = {srcCat : countMtx[dstIdx, srcIdx]
+                    for srcIdx, srcCat in enumerate(categoryL)}        
+        labels, values, clrs = pieHelper(pairDict)
+        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                 radius=0.25, frame=True, center=(dstIdx, row))
+        row = 1
+        pairDict = {srcCat : simCountMtx[dstIdx, srcIdx]
+                    for srcIdx, srcCat in enumerate(categoryL)}
+        labels, values, clrs = pieHelper(pairDict)
+        scaleFac = countScale * (np.sum(simCountMtx[dstIdx, :])/np.sum(countMtx[dstIdx, :]))
+        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                 radius=(scaleFac * 0.25), frame=True, center=(dstIdx, row))
+
+    fig.tight_layout()
+    fig.canvas.set_window_title("Patient Sources")
+
+
+def getDayRange(inputDict):
+    minDay = inputDict['burnInDays']
+    maxDay = minDay + inputDict['runDurationDays'] - 1
+    return minDay, maxDay
 
 def occupancyTimeFig(specialDict, meanPopByCat=None):
     figs5, axes5 = plt.subplots(nrows=1, ncols=len(specialDict))
@@ -1171,27 +1416,30 @@ def main():
 #                           'sim_transfer_matrix.csv',
 #                           facDirList, catToImplDict)
 
+    minDay, maxDay = getDayRange(inputDict)
+    print 'day range: ', minDay, maxDay
+
     countBirthsDeaths(catNames, allOfCategoryDict)
 
     try:
         overallLOSFig(catNames, allOfCategoryDict, catToImplDict, implDir)
     except Exception, e:
         logger.error('Exception in overallLOSFig: %s' % e)
-
+ 
     if "2013" in runDesc:
         #singleLOSFig('SJUD', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         #singleLOSFig('WAEC', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         #singleLOSFig('CM69', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         #singleLOSFig('COLL', notesDict, inputDict['facilityDirs'], catToImplDict, implDir)
         pass
-
+ 
     if 'trackedFacilities' in inputDict:
         for abbrev in inputDict['trackedFacilities']:
             try:
                 singleLOSFig(abbrev, notesDict, facDirList, catToImplDict, implDir)
             except Exception, e:
                 logger.error('Exception in singleLOSFig for %s: %s' % (abbrev, e))
-
+ 
     try:
         bedBounceFig(allOfCategoryDict)
     except Exception, e:
@@ -1201,7 +1449,12 @@ def main():
     except Exception, e:
         logger.error('Exception in patientFlowFig: %s' % e)
     try:
-        patientFateFig(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
+        patientSourceFig(categoryDict, facDict, maxDay + 1 - minDay)
+    except Exception, e:
+        logger.error('Exception in patientSourceFig: %s' % e)
+    try:
+        patientFateFig(categoryDict, facDict, maxDay + 1 - minDay)
+        # patientFateFigClassic(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
     except Exception, e:
         logger.error('Exception in patientFateFig: %s' % e)
     try:
