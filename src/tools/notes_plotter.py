@@ -634,8 +634,8 @@ def pieHelper(pairDict):
         sortMe = [(wrapOrderMap[lbl], (ct, lbl, clrMap[lbl])) for lbl, ct in pairDict.items()
                   if ct != 0]
         sortMe.sort(reverse=True)
-        print 'sortMe: ',sortMe
-        print 'zip: ', [tpl for idx, tpl in sortMe]
+        #print 'sortMe: ',sortMe
+        #print 'zip: ', [tpl for idx, tpl in sortMe]
         values, labels, clrs = [list(tpl) for tpl in zip(*[tpl for idx, tpl in sortMe])]
     else:
         labels = []
