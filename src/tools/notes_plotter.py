@@ -813,12 +813,10 @@ def patientSourceFig(categoryDict, facDict, numDays, pieMode=True):
                     dstLoc, tier = subSubKey.split(':')[1:]
                     assert dstLoc in facDict, 'Unknown dstLoc %s' % dstLoc
                     dstCat = facDict[dstLoc]['category']
-#                     if category != 'COMMUNITY':
-#                         print '%s %s (%s %s)-> %s (%s) %s' %(srcLoc, tier, srcCat, category, dstLoc, dstCat, 
-#                                                              categoryDict[category][subKey][subSubKey])
                     dstIdx = catIdxD[dstCat]
                     simCountMtx[dstIdx, srcIdx] += categoryDict[category][subKey][subSubKey]
-                elif subSubKey == 'birth':
+                elif subSubKey == 'births':
+                    print 'BIRTH %s %s' % (subKey, subSubKey)
                     ct = categoryDict[category][subKey][subSubKey]
                     assert srcCat == 'COMMUNITY', ('%s has %d births but is not a community?'
                                                    % (subKey, ct))
