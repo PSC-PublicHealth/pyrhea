@@ -59,6 +59,7 @@ from pyrhea import getLoggerConfig
 import numpy as np
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
 
 from scipy.stats import lognorm, expon
 
@@ -590,8 +591,7 @@ def patientFateFigClassic(catNames, allOfCategoryDict, allFacInfo, catToImplDict
 #     fig.canvas.set_window_title("Patient Fates (Classic mode)")
 
 
-def pieHelper(pairDict):
-    clrMap = {'death': 'black',
+FLOW_CLR_MAP = {'death': 'black',
               'birth': 'black',
               'COMMUNITY': 'green',
               'HOME': 'green',
@@ -608,6 +608,9 @@ def pieHelper(pairDict):
               'ICU': 'cyan',
               'LTACH': 'yellow',
               'LTAC': 'yellow'}
+
+
+def pieHelper(pairDict):
     implTierMap = {'HOSPITAL': ['HOSP', 'ICU'],
                    'LTAC': ['LTAC'],
                    'NURSINGHOME': ['NURSING'],
@@ -631,7 +634,7 @@ def pieHelper(pairDict):
                     'death': 8,
                     'birth': 8}
     if pairDict:
-        sortMe = [(wrapOrderMap[lbl], (ct, lbl, clrMap[lbl])) for lbl, ct in pairDict.items()
+        sortMe = [(wrapOrderMap[lbl], (ct, lbl, FLOW_CLR_MAP[lbl])) for lbl, ct in pairDict.items()
                   if ct != 0]
         sortMe.sort(reverse=True)
         #print 'sortMe: ',sortMe
@@ -644,7 +647,31 @@ def pieHelper(pairDict):
     return labels, values, clrs
 
 
-def patientFateFig(categoryDict, facDict, numDays):
+def drawFlowBarPlot(axes, countMtx, simCountMtx, categoryL, nRealCols):
+    colWid = 0.25
+    xV = np.arange(nRealCols)
+    baseV0 = np.zeros(nRealCols)
+    baseV1 = np.zeros(nRealCols)
+    artistL = [Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)]
+    labelL = ['measured | sim']
+    for idx, ctg in enumerate(categoryL):
+        yV0 = countMtx[:nRealCols, idx]
+        artistL.append(axes.bar(xV - 0.5 * colWid, yV0, colWid, bottom=baseV0,
+                                color=FLOW_CLR_MAP[ctg], edgecolor='black'))
+        labelL.append(ctg)
+        baseV0 += yV0
+        yV1 = simCountMtx[:nRealCols, idx]
+        axes.bar(xV + 0.5 * colWid, yV1, colWid, bottom=baseV1, 
+                 color=FLOW_CLR_MAP[ctg], edgecolor='black')
+        baseV1 += yV1
+    axes.set_xticks(xV)
+    axes.set_xticklabels(categoryL[:nRealCols])
+    axes.legend(artistL, labelL)
+
+    
+
+
+def patientFateFig(categoryDict, facDict, numDays, pieMode=True):
     categoryS = set([rec['category'] for rec in facDict.values()] + ['COMMUNITY'])
     categoryL = list(categoryS)
     nRealCols = len(categoryL)
@@ -696,7 +723,6 @@ def patientFateFig(categoryDict, facDict, numDays):
                 elif subSubKey == 'death':
                     ct = categoryDict[category][subKey][subSubKey]
                     simCountMtx[srcIdx, catIdxD['death']] += ct
-                    
 
     countScale = 365.0 / numDays
 
@@ -707,36 +733,42 @@ def patientFateFig(categoryDict, facDict, numDays):
     print 'simulation:'
     print (countScale * simCountMtx)[0:nRealCols, :]
 
-    fig = plt.figure(figsize= (nRealCols, 2))
-    axes = fig.gca()
-    axes.set_xlim((-0.5, nRealCols - 0.5))
-    axes.set_ylim((-0.5, 1.5))
-    axes.set_aspect('equal', 'datalim')
-    axes.set_xticks(range(nRealCols))
-    axes.set_yticks([0.0, 1.0])
-    axes.set_xticklabels(categoryL)
-    axes.set_yticklabels(['approx real', 'sim'])
-    for srcIdx, srcCat in enumerate(categoryL[:nRealCols]):
+    if pieMode:
+        fig = plt.figure(figsize= (nRealCols, 2))
+        axes = fig.gca()
+        axes.set_xlim((-0.5, nRealCols - 0.5))
+        axes.set_ylim((-0.5, 1.5))
+        axes.set_aspect('equal', 'datalim')
+        axes.set_xticks(range(nRealCols))
+        axes.set_yticks([0.0, 1.0])
+        axes.set_xticklabels(categoryL)
+        axes.set_yticklabels(['approx real', 'sim'])
+        for srcIdx, srcCat in enumerate(categoryL[:nRealCols]):
 
-        row = 0
-        pairDict = {dstCat : countMtx[srcIdx, dstIdx]
-                    for dstIdx, dstCat in enumerate(categoryL)}
-        labels, values, clrs = pieHelper(pairDict)
-        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
-                 radius=0.25, frame=True, center=(srcIdx, row))
-        row = 1
-        pairDict = {dstCat : simCountMtx[srcIdx, dstIdx]
-                    for dstIdx, dstCat in enumerate(categoryL)}
-        labels, values, clrs = pieHelper(pairDict)
-        scaleFac = countScale * (np.sum(simCountMtx[srcIdx, :])/np.sum(countMtx[srcIdx, :]))
-        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
-                 radius=(scaleFac * 0.25), frame=True, center=(srcIdx, row))
+            row = 0
+            pairDict = {dstCat : countMtx[srcIdx, dstIdx]
+                        for dstIdx, dstCat in enumerate(categoryL)}
+            labels, values, clrs = pieHelper(pairDict)
+            axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                     radius=0.25, frame=True, center=(srcIdx, row))
+            row = 1
+            pairDict = {dstCat : simCountMtx[srcIdx, dstIdx]
+                        for dstIdx, dstCat in enumerate(categoryL)}
+            labels, values, clrs = pieHelper(pairDict)
+            scaleFac = countScale * (np.sum(simCountMtx[srcIdx, :])/np.sum(countMtx[srcIdx, :]))
+            axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                     radius=(scaleFac * 0.25), frame=True, center=(srcIdx, row))
+    else:
+        fig = plt.figure()
+        axes = fig.gca()
+
+        drawFlowBarPlot(axes, countMtx, countScale * simCountMtx, categoryL, nRealCols)
 
     fig.tight_layout()
     fig.canvas.set_window_title("Patient Fates")
 
 
-def patientSourceFig(categoryDict, facDict, numDays):
+def patientSourceFig(categoryDict, facDict, numDays, pieMode=True):
     categoryS = set([rec['category'] for rec in facDict.values()] + ['COMMUNITY'])
     categoryL = list(categoryS)
     nRealCols = len(categoryL)
@@ -801,30 +833,36 @@ def patientSourceFig(categoryDict, facDict, numDays):
     print 'simulation:'
     print (countScale * simCountMtx)[:, 0:nRealCols]
 
-    fig = plt.figure(figsize=(nRealCols, 2))
-    axes = fig.gca()
-    axes.set_xlim((-0.5, nRealCols-0.5))
-    axes.set_ylim((-0.5, 1.5))
-    axes.set_aspect('equal', 'datalim')
-    axes.set_xticks(range(nRealCols))
-    axes.set_yticks([0.0, 1.0])
-    axes.set_xticklabels(categoryL[:nRealCols])
-    axes.set_yticklabels(['approx real', 'sim'])
+    if pieMode:
+        fig = plt.figure(figsize=(nRealCols, 2))
+        axes = fig.gca()
+        axes.set_xlim((-0.5, nRealCols-0.5))
+        axes.set_ylim((-0.5, 1.5))
+        axes.set_aspect('equal', 'datalim')
+        axes.set_xticks(range(nRealCols))
+        axes.set_yticks([0.0, 1.0])
+        axes.set_xticklabels(categoryL[:nRealCols])
+        axes.set_yticklabels(['approx real', 'sim'])
+    
+        for dstIdx, dstCat in enumerate(categoryL[:nRealCols]):
+            row = 0
+            pairDict = {srcCat : countMtx[dstIdx, srcIdx]
+                        for srcIdx, srcCat in enumerate(categoryL)}        
+            labels, values, clrs = pieHelper(pairDict)
+            axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                     radius=0.25, frame=True, center=(dstIdx, row))
+            row = 1
+            pairDict = {srcCat : simCountMtx[dstIdx, srcIdx]
+                        for srcIdx, srcCat in enumerate(categoryL)}
+            labels, values, clrs = pieHelper(pairDict)
+            scaleFac = countScale * (np.sum(simCountMtx[dstIdx, :])/np.sum(countMtx[dstIdx, :]))
+            axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
+                     radius=(scaleFac * 0.25), frame=True, center=(dstIdx, row))
+    else:
+        fig = plt.figure()
+        axes = fig.gca()
 
-    for dstIdx, dstCat in enumerate(categoryL[:nRealCols]):
-        row = 0
-        pairDict = {srcCat : countMtx[dstIdx, srcIdx]
-                    for srcIdx, srcCat in enumerate(categoryL)}        
-        labels, values, clrs = pieHelper(pairDict)
-        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
-                 radius=0.25, frame=True, center=(dstIdx, row))
-        row = 1
-        pairDict = {srcCat : simCountMtx[dstIdx, srcIdx]
-                    for srcIdx, srcCat in enumerate(categoryL)}
-        labels, values, clrs = pieHelper(pairDict)
-        scaleFac = countScale * (np.sum(simCountMtx[dstIdx, :])/np.sum(countMtx[dstIdx, :]))
-        axes.pie(values, labels=labels, colors=clrs, autopct='%1.1f%%', startangle=90,
-                 radius=(scaleFac * 0.25), frame=True, center=(dstIdx, row))
+        drawFlowBarPlot(axes, countMtx, countScale * simCountMtx, categoryL, nRealCols)        
 
     fig.tight_layout()
     fig.canvas.set_window_title("Patient Sources")
@@ -1449,11 +1487,11 @@ def main():
     except Exception, e:
         logger.error('Exception in patientFlowFig: %s' % e)
     try:
-        patientSourceFig(categoryDict, facDict, maxDay + 1 - minDay)
+        patientSourceFig(categoryDict, facDict, maxDay + 1 - minDay, pieMode=False)
     except Exception, e:
         logger.error('Exception in patientSourceFig: %s' % e)
     try:
-        patientFateFig(categoryDict, facDict, maxDay + 1 - minDay)
+        patientFateFig(categoryDict, facDict, maxDay + 1 - minDay, pieMode=False)
         # patientFateFigClassic(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
     except Exception, e:
         logger.error('Exception in patientFateFig: %s' % e)
