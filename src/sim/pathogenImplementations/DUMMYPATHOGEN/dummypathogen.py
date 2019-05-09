@@ -65,7 +65,9 @@ class DUMMYPathCore(object):
         self.initialFracColonizedTbl = _parseFracByTierByFacilityByCategory('initialFractionColonized')
         self.categoryInitialFracColonizedTbl = \
             _parseFracByTierByCategory('categoryInitialFractionColonized')
-        
+        self.colDischDelayTbl = pthu.parseValByTier('colonizedDischargeDelayTime', _constants)
+
+
     def _getInitialFracColonized(self, abbrev, category, tier):
         tierStr = CareTier.names[tier]
         if (category in self.initialFracColonizedTbl
@@ -108,7 +110,10 @@ class DUMMYPATHOGEN(Pathogen):
                                                                   ward.fac.category,
                                                                   ward.tier)
 
-        self.colDischDelayTime = 0.0  # the default
+        self.colDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
+                                                   'colonizedDischargeDelayTime',
+                                                   ward, default=0.0)
+        self.infDischDelayTime = 0.0  # the default
 
     def flushCaches(self):
         """
@@ -227,7 +232,19 @@ class DUMMYPATHOGEN(Pathogen):
         # Find and edit any trees containing the 'LOS' tag
         patientStatus = patientAgent.getStatus()
         newTreeList = []
-        key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        if patientStatus.pthStatus in [PthStatus.CLEAR, PthStatus.UNDETCOLONIZED]:
+            key = (startTime - patientStatus.startDateA, timeNow - patientStatus.startDateA)
+        elif patientStatus.pthStatus in [PthStatus.COLONIZED, PthStatus.CHRONIC]:
+            delayedS = max(startTime - (patientStatus.startDateA + self.colDischDelayTime), 0.0)
+            delayedE = delayedS + (timeNow - startTime)
+            key = (delayedS, delayedE)
+        elif patientStatus.pthStatus == PthStatus.INFECTED:
+            delayedS = max(startTime - (patientStatus.startDateA + self.infDischDelayTime), 0.0)
+            delayedE = delayedS + (timeNow - startTime)
+            key = (delayedS, delayedE)
+        else:
+            raise RuntimeError('patient has unexpected PthStatus %s'
+                               % PthStatus.names[patientStatus.pthStatus])
 
         for tree in treeList:
             losTree = tree.findTag('LOS')
