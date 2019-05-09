@@ -627,12 +627,11 @@ class Facility(pyrheabase.Facility):
         if bounceKey not in nh:
             nh.addNote({bounceKey: HistoVal([])})
         fromToKey = 'fromTo:%s:%s' % (senderAbbrev, tier)
-        if senderAbbrev != self.abbrev: # Let's try not noting internal transfers
-            self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
-                                          (CareTier.names[tier] + '_notfound'): nFail,
-                                          bounceKey: nBounces,
-                                          transferKey: nSuccess,
-                                          fromToKey: nSuccess})
+        self.getNoteHolder().addNote({(CareTier.names[tier] + '_found'): nSuccess,
+                                      (CareTier.names[tier] + '_notfound'): nFail,
+                                      bounceKey: nBounces,
+                                      transferKey: nSuccess,
+                                      fromToKey: nSuccess})
 
     def diagnose(self, ward, patientId, patientStatus, oldDiagnosis, timeNow=None):
         """
