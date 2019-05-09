@@ -188,7 +188,7 @@ class MRSA(Pathogen):
         self.colDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
                                                    'colonizedDischargeDelayTime',
                                                    ward, default=0.0)
-        self.infDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
+        self.infDischDelayTime = pthu.getValByTier(self.core.infDischDelayTbl,
                                                    'infectedDischargeDelayTime',
                                                    ward, default=0.0)
 
