@@ -260,7 +260,8 @@ class NursingHome(Facility):
                 with self.getPatientRecord(pId, timeNow) as pRec:
                     pRec.noteD['bedHeld'] = True
                     logger.debug('%s departure processing %s %s %s %s',
-                                 self.name, pId, healthKey, pRec.noteD['bedHeld'], self.bedAllocDict)
+                                 self.name, pId, healthKey, pRec.noteD['bedHeld'],
+                                 self.bedAllocDict)
                 cancelHoldMsg = CancelHoldMsg(self.name, self.manager.patch,
                                               (pOH, pId, timeNow),
                                               self.reqQueues[0].getGblAddr(),
@@ -278,8 +279,9 @@ class NursingHome(Facility):
                  otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
                                                   'frail', 'frail_beds')
             bAD = self.bedAllocDict
-            logger.debug('%s arrival processing %s %s %s', self.name, pId, healthKey, self.bedAllocDict)
-            
+            logger.debug('%s arrival processing %s %s %s', self.name, pId, healthKey,
+                         self.bedAllocDict)
+
             bAD[healthKey] += 1
             if bAD[heldKey] > 0:
                 bAD[heldKey] -= 1
