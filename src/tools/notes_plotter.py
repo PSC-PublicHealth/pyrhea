@@ -1489,7 +1489,8 @@ def main():
         logger.error('Exception in patientSourceFig: %s' % e)
     try:
         patientFateFig(categoryDict, facDict, maxDay + 1 - minDay, pieMode=False)
-        # patientFateFigClassic(catNames, allOfCategoryDict, allOfCategoryFacilityInfo, catToImplDict)
+        # patientFateFigClassic(catNames, allOfCategoryDict, allOfCategoryFacilityInfo,
+        #                       catToImplDict)
     except Exception, e:
         logger.error('Exception in patientFateFig: %s' % e)
     try:
