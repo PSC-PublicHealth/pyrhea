@@ -4,13 +4,13 @@ import yaml
 from shutil import copytree
 
 import pyrheautils
-from lockserver import Lock
 
 CACHE_TO_LOCAL_DISK = False
 
 def mvCache():
     cache = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
     if CACHE_TO_LOCAL_DISK:
+        from lockserver import Lock
         if 'SLURM_ARRAY_JOB_ID' in os.environ:
             lockName = '%s:%s' % (os.environ['SLURM_ARRAY_JOB_ID'], os.environ['HOSTNAME'])
             infoFName = '/tmp/info_%s' % os.environ['SLURM_ARRAY_JOB_ID']
