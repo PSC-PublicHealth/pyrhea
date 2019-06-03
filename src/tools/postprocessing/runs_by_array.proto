@@ -21,18 +21,20 @@ targetdir=%targetdir%
 tooldir=$pyrheadir/src/tools
 simdir=${pyrheadir}/src/sim
 prepscript=%prepscript%
+pythonsetup=%pythonsetup%
 
 echo $scenario
 
-source ${HOME}/setup_python_path_olympus.sh
+source $pythonsetup
 
 outbase=$workdir/pyrhea_${ar}_out
 ofile=${outbase}.out
-lsofile=${workdir}/lockserver_${ar}.log
 echo "I am running pyrhea as instance $ar" > $ofile
 echo "hostname is " `hostname` >> $ofile
 cp $topdir/log_cfg.yaml $workdir
-cp $topdir/lockserver.info $workdir
+if [[ ! -f $workdir/lockserver.info && -f $topdir/lockserver.info]]; then
+    cp $topdir/lockserver.info $workdir
+fi
 if [ ! -f $workdir/$prepscript ] ; then
     cp $topdir/$prepscript $workdir
 fi
