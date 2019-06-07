@@ -28,7 +28,8 @@ import pyrheabase
 import pyrheautils
 import schemautils
 from quilt.peopleplaces import FutureMsg
-from stats import CachedCDFGenerator, lognormplusexp, BayesTree
+from stats import CachedCDFGenerator, lognormplusexp, BayesTree, fullCRVFromPDFModel
+from stats import JournalingCachedCDFGenerator
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, buildTimeTupleList, FacilityManager
@@ -95,13 +96,25 @@ class NursingHome(Facility):
             if weibull1.mean() <= weibull2.mean():
                 # Second block is the resident frails
                 self.initialResidentFrac = (1.0 - losModel['parms'][0])
-                self.rehabCachedCDF = CachedCDFGenerator(weibull1)
-                self.frailCachedCDF = CachedCDFGenerator(weibull2)
+#                 self.rehabCachedCDF = CachedCDFGenerator(weibull1)
+#                 self.frailCachedCDF = CachedCDFGenerator(weibull2)
             else:
                 # first block is the residents
                 self.initialResidentFrac = losModel['parms'][0]
-                self.rehabCachedCDF = CachedCDFGenerator(weibull2)
-                self.frailCachedCDF = CachedCDFGenerator(weibull1)
+#                 self.rehabCachedCDF = CachedCDFGenerator(weibull2)
+#                 self.frailCachedCDF = CachedCDFGenerator(weibull1)
+            if descr['abbrev'] in [
+#                 'NEWO', 'STAN'
+                ]:
+                JournalingCachedCDFGenerator.register()
+                extraD = {'abbrev': descr['abbrev'], 'tier': CareTier.NURSING}
+                self.rehabCachedCDF = JournalingCachedCDFGenerator(fullCRVFromPDFModel(losModel),
+                                                                   extraD=extraD)
+                self.frailCachedCDF = JournalingCachedCDFGenerator(fullCRVFromPDFModel(losModel),
+                                                                   extraD=extraD)
+            else:
+                self.rehabCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(losModel))
+                self.frailCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(losModel))
 
         else:
             raise RuntimeError("Unexpected losModel form %s for %s!" % (losModel['pdf'],
@@ -425,10 +438,12 @@ def _populate(fac, descr, patch):
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         a.setStatus(homeAddr=findQueueForTier(CareTier.NURSING, fac.reqQueues).getGblAddr())  # They live here
         if a.getStatus().overall == PatientOverallHealth.FRAIL:
-            a.setStatus(startDateA=-frailSampler.samp())
+#             a.setStatus(startDateA=-frailSampler.samp())
+            a.setStatus(startDateA=0)
         else:
             a.setTreatment(rehab=True)  # They must be here for rehab
-            a.setStatus(startDateA=-rehabSampler.samp())
+#             a.setStatus(startDateA=-rehabSampler.samp())
+            a.setStatus(startDateA=0)
         ward.lock(a)
         ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,
