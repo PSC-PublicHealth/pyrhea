@@ -102,7 +102,7 @@ class NursingHome(Facility):
             rehabLOSModel = {'parms': rehabParms, 'pdf': losModel['pdf']}
             frailLOSModel = {'parms': [losModel['parms'][3]], 'pdf': 'expon(lambda=$0)'}
             if descr['abbrev'] in [
-                 'NEWO', 'STAN'
+#                  'NEWO', 'STAN'
                 ]:
                 JournalingCachedCDFGenerator.register()
                 extraD = {'abbrev': descr['abbrev'], 'tier': CareTier.NURSING, 'frail': False,
