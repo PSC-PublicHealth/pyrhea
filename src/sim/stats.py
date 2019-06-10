@@ -34,6 +34,14 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+def pdfModelToStr(losModel):
+    rslt = losModel['pdf']
+    parms = list(losModel['parms'])
+    for idx in range(len(parms)):
+        rslt = rslt.replace('${:d}'.format(idx), '{{{}:0.3g}}'.format(idx))
+    rslt = rslt.format(*parms)
+    return rslt
+
 
 class LogNormPlusExp(rv_continuous):
     """
@@ -190,7 +198,7 @@ class JournalingCachedCDFGenerator(CachedCDFGenerator):
         rslt = super(JournalingCachedCDFGenerator, self).intervalProb(start, end)
         dct = {'start': start, 'end': end, 'rslt': rslt}
         dct.update(self.extraD)
-        self.df = self.df.append(dct, ignore_index=True) 
+        self.df = self.df.append(dct, ignore_index=True)
         return rslt
 
     @classmethod

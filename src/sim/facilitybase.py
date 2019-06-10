@@ -60,10 +60,16 @@ class ClassASetter(PatientStatusSetter):
 
     def set(self, patientStatus, timeNow):
         if self.forceRelocate:
-            return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
-                    ._replace(relocateFlag=True))
+            if patientStatus.diagClassA == self.newClassA:
+                return (patientStatus._replace(relocateFlag=True))
+            else:
+                return (patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
+                        ._replace(relocateFlag=True))
         else:
-            return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
+            if patientStatus.diagClassA == self.newClassA:
+                return (patientStatus)
+            else:
+                return patientStatus._replace(diagClassA=self.newClassA, startDateA=timeNow)
 
     def __str__(self):
         if self.forceRelocate:

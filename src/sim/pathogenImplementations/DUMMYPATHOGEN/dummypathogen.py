@@ -113,6 +113,7 @@ class DUMMYPATHOGEN(Pathogen):
         self.colDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
                                                    'colonizedDischargeDelayTime',
                                                    ward, default=0.0)
+#         self.colDischDelayTime = 0.0
         self.infDischDelayTime = 0.0  # the default
 
     def flushCaches(self):
