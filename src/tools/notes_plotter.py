@@ -870,6 +870,16 @@ def getDayRange(inputDict):
     maxDay = minDay + inputDict['runDurationDays'] - 1
     return minDay, maxDay
 
+def _collectHeldBedInfo(dL):
+    fields = defaultdict(list)
+    for d in dL:
+        for k, v in d.items():
+            fields[k].append(v)
+    assert 'day' in fields, 'Held bed date field is missing for special data'
+    dayL = fields['day'] 
+    del fields['day']
+    return dayL, fields
+
 def occupancyTimeFig(specialDict, meanPopByCat=None):
     figs5, axes5 = plt.subplots(nrows=1, ncols=len(specialDict))
     if len(specialDict) == 1:
@@ -888,6 +898,7 @@ def occupancyTimeFig(specialDict, meanPopByCat=None):
             del fields['day']
             keys = fields.keys()
             keys.sort()
+            altDayList, altFields = _collectHeldBedInfo(data['bedHoldStats'])
             for k in keys:
                 l = fields[k]
                 assert len(l) == len(dayList), (('field %s is the wrong length in special data %s'
@@ -904,6 +915,14 @@ def occupancyTimeFig(specialDict, meanPopByCat=None):
                                 axes5[offset].plot(dayList, [meanPop] * len(dayList),
                                                    color=baseLine.get_color(),
                                                    linestyle='--')
+
+            altFields = {k: np.asarray(v) for k, v in altFields.items()}
+            altDayV = np.asarray(altDayList)
+            axes5[offset].plot(altDayV, (altFields['NursingHome_frail'] + altFields['NursingHome_non_frail']
+                                         + altFields['NursingHome_frail_held'] + altFields['NursingHome_non_frail_held']),
+                               label='All Committed NH Beds')
+            axes5[offset].plot(altDayV, altFields['NursingHome_frail_beds'] + altFields['NursingHome_non_frail_beds'],
+                               label='All NH Beds')
 
             axes5[offset].set_xlabel('Days')
             axes5[offset].set_ylabel('Occupancy')
