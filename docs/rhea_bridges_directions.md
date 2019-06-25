@@ -32,6 +32,16 @@ vim setup_python_path_olympus.sh
 ```
 - make sure to include 'module load anaconda5' and 'source activate pyrheaEnv'
 - make sure the python path has rhea sim, rhea tools, phacsl, and quilt
+- for example, a working setup file might be:
+```
+#! /bin/bash
+module load gcc/7.3.0
+module load mpi/gcc_openmpi
+module load anaconda5
+source activate pyrheaEnv
+ROOTDIR=/home/lwinch/WORK/rhea
+export PYTHONPATH=${ROOTDIR}/pyrhea/src/sim:${ROOTDIR}/pyrhea/src/tools:${ROOTDIR}/phacsl/phacsl-utils/src:${ROOTDIR}/quilt/src
+```
 Once that file has been created, you can set up the environment with:
 ```
 source setup_python_path_olympus.sh 
