@@ -77,6 +77,11 @@
         'minimum': 1
       'negLogLikPerSample':
         'type': 'number'
+      'sampleHistogram':
+        'type': 'object'
+        'patternProperties':
+          '^[0123456789]*$': {'type': 'integer', 'minimum': 0}
+        'additionalProperties': false
     'required':
       - 'pdf'
       - 'parms'
