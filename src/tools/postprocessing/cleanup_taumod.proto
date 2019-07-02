@@ -14,11 +14,12 @@ topdir=%topdir%
 minNotesSz=%minNotesSz%
 pyrheadir=%pyrheadir%
 targetdir=%targetdir%
+pythonsetup=%pythonsetup%
 tooldir=$pyrheadir/src/tools
 
 echo $scenario
 
-source ${HOME}/setup_python_path_olympus.sh
+source $pythonsetup
 
 cd $workdir
 

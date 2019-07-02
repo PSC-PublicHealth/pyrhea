@@ -4,13 +4,13 @@ import yaml
 from shutil import copytree
 
 import pyrheautils
-from lockserver import Lock
 
 CACHE_TO_LOCAL_DISK = False
 
 def mvCache():
     cache = pyrheautils.pathTranslate('$(COMMUNITYCACHEDIR)')
     if CACHE_TO_LOCAL_DISK:
+        from lockserver import Lock
         if 'SLURM_ARRAY_JOB_ID' in os.environ:
             lockName = '%s:%s' % (os.environ['SLURM_ARRAY_JOB_ID'], os.environ['HOSTNAME'])
             infoFName = '/tmp/info_%s' % os.environ['SLURM_ARRAY_JOB_ID']
@@ -43,8 +43,10 @@ def mvCache():
             else:
                 print 'Someone else copied the cache to %s' % newCache
     else:
-        newCache = os.path.join('/pylon5/pscstaff/welling/pyrhea/caches',
-                                str(os.environ['SLURM_JOBID']), os.path.split(cache)[1])
+        newCache = os.path.join(os.environ['SCRATCH'],
+                                'pyrhea/caches',
+                                str(os.environ['SLURM_JOBID']),
+                                os.path.split(cache)[1])
         print "copying cache from %s to %s"%(cache, newCache)
         copytree(cache, newCache)
         print "finished making copy"

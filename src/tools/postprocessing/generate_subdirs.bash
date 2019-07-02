@@ -1,10 +1,12 @@
 #! /usr/bin/bash -x
 
-topdir='/pylon5/pscstaff/welling/pyrhea/oc_mrsa_201811b'
+thisdir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+topdir=$thisdir
 outbasedir=$topdir
-pyrheadir='/pylon5/pscstaff/welling/git/pyrhea'
-runyaml='OC_baseline_run_5_3.yaml'
-prepscript='baseline_OC_prep.py'
+pythonsetup=${HOME}/setup_python_path_olympus.sh
+pyrheadir=${SCRATCH}/git/pyrhea
+runyaml='ChicagoLand_baseline_run_5_3.yaml'
+prepscript='scenario_mod.py'
 DEFAULT='scenario_names.txt'
 minNotesSz=100000000
 bundledir=$topdir  # default value for normal operation
@@ -28,7 +30,8 @@ customize () {
 	| sed "s*%topdir%*$topdir*g" \
 	| sed "s*%minNotesSz%*$minNotesSz*g" \
 	| sed "s*%runyaml%*$runyaml*g" \
-	| sed "s*%prepscript%*$prepscript*g"
+	| sed "s*%prepscript%*$prepscript*g" \
+	| sed "s*%pythonsetup%*$pythonsetup*g"
 }
 
 scenariolist=${1-$DEFAULT}

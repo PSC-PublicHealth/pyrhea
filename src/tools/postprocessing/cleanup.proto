@@ -11,8 +11,6 @@ scenario=%scenario%
 
 echo $scenario
 
-source ${HOME}/setup_python_path_olympus.sh
-
 runyaml=%runyaml%
 basedir=%basedir%
 bundledir=%bundledir%
@@ -21,7 +19,10 @@ topdir=%topdir%
 minNotesSz=%minNotesSz%
 pyrheadir=%pyrheadir%
 targetdir=%targetdir%
+pythonsetup=%pythonsetup%
 tooldir=$pyrheadir/src/tools
+
+source $pythonsetup
 
 cd $workdir
 

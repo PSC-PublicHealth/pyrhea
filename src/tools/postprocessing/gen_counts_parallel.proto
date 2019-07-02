@@ -13,8 +13,6 @@ scenario=%scenario%
 
 echo $scenario
 
-source ${HOME}/setup_python_path_olympus.sh
-
 runyaml=%runyaml%
 basedir=%basedir%
 bundledir=%bundledir%
@@ -23,8 +21,11 @@ topdir=%topdir%
 minNotesSz=%minNotesSz%
 pyrheadir=%pyrheadir%
 targetdir=%targetdir%
+pythonsetup=%pythonsetup%
 tooldir=$pyrheadir/src/tools
 cd $tooldir
+
+source $pythonsetup
 
 narr=()
 #for fn in `$topdir/find_notes.py $targetdir $minNotesSz`

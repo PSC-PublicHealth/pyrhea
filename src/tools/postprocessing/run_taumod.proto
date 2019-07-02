@@ -21,8 +21,9 @@ pyrheadir=%pyrheadir%
 targetdir=%targetdir%
 tooldir=$pyrheadir/src/tools
 prepscript=%prepscript%
+pythonsetup=%pythonsetup%
 
-source ${HOME}/setup_python_path_olympus.sh
+source $pythonsetup
 
 topdir=%topdir%
 simdir=%workdir%
