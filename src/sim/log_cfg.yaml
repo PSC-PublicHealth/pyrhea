@@ -32,8 +32,8 @@ loggers:
     level: INFO
     handlers: []
   facilitybase:
-    #level: WARNING
-    level: DEBUG
+    level: WARNING
+    #level: DEBUG
     handlers: []
   pyrheabase.PatientAgent:
     #level: DEBUG
@@ -55,21 +55,27 @@ loggers:
     level: INFO
   community:
     #level: DEBUG
-    level: INFO
+    #level: INFO
+    level: WARNING
   netinterface:
     level: WARNING
   pyrheautils:
     level: WARNING
   genericCommunity:
-    level: INFO
+    #level: INFO
+    level: WARNING
   policybase:
-    level: DEBUG
-    #level: WARNING
+    #level: DEBUG
+    level: WARNING
   bcz_monitor:
     level: WARNING
 #    handlers: [rabbitmq]
   infectionTracking:
-    level: INFO
+    #level: INFO
+    level: WARNING
+  nursinghome:
+    #level: DEBUG
+    level: WARNING
 root:
   level: WARNING
   handlers: [console]
