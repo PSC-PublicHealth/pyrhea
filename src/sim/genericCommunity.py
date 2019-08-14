@@ -783,8 +783,8 @@ class Community(Facility):
                   modifierDct, timeNow=None):  # @UnusedVariable
         """
         This returns a tuple (careTier, patientTreatment)
-        
-        modifierDct is a back channel for downstream communication.  It may be modified by 
+
+        modifierDct is a back channel for downstream communication.  It may be modified by
         routines for which it is a parameter.
         """
         if patientDiagnosis.diagClassA == DiagClassA.WELL:
