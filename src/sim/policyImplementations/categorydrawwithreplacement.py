@@ -132,7 +132,7 @@ class CategoryDrawWithReplacementTransferDestinationPolicy(DrawWithReplacementTr
 #         print 'pairList: %s' % str([(a, b[0]) for a, b in pairList])
 #         print 'newTier: %s' % CareTier.names[newTier]
         try:
-            return [b for a, b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
+            return [b for a, b in randomOrderByWt(pairList, tot)]
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.category,
                            oldTier, newTier, timeNow)

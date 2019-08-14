@@ -20,6 +20,7 @@ _rhea_svn_id_ = "$Id$"
 import os.path
 from random import random
 import math
+import numpy as np
 from scipy.stats import lognorm, expon, weibull_min
 import logging
 
@@ -27,7 +28,8 @@ import pyrheabase
 import pyrheautils
 import schemautils
 from quilt.peopleplaces import FutureMsg
-from stats import CachedCDFGenerator, lognormplusexp, BayesTree
+from stats import CachedCDFGenerator, lognormplusexp, BayesTree, fullCRVFromPDFModel
+from stats import JournalingCachedCDFGenerator, pdfModelToStr
 from facilitybase import DiagClassA, CareTier, TreatmentProtocol, NURSINGQueue
 from facilitybase import PatientOverallHealth, Facility, Ward, PatientAgent
 from facilitybase import PatientStatusSetter, buildTimeTupleList, FacilityManager
@@ -69,6 +71,16 @@ class CancelHoldMsg(FutureMsg):
                                             debug=debug)
 
 
+def _decomposeLOSModel(losModel):
+    """
+    This implements the partitioning scheme described in OC2013_NH_LOS_Model_split_fates
+    """
+    aHat = losModel['parms'][0]
+    lmda = math.sqrt(aHat)
+    a = lmda
+    return lmda, a
+
+
 class NursingHome(Facility):
     def __init__(self, descr, patch, policyClasses=None, categoryNameMapper=None):
         Facility.__init__(self, '%(category)s_%(abbrev)s' % descr,
@@ -82,25 +94,28 @@ class NursingHome(Facility):
         if 'bedCountMultiplier' in _c:
             nBeds = int(nBeds * _c['bedCountMultiplier']['value'])
         losModel = descr['losModel']
-        lMP = losModel['parms']
         if losModel['pdf'] == '$0*lognorm(mu=$1,sigma=$2)+(1-$0)*expon(lambda=$3)':
-            self.initialResidentFrac = (1.0 - losModel['parms'][0])
-            self.rehabCachedCDF = CachedCDFGenerator(lognorm(lMP[2],
-                                                             scale=math.exp(lMP[1])))
-            self.frailCachedCDF = CachedCDFGenerator(expon(scale=1.0/lMP[3]))
-        elif losModel['pdf'] == '$0*weibull(k=$1, lmda=$2)+(1-$0)*weibull(k=$3, lmda=$4)':
-            weibull1 = weibull_min(lMP[1], scale=lMP[2])
-            weibull2 = weibull_min(lMP[3], scale=lMP[4])
-            if weibull1.mean() <= weibull2.mean():
-                # Second block is the resident frails
-                self.initialResidentFrac = (1.0 - losModel['parms'][0])
-                self.rehabCachedCDF = CachedCDFGenerator(weibull1)
-                self.frailCachedCDF = CachedCDFGenerator(weibull2)
+            lmdaFrac, aFrac = _decomposeLOSModel(losModel)
+            self.initialResidentFrac = 1.0 - lmdaFrac
+            rehabParms = losModel['parms'][:]
+            rehabParms[0] = aFrac
+            rehabLOSModel = {'parms': rehabParms, 'pdf': losModel['pdf']}
+            frailLOSModel = {'parms': [losModel['parms'][3]], 'pdf': 'expon(lambda=$0)'}
+            if descr['abbrev'] in [
+#                  'NEWO', 'STAN'
+                ]:
+                JournalingCachedCDFGenerator.register()
+                extraD = {'abbrev': descr['abbrev'], 'tier': CareTier.NURSING, 'frail': False,
+                          'pdf': pdfModelToStr(rehabLOSModel)}
+                self.rehabCachedCDF = JournalingCachedCDFGenerator(fullCRVFromPDFModel(rehabLOSModel),
+                                                                   extraD=extraD)
+                extraD = {'abbrev': descr['abbrev'], 'tier': CareTier.NURSING, 'frail': True,
+                          'pdf': pdfModelToStr(frailLOSModel)}
+                self.frailCachedCDF = JournalingCachedCDFGenerator(fullCRVFromPDFModel(frailLOSModel),
+                                                                   extraD=extraD)
             else:
-                # first block is the residents
-                self.initialResidentFrac = losModel['parms'][0]
-                self.rehabCachedCDF = CachedCDFGenerator(weibull2)
-                self.frailCachedCDF = CachedCDFGenerator(weibull1)
+                self.rehabCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(rehabLOSModel))
+                self.frailCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(frailLOSModel))
 
         else:
             raise RuntimeError("Unexpected losModel form %s for %s!" % (losModel['pdf'],
@@ -152,6 +167,13 @@ class NursingHome(Facility):
         # is actually just nursing.
         self.lclRates['nursinghome'] += self.lclRates['vsnf']
         self.lclRates['vsnf'] = 0.0
+
+        # Since FRAIL patients never transition HOME, we need a set of transition rates re-weighted
+        # to exclude the HOME option.  lclRates sums to 1.0, so it's easy
+        scl = 1.0 / (1.0 - self.lclRates['home'])
+        self.frailRates = {}
+        for key, val in self.lclRates.items():
+            self.frailRates[key] = 0.0 if key == 'home' else scl * val
 
         self.rehabTreeCache = {}
         self.frailTreeCache = {}
@@ -216,9 +238,15 @@ class NursingHome(Facility):
                 if (self.bedAllocDict[healthKey] < (self.bedAllocDict[bedsKey]
                                                     - self.bedAllocDict[heldKey])):
                     self.bedAllocDict[heldKey] += 1  # commit the bed
+                    with self.getPatientRecord(pId, timeNow) as pRec:
+                        pRec.noteD['bedHeld'] = True
+                    # No need to send a CancelMsg as the patient should arrive later today
+                    logger.debug('%s: bed request accepted %s %s %s', self.name, pId, healthKey,
+                                 self.bedAllocDict)
                 else:
                     ward = None  # decline the request
-                    # print '%s: request declined %s %s' % (self.name, healthKey, self.bedAllocDict)
+                    logger.debug('%s: bed request declined %s, %s %s', self.name, pId, healthKey,
+                                 self.bedAllocDict)
             if ward is None:
                 del self.arrivingPatientTransferInfoDict[pId]  # entry added by superclass
         else:
@@ -252,6 +280,9 @@ class NursingHome(Facility):
                 self.bedAllocDict[heldKey] += 1
                 with self.getPatientRecord(pId, timeNow) as pRec:
                     pRec.noteD['bedHeld'] = True
+                    logger.debug('%s departure processing %s %s %s %s',
+                                 self.name, pId, healthKey, pRec.noteD['bedHeld'],
+                                 self.bedAllocDict)
                 cancelHoldMsg = CancelHoldMsg(self.name, self.manager.patch,
                                               (pOH, pId, timeNow),
                                               self.reqQueues[0].getGblAddr(),
@@ -269,6 +300,9 @@ class NursingHome(Facility):
                  otherHealthKey, otherBedsKey) = ('non_frail', 'non_frail_held', 'non_frail_beds',
                                                   'frail', 'frail_beds')
             bAD = self.bedAllocDict
+            logger.debug('%s arrival processing %s %s %s', self.name, pId, healthKey,
+                         self.bedAllocDict)
+
             bAD[healthKey] += 1
             if bAD[heldKey] > 0:
                 bAD[heldKey] -= 1
@@ -283,6 +317,10 @@ class NursingHome(Facility):
                 bAD[bedsKey] += delta
                 bAD[otherBedsKey] -= delta
             with self.getPatientRecord(pId, timeNow) as pRec:
+                logger.debug('%s after arrival processing %s noteD before reset: %s bAD: %s',
+                             self.name, healthKey,
+                             (pRec.noteD['bedHeld'] if 'bedHeld' in pRec.noteD else None),
+                             self.bedAllocDict)
                 pRec.noteD['bedHeld'] = False
             return super(NursingHome, self).handleIncomingMsg(msgType, payload, timeNow)
         elif issubclass(msgType, CancelHoldMsg):
@@ -297,10 +335,17 @@ class NursingHome(Facility):
                                                   'frail', 'frail_beds')
             with self.getPatientRecord(pId, timeNow) as pRec:
                 if pRec.departureDate == launchTime and pRec.noteD['bedHeld']:
+                    logger.debug('%s applying CancelHoldMsg %s %s %s %s %s %s',
+                                 self.name, pId, healthKey, pRec.departureDate,
+                                 launchTime, pRec.noteD['bedHeld'], self.bedAllocDict)
                     pRec.noteD['bedHeld'] = False
                     bAD = self.bedAllocDict
                     bAD[heldKey] -= 1
                     assert bAD[heldKey] >= 0, '%s cannot find bed hold to cancel'
+                else:
+                    logger.debug('%s stray CancelHoldMsg %s %s %s %s %s %s',
+                                 self.name, pId, healthKey, pRec.departureDate,
+                                 launchTime, pRec.noteD['bedHeld'], self.bedAllocDict)
             return timeNow
 
     def getStatusChangeTree(self, patientAgent, modifierDct, startTime, timeNow):
@@ -318,7 +363,8 @@ class NursingHome(Facility):
                 return self.frailTreeCache[key]
             else:
                 innerTree = ClassASetter(DiagClassA.WELL)  # We declare them done with any rehab
-                changeTree = buildChangeTree(self.lclRates, forceRelocateDiag=DiagClassA.NEEDSREHAB)
+                changeTree = buildChangeTree(self.frailRates,
+                                             forceRelocateDiag=DiagClassA.NEEDSREHAB)
                 tree = BayesTree(changeTree, innerTree,
                                  self.frailCachedCDF.intervalProb, tag='LOS')
                 self.frailTreeCache[key] = tree
@@ -339,8 +385,8 @@ class NursingHome(Facility):
             else:  # not frail and not rehab
                 if patientDiagnosis.diagClassA == DiagClassA.NEEDSREHAB:
                     raise RuntimeError('%s has a REHAB diagnosis but no treatment?')
-            logger.warning('fac %s patient: %s careTier %s overall %s with status %s startTime: %s: '
-                           'this patient should be gone by now'
+            logger.warning('fac %s patient: %s careTier %s overall %s with'
+                           ' status %s startTime: %s: this patient should be gone by now'
                            % (self.name, patientAgent.name, CareTier.names[careTier],
                               PatientOverallHealth.names[patientStatus.overall],
                               DiagClassA.names[patientStatus.diagClassA], startTime))
@@ -358,6 +404,30 @@ class NursingHome(Facility):
             else:
                 return PatientOverallHealth.HEALTHY
 
+
+class AgeSampler(object):
+    sampsPerBatch = 1024
+    maxSamp = 365
+
+    def __init__(self, someCRV):
+        self.crv = someCRV
+        self.sampV = self.generate()
+    
+    def generate(self):
+        ageSampV = np.random.randint(AgeSampler.maxSamp, size=AgeSampler.sampsPerBatch)
+        probV = self.crv.cdf(ageSampV)
+        flagV = np.random.uniform(size=ageSampV.shape[0]) > probV
+        return np.compress(flagV, ageSampV)
+
+    def samp(self):
+        assert self.sampV.shape[0] > 0, 'No samples- is the crv just too unlikely?'
+        rslt = self.sampV[0]
+        self.sampV = self.sampV[1:]
+        if self.sampV.shape[0] < 1:
+            self.sampV = self.generate()
+        return rslt
+
+
 def _populate(fac, descr, patch):
     assert 'meanPop' in descr, \
         "Nursing home description %(abbrev)s is missing the expected field 'meanPop'" % descr
@@ -369,13 +439,20 @@ def _populate(fac, descr, patch):
     # The following is approximate, but adequate...
     agentList = []
     logger.debug('%s before _populate %s: %s', fac.name, int(round(meanPop)), fac.bedAllocDict)
+    frailSampler = AgeSampler(fac.frailCachedCDF.frozenCRV)
+    rehabSampler = AgeSampler(fac.rehabCachedCDF.frozenCRV)
     for i in xrange(int(round(meanPop))):
         ward = fac.manager.allocateAvailableBed(CareTier.NURSING)
         assert ward is not None, 'Ran out of beds populating %(abbrev)s!' % descr
         a = PatientAgent('PatientAgent_NURSING_%s_%d' % (ward._name, i), patch, ward)
         a.setStatus(homeAddr=findQueueForTier(CareTier.NURSING, fac.reqQueues).getGblAddr())  # They live here
-        if a.getStatus().overall != PatientOverallHealth.FRAIL:
+        if a.getStatus().overall == PatientOverallHealth.FRAIL:
+            a.setStatus(startDateA= -frailSampler.samp())
+#             a.setStatus(startDateA=0)
+        else:
             a.setTreatment(rehab=True)  # They must be here for rehab
+            a.setStatus(startDateA= -rehabSampler.samp())
+#             a.setStatus(startDateA=0)
         ward.lock(a)
         ward.handlePatientArrival(a, None)
         fac.handleIncomingMsg(pyrheabase.ArrivalMsg,

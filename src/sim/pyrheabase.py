@@ -331,7 +331,7 @@ class PatientAgent(peopleplaces.Person):
         modifierDict = {}  # Literally a back channel for downstream communication
         tier = self.handleTierUpdate(modifierDict, timeNow)
         if tier == self.tier and (TierUpdateModKey.FORCE_MOVE not in modifierDict
-                                  or not modifierDict[TierUpdateModKey]):
+                                  or not modifierDict[TierUpdateModKey.FORCE_MOVE]):
             return self.locAddr  # things stay the same
         elif tier is None:
             self.tier = None

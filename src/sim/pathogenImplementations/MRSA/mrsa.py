@@ -188,7 +188,7 @@ class MRSA(Pathogen):
         self.colDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
                                                    'colonizedDischargeDelayTime',
                                                    ward, default=0.0)
-        self.infDischDelayTime = pthu.getValByTier(self.core.colDischDelayTbl,
+        self.infDischDelayTime = pthu.getValByTier(self.core.infDischDelayTbl,
                                                    'infectedDischargeDelayTime',
                                                    ward, default=0.0)
 
@@ -263,7 +263,7 @@ class MRSA(Pathogen):
         patient._status = self.initializationBayesTree.traverse().set(patient.getStatus(), 0)
         canClear = (random() > self.core.fracPermanentlyColonized)
         patient._status = patient.getStatus()._replace(canClear=canClear)
-        
+
 
     def getPatientStateKey(self, status, treatment):
         """ treatment is the patient's current treatment status """

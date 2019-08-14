@@ -21,6 +21,9 @@ import sys
 import random
 from functools import wraps
 from math import fabs, log, exp
+import atexit
+import pandas as pd
+
 import unittest
 import cStringIO
 
@@ -31,6 +34,14 @@ from scipy.optimize import minimize_scalar
 
 
 logger = logging.getLogger(__name__)
+
+def pdfModelToStr(losModel):
+    rslt = losModel['pdf']
+    parms = list(losModel['parms'])
+    for idx in range(len(parms)):
+        rslt = rslt.replace('${:d}'.format(idx), '{{{}:0.3g}}'.format(idx))
+    rslt = rslt.format(*parms)
+    return rslt
 
 
 class LogNormPlusExp(rv_continuous):
@@ -252,7 +263,7 @@ class AlwaysZeroCRV(rv_continuous):
 alwayszerocrv = AlwaysZeroCRV(name='alwayszerocrv', a=0.0)
 
 
-class CachedCDFGenerator:
+class CachedCDFGenerator(object):
     """
     This supports a common operation performed by Facilities- given a treatment interval (relative
     to a start date of zero), return a likelihood.  For example, this may be the likelihood that
@@ -286,6 +297,41 @@ class CachedCDFGenerator:
                 cP = (ssf - esf) / ssf
             self.cache[key] = cP
             return cP
+
+
+class JournalingCachedCDFGenerator(CachedCDFGenerator):
+    instances = []
+    registered = False
+
+    def __init__(self, frozenCRV, extraD):
+        super(JournalingCachedCDFGenerator, self).__init__(frozenCRV)
+        self.extraD = extraD
+        self.df = pd.DataFrame(columns=['start', 'end', 'rslt'] + extraD.keys())
+#         for key in extraD.keys():
+#             self.df[key] = self.df[key].astype('category')
+        JournalingCachedCDFGenerator.instances.append(self)
+
+    def intervalProb(self, start, end):
+        rslt = super(JournalingCachedCDFGenerator, self).intervalProb(start, end)
+        dct = {'start': start, 'end': end, 'rslt': rslt}
+        dct.update(self.extraD)
+        self.df = self.df.append(dct, ignore_index=True)
+        return rslt
+
+    @classmethod
+    def onExit(cls):
+        logger.info('JournalingCachedCDFGenerator is collecting data')
+        bigDF = pd.concat([inst.df for inst in cls.instances], ignore_index=True)
+        fname = 'cdf_intervalprob_results.mpz'
+        logger.info('JournalingCachedCDFGenerator is writing %s', fname)
+        bigDF.to_msgpack(fname)
+        logger.info('JournalingCachedCDFGenerator done')
+
+    @classmethod
+    def register(cls):
+        if not cls.registered:
+            atexit.register(cls.onExit)
+            cls.registered = True
 
 
 class BayesTree(object):
