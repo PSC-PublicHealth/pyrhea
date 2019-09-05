@@ -31,9 +31,11 @@ loggers:
   quilt.agent:
     level: INFO
     handlers: []
+  quilt.netinterface:
+    level: INFO
+    handlers: []
   facilitybase:
-    #level: WARNING
-    level: DEBUG
+    level: WARNING
     handlers: []
   pyrheabase.PatientAgent:
     #level: DEBUG
@@ -63,8 +65,8 @@ loggers:
   genericCommunity:
     level: INFO
   policybase:
-    level: DEBUG
-    #level: WARNING
+    #level: DEBUG
+    level: WARNING
   bcz_monitor:
     level: WARNING
 #    handlers: [rabbitmq]

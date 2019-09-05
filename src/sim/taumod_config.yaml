@@ -1,13 +1,14 @@
 ---
 DateFile: date.info
 TauFileName: taudict.pkl
-#UpdatePeriod: 50
-UpdatePeriod: 3
-EndDay: 11
-#DayList: [0,5,10,15,20,25,30,35]
-DayList: [0,2]
-#WorkerCount: 50
-WorkerCount: 2
+UpdatePeriod: 50
+#UpdatePeriod: 3
+EndDay: 7301
+#EndDay: 10
+DayList: [0,5,10,15,20,25,30,35]
+#DayList: [0,2]
+WorkerCount: 50
+#WorkerCount: 2
 MinRatio: 0.5
 MaxRatio: 2.0
 AdjFactor: 0.05
@@ -19,12 +20,6 @@ OverridePrevalence:
 - fac: ALL
   tier: ICU
   value: 0.03
-- fac: ALL
-  tier: NURSING
-  value: 1.5
-- fac: ALL
-  tier: SKILNRS
-  value: 1.5
 
 IsAdjustable:
 - fac: ALL
@@ -32,6 +27,18 @@ IsAdjustable:
   value: True
 - fac: ALL
   tier: ICU
+  value: True
+- fac: ALL
+  tier: HOSP
+  value: True
+- fac: ALL
+  tier: SKILNRS
+  value: True
+- fac: ALL
+  tier: VENT
+  value: True
+- fac: ALL
+  tier: NURSING
   value: True
 
 
