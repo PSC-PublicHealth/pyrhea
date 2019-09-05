@@ -117,6 +117,12 @@ class NursingHome(Facility):
                 self.rehabCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(rehabLOSModel))
                 self.frailCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(frailLOSModel))
 
+        elif losModel['pdf'] == 'empirical(loc=$0,scale=$1)':
+            # No FRAIL patients, but we still need a CDF
+            self.initialResidentFrac = 0.0
+            self.rehabCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(losModel))
+            self.frailCachedCDF = CachedCDFGenerator(fullCRVFromPDFModel(losModel))
+
         else:
             raise RuntimeError("Unexpected losModel form %s for %s!" % (losModel['pdf'],
                                                                         descr['abbrev']))

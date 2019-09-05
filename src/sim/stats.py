@@ -582,7 +582,8 @@ def fullCRVFromPDFModel(pdfModel):
     elif modelStr == 'empirical(loc=$0,scale=$1)':
         assert 'sampleHistogram' in pdfModel, 'empirical pdfModel requires a sampleHistogram entry'
         loc, scale = pdfModel['parms']
-        return empirical(loc=loc, scale=scale, histogram_dict=pdfModel['sampleHistogram'])
+        histoDct = {int(k) : v for k, v in pdfModel['sampleHistogram'].items()} # fix string keys
+        return empirical(loc=loc, scale=scale, histogram_dict=histoDct)
     else:
         raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 
