@@ -118,17 +118,16 @@ def main():
                 #print '%s -> %s' % (src, dst)
                 if dst == src:
                     selfCt += n
-                else:
-                    tbl[src][str(dst)] = n
-                    if dst not in facDict:
-                        lostTrans = n
-                        if n != 0:
-                            print 'Unknown destination %s: %d transfers lost' % (dst, lostTrans)
-                        lostCt += lostTrans
-                        continue
+                tbl[src][str(dst)] = n
+                if dst not in facDict:
+                    lostTrans = n
+                    if n != 0:
+                        print 'Unknown destination %s: %d transfers lost' % (dst, lostTrans)
+                    lostCt += lostTrans
+                    continue
                 allCt += n
     print 'understood %s transfers' % allCt
-    print 'excluded %s self transfers' % selfCt
+    print 'included %s self transfers' % selfCt
     print 'total transfers lost to unknown endpoints: %d' % lostCt
     print 'parsed'
     with open('direct_transfer_counts.yaml', 'w') as f:

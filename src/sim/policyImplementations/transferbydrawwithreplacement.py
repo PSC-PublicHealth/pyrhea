@@ -194,7 +194,7 @@ class DrawWithReplacementTransferDestinationPolicy(BaseTransferDestinationPolicy
         pairList, tot = self.core.getTierWeightedList(oldFacility.abbrev, newTier)
 #             print 'newTier: %s' % CareTier.names[newTier]
         try:
-            return [b for a, b in randomOrderByWt(pairList, tot, cull=oldFacility.abbrev)]
+            return [b for a, b in randomOrderByWt(pairList, tot)]
         except IndexError, e:
             logger.error('Hit IndexError %s for %s %s -> %s at %s', e, oldFacility.abbrev,
                            oldTier, newTier, timeNow)

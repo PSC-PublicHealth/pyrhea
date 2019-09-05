@@ -1,6 +1,6 @@
 'model': 'OrangeCounty2013'
 'pathogen': 'MRSA'
-'modelDir': '../../models/OrangeCounty2013'
+'modelDir': '$(BASEDIR)/models/OrangeCounty2013'
 
 'pathTranslations':
   - 'key': 'CONSTANTS'
@@ -10,7 +10,7 @@
   - '$(MODELDIR)/facilityfactsCurrent2013'
   - '$(MODELDIR)/synthCommunities'
 
-'facilityImplementationDir': '../sim/facilityImplementations_ChicagoLand'
+'facilityImplementationDir': '$(BASEDIR)/src/sim/facilityImplementations_ChicagoLand'
 'facilitySelectors':
   - 'category': 'NURSINGHOME'
     'implementation': 'NURSINGHOME'
@@ -21,7 +21,7 @@
   - 'category': 'COMMUNITY'
     'implementation': 'COMMUNITY'
 
-'policyImplementationDir': '../sim/policyImplementations'
+'policyImplementationDir': '$(BASEDIR)/src/sim/policyImplementations'
 'policySelectors':
   - 'category': '((HOSPITAL)|(LTAC)|(NURSINGHOME))'
     'policyClass': 'DrawWithReplacementTransferDestinationPolicy'
@@ -49,6 +49,11 @@ burnInDays: 100
 
 
 scenarioWaitDays: 2
+
+'trackedValues':
+  - 'arrivals'
+  - 'creCounters'
+  - 'newColonizations'
 
 'trackedFacilities':
   - ACNC

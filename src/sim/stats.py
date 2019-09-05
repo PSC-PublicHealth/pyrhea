@@ -15,22 +15,33 @@
 #                                                                                 #
 ###################################################################################
 
-_rhea_svn_id_ = "$Id$"
-
 import logging
 import types
 import sys
 import random
-from scipy.stats import kstest
-from scipy.stats.distributions import rv_continuous, lognorm, expon, weibull_min
-from scipy.optimize import minimize_scalar
+from functools import wraps
 from math import fabs, log, exp
+import atexit
+import pandas as pd
 
 import unittest
 import cStringIO
+
 import numpy as np
+from scipy.stats import kstest
+from scipy.stats.distributions import rv_continuous, lognorm, expon, weibull_min
+from scipy.optimize import minimize_scalar
+
 
 logger = logging.getLogger(__name__)
+
+def pdfModelToStr(losModel):
+    rslt = losModel['pdf']
+    parms = list(losModel['parms'])
+    for idx in range(len(parms)):
+        rslt = rslt.replace('${:d}'.format(idx), '{{{}:0.3g}}'.format(idx))
+    rslt = rslt.format(*parms)
+    return rslt
 
 
 class LogNormPlusExp(rv_continuous):
@@ -105,6 +116,122 @@ class DoubleExpon(rv_continuous):
 doubleexpon = DoubleExpon(name='doubleexpon', a=0.0)
 
 
+def _paramGrabberWrapper(mthd, keyword, update_mthd):
+    @wraps(mthd)
+    def wrapped_mthd(self, *args, **kwds):
+        if keyword in kwds:
+#             print('metaclass grabbed %s = %s from call to %s' % (keyword, kwds[keyword],
+#                                                                  mthd))
+            getattr(self, update_mthd)(kwds[keyword])
+            del kwds[keyword]
+        else:
+            pass
+        return mthd(self, *args, **kwds)
+    return wrapped_mthd
+
+
+class ParamGrabberMetaClass(type):
+    def __new__(cls, name, parents, classDct):
+        keyword = classDct['_meta_keyword_']
+        update_mthd = classDct['_meta_update_mthd_']
+        newClassDct = {}
+        base_cls = parents[0]
+        for entry in dir(base_cls):
+            if entry[0] != '_':
+                attr = getattr(base_cls, entry)
+                if callable(attr):
+                    attr = _paramGrabberWrapper(attr, keyword, update_mthd)
+                    newClassDct[entry] = attr
+        for entry, attr in classDct.items():
+            if callable(attr) and entry[0] != '_':
+                attr = _paramGrabberWrapper(attr, keyword, update_mthd)
+            newClassDct[entry] = attr
+        return type.__new__(cls, name, parents, newClassDct)
+
+
+class Empirical(rv_continuous):
+    """
+    The real empirical distribution is discrete, but we define this one to be
+    continuous, with the samples for a given day presumed to occur uniformly over
+    the course of the day.  Thus the CDF linearly interpolates across the course
+    of each day, and the PDF is a step function and constant within a day.  Samples
+    drawn from this crv are presumed to correspond to real-world samples associated
+    with the day which is the floor() of the sample time.
+    """
+    __metaclass__ = ParamGrabberMetaClass
+    _meta_keyword_ = 'histogram_dict'
+    _meta_update_mthd_ = '_histogram_update'
+
+    def freeze(self, *args, **kwargs):
+        rslt = super(Empirical, self).freeze(*args, **kwargs)
+        rslt.dist._histogram_update(getattr(self, Empirical._meta_keyword_))
+#         print('%s %s now has %s %s' % (type(rslt.dist), rslt.dist, Empirical._meta_keyword_,
+#                                        getattr(rslt.dist, Empirical._meta_keyword_)))
+        return rslt
+
+    def _histogram_update(self, histo_dct):
+        # print('%s %s just got update for %s' % (type(self), self, histo_dct))
+        if histo_dct is None or not histo_dct:
+            raise ValueError('Sample histogram is missing or empty')
+        self.histogram_dict = histo_dct
+        self.hist_min = min(histo_dct.keys())
+        self.hist_max = max(histo_dct.keys())
+        valL, ctL = zip(*histo_dct.items())
+        self.hist_sampV = np.asarray(valL)
+        self.hist_sampP = np.asarray(ctL, dtype=np.float)
+        samp_count = self.hist_sampP.sum()
+        if samp_count <= 0.0:
+            raise ValueError('Sample histogram must have a positive number of samples')
+        self.hist_sampP /= samp_count
+        self.hist_pdfV = np.zeros(self.hist_max + 1 - self.hist_min)
+        for k, v in self.histogram_dict.items():
+            if v < 0:
+                raise ValueError('Sample histogram entry has a negative number of counts')
+            self.hist_pdfV[k - self.hist_min] = float(v)/samp_count
+        self.hist_cdfV = np.cumsum(self.hist_pdfV)
+        self.hist_cdfV[-1] = 1.0  # avoid rounding error
+#         print 'hist_min: ', self.hist_min
+#         print 'hist_max: ', self.hist_max
+#         print 'hist_sampV: ', self.hist_sampV
+#         print 'hist_sampP: ', self.hist_sampP
+#         print 'hist_pdfV: ', self.hist_pdfV
+#         print 'hist_cdfV: ', self.hist_cdfV
+
+    def __init__(self, *args, **kwargs):
+        super(Empirical, self).__init__(*args, **kwargs)
+        self.histogram_dict = None
+        self.hist_sampV = None
+        self.hist_sampP = None
+        self.hist_pdfV = None
+        self.hist_cdfV = None
+        self.hist_min = None  # also serves as base offset for the arrays
+        self.hist_max = None
+        self.hist_totcts = None
+
+    def _argcheck(self, *args, **kwargs):
+        return self.histogram_dict is not None
+
+    def _pdf(self, x):
+        idxV = np.floor(x).astype(np.int) - self.hist_min
+        maskV = np.logical_and((idxV >= 0),(idxV <= self.hist_max - self.hist_min))
+        idxV = np.maximum(idxV, 0)
+        idxV = np.minimum(idxV, self.hist_max - self.hist_min)
+        return np.choose(maskV, [0.0, self.hist_pdfV[idxV]])
+
+    def _cdf(self, x):
+        return np.interp(x,
+                         np.linspace(self.hist_min, self.hist_max,
+                                     self.hist_max + 1 - self.hist_min),
+                         self.hist_cdfV)
+ 
+    def _rvs(self, *args, **kwargs):
+        return self._random_state.choice(self.hist_sampV, size=self._size,
+                                         replace=True, p=self.hist_sampP)
+
+
+empirical = Empirical(name='empirical', a=0.0)
+
+
 class AlwaysZeroCRV(rv_continuous):
     """
     The pdf and cdf of this distribution are 0.0 for all finite x.  Useful when we want to
@@ -136,7 +263,7 @@ class AlwaysZeroCRV(rv_continuous):
 alwayszerocrv = AlwaysZeroCRV(name='alwayszerocrv', a=0.0)
 
 
-class CachedCDFGenerator:
+class CachedCDFGenerator(object):
     """
     This supports a common operation performed by Facilities- given a treatment interval (relative
     to a start date of zero), return a likelihood.  For example, this may be the likelihood that
@@ -170,6 +297,41 @@ class CachedCDFGenerator:
                 cP = (ssf - esf) / ssf
             self.cache[key] = cP
             return cP
+
+
+class JournalingCachedCDFGenerator(CachedCDFGenerator):
+    instances = []
+    registered = False
+
+    def __init__(self, frozenCRV, extraD):
+        super(JournalingCachedCDFGenerator, self).__init__(frozenCRV)
+        self.extraD = extraD
+        self.df = pd.DataFrame(columns=['start', 'end', 'rslt'] + extraD.keys())
+#         for key in extraD.keys():
+#             self.df[key] = self.df[key].astype('category')
+        JournalingCachedCDFGenerator.instances.append(self)
+
+    def intervalProb(self, start, end):
+        rslt = super(JournalingCachedCDFGenerator, self).intervalProb(start, end)
+        dct = {'start': start, 'end': end, 'rslt': rslt}
+        dct.update(self.extraD)
+        self.df = self.df.append(dct, ignore_index=True)
+        return rslt
+
+    @classmethod
+    def onExit(cls):
+        logger.info('JournalingCachedCDFGenerator is collecting data')
+        bigDF = pd.concat([inst.df for inst in cls.instances], ignore_index=True)
+        fname = 'cdf_intervalprob_results.mpz'
+        logger.info('JournalingCachedCDFGenerator is writing %s', fname)
+        bigDF.to_msgpack(fname)
+        logger.info('JournalingCachedCDFGenerator done')
+
+    @classmethod
+    def register(cls):
+        if not cls.registered:
+            atexit.register(cls.onExit)
+            cls.registered = True
 
 
 class BayesTree(object):
@@ -417,6 +579,10 @@ def fullCRVFromPDFModel(pdfModel):
         return doubleexpon(k, lmda1, lmda2)
     elif modelStr == 'alwayszero()':
         return alwayszerocrv()
+    elif modelStr == 'empirical(loc=$0,scale=$1)':
+        assert 'sampleHistogram' in pdfModel, 'empirical pdfModel requires a sampleHistogram entry'
+        loc, scale = pdfModel['parms']
+        return empirical(loc=loc, scale=scale, histogram_dict=pdfModel['sampleHistogram'])
     else:
         raise RuntimeError('Unknown LOS model %s' % pdfModel['pdf'])
 
@@ -467,14 +633,14 @@ _lognormplusexp_test_parmsets = [{'s': 2.0, 'mu': 2.0, 'k': 0.0, 'lmda': 3.0},
                                  ]
 
 _bayestree_test_dump_string = """\
-(0.700000
+(0.7
     no change
-    (0.300000
-        (0.333333
+    (0.3
+        (0.333333333333
             line 1
             line 2
         )
-        (0.285714
+        (0.285714285714
             line 4
             line 3
         )
@@ -487,10 +653,18 @@ _bayestree_test_traversal_dict = {'line 1': 280, 'line 2': 565, 'line 3': 1518,
                                   'line 4': 612, 'no change': 7025}
 
 
+_empirical_test_dict = {1:5, 2:3, 4:3, 5:6, 18:1}
+
+_empirical_test_dict2 = {12:7}
+
 def main():
     "This is a simple test routine which takes kvp files as arguments"
 
     import matplotlib.pyplot as plt
+
+    # Test empirical CRV
+    print 'testing empirical CRV'
+    TestStats('test_stats_empirical').debug()
 
     # Test CachedCDFGenerator
     print 'testing CachedCDFGenerator'
@@ -517,7 +691,7 @@ def main():
         testFun = createMapFun(parms)
         ax[ind].plot(x, testFun(x), 'k+', lw=3, label='analytic')
         r = lognormplusexp.rvs(size=10000, **parms)
-        ax[ind].hist(r, 100, normed=True, histtype='stepfilled', alpha=0.4)
+        ax[ind].hist(r, 100, density=True, histtype='stepfilled', alpha=0.4)
         ax[ind].legend(loc='best', frameon=False)
         ax[ind].set_title(str(parms))
 
@@ -531,6 +705,41 @@ def main():
 
 
 class TestStats(unittest.TestCase):
+    def test_stats_empirical(self):
+        # test missing or bad parameters
+        rslt = empirical.pdf([12.3, 4.7, 0.2])
+        # The best implementation so far only detects this at _argcheck, returning NaNs.
+        self.assertTrue(np.all(np.isnan(rslt)))
+        with self.assertRaises(ValueError):
+            ignored = empirical.pdf([12.3, 4.7, 0.2], histogram_dict={})  # @UnusedVariable
+        with self.assertRaises(ValueError):
+            ignored = empirical.pdf([12.3, 4.7, 0.2],    # @UnusedVariable
+                                    histogram_dict={1:1, 2:-1, 3:1})
+        # unscaled pdf
+        rslt = empirical.pdf(np.asarray([12.3, 4.7, 0.2]), histogram_dict=_empirical_test_dict)
+        self.assertTrue(np.allclose(rslt, np.array([0., 0.16666667, 0.0])))
+        # scaled pdf
+        rslt = empirical.pdf(np.asarray([12.3, 4.7, 0.2]), histogram_dict=_empirical_test_dict,
+                             loc=7., scale=3.)
+        self.assertTrue(np.allclose(rslt, np.array([0.09259259, 0.0, 0.0])))
+        # cdf
+        rslt = empirical.cdf(np.asarray([12.3, 4.7, 0.2]), histogram_dict=_empirical_test_dict)
+        self.assertTrue(np.allclose(rslt, np.array([0.94444444, 0.84444444, 0.27777778])))
+        # create and test frozen crv
+        crv = empirical(histogram_dict=_empirical_test_dict2, loc=7., scale=3.)
+        rslt = crv.pdf(np.asarray([12.3, 4.7, 0.2]))
+        self.assertTrue(np.allclose(rslt, np.array([0.0, 0.0, 0.0])))
+        crv = empirical(histogram_dict=_empirical_test_dict)
+        rslt = crv.pdf(np.asarray([12.3, 4.7, 0.2]))
+        self.assertTrue(np.allclose(rslt, np.array([0.0,  0.16666667, 0.0])))
+        # generate some samples
+        rS = np.random.RandomState(1234)
+        drawV = crv.rvs(size=10, random_state=rS)
+        self.assertTrue(np.all(drawV == np.array([1, 4, 2, 5, 5, 1, 1, 5, 5, 5], dtype=np.int)))
+        drawV = empirical(histogram_dict=_empirical_test_dict).rvs(size=12, random_state=rS)
+        self.assertTrue(np.all(drawV == np.array([[2, 4, 5, 5, 2, 4, 4, 1, 5, 5, 2, 4]],
+                                                 dtype=np.int)))
+
     def test_stats_lognormplusexp(self):
         for parms in _lognormplusexp_test_parmsets:
             samplePts = [0.001, 0.5, 0.999]

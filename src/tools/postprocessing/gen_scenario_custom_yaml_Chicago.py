@@ -2,6 +2,7 @@
 
 import os.path
 import sys
+from copy import deepcopy
 import yaml
 import tools_util as tu
 import pyrheautils as pu
@@ -62,7 +63,7 @@ def main(argv=None):
                                     'facility_capture_percentages.csv')
     else:
         # this is CRE-style
-        mode = 'xdropluscrebundle'
+        mode = 'xdropluscrebundle' # or maybe just crebundle; same thing
         enhancedDetectionFraction = None
         if scenario.startswith('baseline_'):
             key = scenario[len('baseline_'):]
@@ -94,8 +95,10 @@ def main(argv=None):
         transModList.append([['locationsImplementingScenario', 'facilities'], facEltL])
         transModList.append([['locationsImplementingScenario', 'prov'],
                              '%s scenario' % scenario])
+        transModList2 = deepcopy(transModList)
         allData['constantsReplacementData'] = {"$(CONSTANTS)/xdro_plus_cre_bundle_scenario_constants.yaml":
                                                transModList,
+                                               "$(CONSTANTS)/cre_bundle_scenario_constants.yaml": transModList2,
                                                "$(CONSTANTS)/xdro_registry_scenario_constants.yaml": # strictly for gather_counts.py
                                                [[['locationsImplementingScenario', 'locAbbrevList'], captureLocL]]}
     else:
